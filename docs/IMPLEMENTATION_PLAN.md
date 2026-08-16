@@ -1,6 +1,6 @@
 # Ngabo — Implementation Plan
 
-**Version:** 0.6  
+**Version:** 0.7  
 **Created:** 2026-08-16  
 **Official hackathon deadline:** 2026-08-31, 5:00 PM Pacific Time
 
@@ -8,139 +8,138 @@
 
 ## 1. Principle
 
-> **Do not spend the final 48 hours implementing core architecture.**
+> **Build the zero-human Taskmaster hero first. Everything else is secondary.**
 
-Feature-complete several days early. Reserve the end for measured evaluation, deployment proof, UI polish, submission evidence, public build content, optional bonus integrations, demo rehearsal, and Devpost submission.
+The canonical hero must complete:
 
-All implementation must preserve:
+```text
+surveillance event
+→ autonomous investigation
+→ validated package
+→ safe A1 external action
+→ machine acknowledgement
+```
 
-- Clean Architecture dependency boundaries;
-- monorepo structure;
+with:
+
+```text
+human_intervention_count == 0
+manual_prompt_count_to_start == 0
+clarification_count == 0
+approval_click_count == 0
+```
+
+All implementation preserves:
+
+- Clean Architecture;
+- monorepo boundaries;
 - deterministic scientific logic;
 - graph-first hybrid orchestration;
-- bounded agentic autonomy;
-- long-running truth/context/freshness rules;
-- human consequential-action governance;
-- third-party/data/pre-existing-work provenance;
-- measured operational-utility evaluation;
-- Gitflow / SemVer / Conventional Commits;
-- truthful hackathon claims and proof.
+- zero-human A1 safe action policy;
+- bounded agentic reasoning;
+- freshness/idempotency;
+- safe abstention;
+- Gitflow/SemVer/Conventional Commits;
+- submission evidence and freeze discipline.
 
-Required source contracts before runtime/submission work:
+Required read set includes:
 
 - `docs/HACKATHON_ALIGNMENT.md`
-- `docs/CLEAN_ARCHITECTURE.md`
-- `docs/ADK_RUNTIME.md`
+- `docs/TASKMASTER_ZERO_HUMAN_AUTONOMY.md`
+- `docs/BYOF_FRICTION.md`
+- `docs/ADK_CAPABILITY_SPIKE.md`
+- `docs/HACKATHON_RISK_REGISTER.md`
 - `docs/ORCHESTRATION_PATTERNS.md`
 - `docs/LONG_RUNNING_AGENT.md`
 - `docs/DATA_SAFETY_EVALUATION.md`
 - `docs/OPERATIONAL_UTILITY_EVALUATION.md`
-- `docs/UI_UX_SPEC.md`
-- `docs/UI_UX_HACKATHON_ADDENDUM.md`
-- `docs/THIRD_PARTY_PROVENANCE.md`
 - `docs/SUBMISSION_EVIDENCE.md`
-- ADR 0005 and ADR 0006.
+- `docs/SUBMISSION_FREEZE.md`
 
 ---
 
 ## 2. Critical Path
 
 ```text
-Clean Architecture monorepo scaffold
+Clean Architecture scaffold
    ↓
-domain entities + ports + state machine
+domain/state/action-policy core
    ↓
-synthetic data + schema + provenance
+synthetic data + complete hero fixture
    ↓
-deterministic parser / normalizer
+deterministic ingestion
    ↓
 deterministic surveillance detector
    ↓
-application workflows + infrastructure adapters
+ADK capability spike + version pin
    ↓
 deterministic investigation capabilities
    ↓
-ADK graph: context -> parallel function nodes -> join
+ADK workflow: context → parallel fan-out → join
    ↓
-Gemini triage/synthesis agent nodes
+Gemini triage + evidence + synthesis
    ↓
-resumable long-running graph + current-context rebuild
+deterministic package validator + bounded auto repair
    ↓
-targeted clarification + same-incident resume
+A0/A1/A2/A3 autonomous action policy
    ↓
-deterministically validated incident package
+freshness + idempotency
    ↓
-human consequential-action approval
+real A1 external integration
    ↓
-deterministic pre-action freshness barrier
+machine acknowledgement
    ↓
-real outbound action + acknowledgement
+zero-human deployed E2E
    ↓
-Next.js incident console + graph/freshness timeline
+Next.js autonomy/graph proof UI
    ↓
-Cloud deployment + observability + cost/security
+GCP deployment + observability
    ↓
-deterministic/ADK/E2E/freshness/operational evaluation
+scientific/agent/safety/utility evaluation
    ↓
-EmbeddingGemma retrieval integration if core green
+EmbeddingGemma if core green
    ↓
-provenance + submission evidence freeze
-   ↓
-demo + article + social + Devpost
+diagram + article + video + submission freeze
 ```
 
 ---
 
-## Aug 16 — Freeze Design, Architecture & Hackathon Contract
+## Aug 16 — Freeze Competition Architecture
 
-Completed design/governance work includes:
+Completed design controls should include:
 
-- [x] Lean Canvas
-- [x] Devpost pitch
-- [x] LinkedIn article strategy
-- [x] PRD
-- [x] Tech stack
-- [x] System design
-- [x] Agent design
-- [x] Data/safety/evaluation design
-- [x] UI/UX specification
-- [x] release roadmap
-- [x] Gitflow / SemVer / Conventional Commits governance
-- [x] Clean Architecture + monorepo decision
-- [x] `docs/HACKATHON_ALIGNMENT.md`
-- [x] `docs/ADK_RUNTIME.md`
-- [x] `docs/ORCHESTRATION_PATTERNS.md`
-- [x] ADR 0005 — graph-first orchestration
-- [x] `docs/LONG_RUNNING_AGENT.md`
-- [x] ADR 0006 — long-running state/freshness/memory
-- [x] `docs/OPERATIONAL_UTILITY_EVALUATION.md`
-- [x] `docs/THIRD_PARTY_PROVENANCE.md`
-- [x] `docs/SUBMISSION_EVIDENCE.md`
-- [x] `CLAUDE.md` implementation contract
-- [x] `AGENTS.md` coding-agent rules
-- [x] GitHub repository + `develop`
-- [x] LICENSE + SECURITY.md
+- [x] product/PRD/tech/system/agent/UI specifications;
+- [x] Clean Architecture + monorepo ADR;
+- [x] hackathon alignment;
+- [x] graph-first orchestration;
+- [x] long-running state/freshness contract;
+- [x] zero-human Taskmaster autonomy contract;
+- [x] BYOF friction contract;
+- [x] operational-utility benchmark contract;
+- [x] provenance/submission evidence contracts;
+- [x] ADK capability-spike contract;
+- [x] submission-freeze contract;
+- [x] hackathon risk register;
+- [x] judge-facing target architecture diagram.
 
-**Exit:** implementation can begin without guessing the product, scoring strategy, architecture, long-running semantics, human boundary, provenance obligations, evaluation method, or submission proof requirements.
+**Exit:** implementation can start without guessing Taskmaster autonomy or safety boundaries.
 
 ---
 
-## Aug 17 — Clean Architecture Monorepo Scaffold + Domain Core
+## Aug 17 — Monorepo Scaffold + Domain Core + Action Policy
 
-### Repository / workspaces
+### Repository
 
-- [ ] create `apps/web`
-- [ ] create `services/core`
-- [ ] create `data/{synthetic,schemas,guidance}`
-- [ ] create/verify `infra`
-- [ ] pnpm workspace configuration
-- [ ] uv Python project under `services/core`
-- [ ] lint/type/test scripts
-- [ ] `.env.example`
+- [ ] `apps/web`;
+- [ ] `services/core`;
+- [ ] `data/{synthetic,schemas,guidance}`;
+- [ ] `infra`;
+- [ ] pnpm workspace;
+- [ ] uv Python project;
+- [ ] lint/type/test scripts;
+- [ ] `.env.example`.
 
-### Backend Clean Architecture
-
-Create:
+### Backend layers
 
 ```text
 services/core/ngabo/
@@ -151,579 +150,418 @@ services/core/ngabo/
 └── bootstrap/
 ```
 
-- [ ] domain entities/value objects/events/services
-- [ ] application use cases/ports/workflows
-- [ ] interfaces API/events
-- [ ] infrastructure adapter packages including `infrastructure/ai/adk`
-- [ ] composition root/dependency wiring
+### Domain/application model
 
-### Domain model
+- [ ] ImportBatch;
+- [ ] Isolate;
+- [ ] ASTResult;
+- [ ] SurveillanceSignal;
+- [ ] Incident;
+- [ ] IncidentEvent;
+- [ ] package/version metadata;
+- [ ] action classes `A0/A1/A2/A3`;
+- [ ] `AutonomyDecision` value object;
+- [ ] incident state machine;
+- [ ] state-transition tests;
+- [ ] action-class policy tests;
+- [ ] A2/A3 cannot auto-execute.
 
-- [ ] ImportBatch
-- [ ] Isolate
-- [ ] ASTResult
-- [ ] SurveillanceSignal
-- [ ] Incident
-- [ ] IncidentEvent
-- [ ] Clarification
-- [ ] Review decision/version reference
-- [ ] Notification state
-- [ ] Agent/graph execution reference at application boundary
-- [ ] Incident/package/source watermark/version values
-- [ ] Incident state machine
-- [ ] State-transition tests
-
-### Architecture acceptance
-
-- [ ] domain imports no FastAPI/GCP/ADK/Gemini SDKs
-- [ ] application imports no concrete cloud/model SDKs
-- [ ] framework adapters remain thin
-- [ ] domain tests run without network/cloud/model access
-
-**Exit:** monorepo builds; domain/state/version policy is explicit; architecture tests pass.
+**Exit:** domain/application build without FastAPI/GCP/ADK/Gemini and action policy is deterministic.
 
 ---
 
-## Aug 18 — Synthetic Data + Deterministic Ingestion + Provenance Baseline
+## Aug 18 — Synthetic Data + Deterministic Ingestion
 
-- [ ] supported input columns
-- [ ] baseline synthetic dataset
-- [ ] seeded suspicious cluster
-- [ ] malformed/noisy dataset
-- [ ] prompt-injection-as-data fixture
-- [ ] freshness/material-change fixture
-- [ ] canonical input/domain mappings
-- [ ] deterministic parser/normalizer
-- [ ] file-storage port
-- [ ] import repository port
-- [ ] import use case
-- [ ] thin FastAPI import interface
-- [ ] validation report
-- [ ] duplicate handling
-- [ ] file hashing/source watermarking
-- [ ] every public fixture labelled synthetic
-- [ ] confirm no real WHONET/hospital row is committed
-- [ ] begin `docs/THIRD_PARTY_PROVENANCE.md` evidence/data register
+Create fixtures:
 
-**Architecture check:** FastAPI translates input and invokes a use case; it does not own parsing/scientific policy.
+- [ ] complete zero-human hero dataset;
+- [ ] normal baseline;
+- [ ] noisy/malformed dataset;
+- [ ] material-missing-data abstention fixture;
+- [ ] prompt-injection-as-data fixture;
+- [ ] stale-before-action fixture;
+- [ ] A2/A3 policy-block fixtures.
 
-**Exit:** CSV → canonical isolates + validation report through real application boundary; dataset provenance is clean.
+Implement:
+
+- [ ] canonical schema;
+- [ ] parser/normalizer;
+- [ ] duplicate handling;
+- [ ] file hashing;
+- [ ] file storage port;
+- [ ] import use case;
+- [ ] thin FastAPI import adapter;
+- [ ] validation report.
+
+**Hero rule:** no intentionally missing material field.
+
+**Exit:** hero CSV → complete canonical isolates without human repair.
 
 ---
 
 ## Aug 19 — Deterministic Surveillance Engine
 
-- [ ] resistance representation/value objects
-- [ ] similarity method
-- [ ] temporal concentration
-- [ ] ward/location concentration
-- [ ] baseline comparison
-- [ ] prototype signal score
-- [ ] trigger explanation
-- [ ] surveillance use case
-- [ ] scenario tests
-- [ ] source/material-change watermark inputs defined
+- [ ] resistance representation;
+- [ ] similarity method;
+- [ ] temporal concentration;
+- [ ] ward/location concentration;
+- [ ] baseline comparison;
+- [ ] prototype signal score;
+- [ ] trigger explanation;
+- [ ] surveillance use case;
+- [ ] scenario tests;
+- [ ] signal event contract.
 
-**Architecture check:** surveillance calculations run without FastAPI, Firestore, Pub/Sub, ADK, Gemini or network access.
-
-**Exit:** seeded investigation candidate detected deterministically and reproducibly.
+**Exit:** hero dataset creates expected suspicious investigation candidate deterministically.
 
 ---
 
-## Aug 20–21 — Investigation Capabilities + ADK Graph + Gemini Reasoning
+## Aug 20 Morning — ADK Capability Spike
 
-Read before implementation:
+Before production graph code, complete `docs/ADK_CAPABILITY_SPIKE.md`.
 
-- `docs/ADK_RUNTIME.md`
-- `docs/ORCHESTRATION_PATTERNS.md`
-- `docs/LONG_RUNNING_AGENT.md`
-- `docs/AGENT_ARCHITECTURE.md`
-- ADR 0005 / ADR 0006.
+- [ ] pin exact Python version;
+- [ ] pin exact `google-adk` version;
+- [ ] verify backend invocation without chat;
+- [ ] verify sequential/parallel supported path;
+- [ ] verify join/failure semantics;
+- [ ] verify structured Gemini output;
+- [ ] verify callback/session/eval/trace capabilities;
+- [ ] choose documented fallback if workshop graph API differs;
+- [ ] record result;
+- [ ] commit lockfile.
+
+**Stop condition:** do not build runtime against guessed workshop APIs.
+
+---
+
+## Aug 20–21 — Investigation Capabilities + ADK Workflow
 
 ### Inner contracts
 
-- [ ] investigation application port
-- [ ] evidence-search port
-- [ ] incident-context query/use case
-- [ ] profile-comparison query wrapping deterministic domain logic
-- [ ] baseline-summary query wrapping deterministic domain logic
-- [ ] missing-fields query
-- [ ] structured incident-package schema
-- [ ] deterministic package validator
-- [ ] graph/agent execution metadata contract
-- [ ] context-rebuild application query
+- [ ] incident-context query;
+- [ ] profile-comparison query;
+- [ ] baseline-summary query;
+- [ ] missing-fields query;
+- [ ] evidence-search port;
+- [ ] incident-package schema;
+- [ ] package validator;
+- [ ] autonomy-policy use case;
+- [ ] freshness use case;
+- [ ] agent execution metadata contract.
 
 ### ADK infrastructure
 
-- [ ] Google ADK under `infrastructure/ai/adk`
-- [ ] graph/workflow boundary
-- [ ] function-node adapter boundary
-- [ ] Gemini 3.6 Flash agent-node adapter/config
-- [ ] local-only ADK development workflow
-- [ ] persist/correlate session/invocation/run IDs
-- [ ] verify exact installed ADK graph/resume/human-input APIs
-- [ ] bounded max model steps/calls/tools/timeouts/retries
+- [ ] ADK outer adapter under `infrastructure/ai/adk`;
+- [ ] context stage;
+- [ ] parallel deterministic profile/baseline/missingness stages;
+- [ ] join;
+- [ ] Gemini 3.6 Flash triage;
+- [ ] approved evidence retrieval;
+- [ ] Gemini synthesis;
+- [ ] bounded model/tool/time budgets;
+- [ ] structured telemetry IDs.
 
-### Core deterministic graph
+### No-human hero behavior
+
+- [ ] no clarification tool in required hero route;
+- [ ] material missingness causes autonomous abstention;
+- [ ] fixed routing does not call Gemini;
+- [ ] hero complete fixture proceeds automatically.
+
+**Exit:** pre-created hero signal → valid evidence-backed package without user input.
+
+---
+
+## Aug 22 — Deterministic Validation + Automatic Repair + Event Persistence
+
+### Package validation
+
+Reject:
+
+- unknown isolate/source IDs;
+- unsupported observed/derived claims;
+- prohibited prescribing/diagnosis/outbreak confirmation;
+- malformed/missing required schema;
+- unsafe action wording.
+
+### Bounded repair
+
+- [ ] structured validator errors;
+- [ ] Gemini repair attempt;
+- [ ] hard max attempts (target `2`);
+- [ ] exhausted budget → `VALIDATION_FAILED`;
+- [ ] invalid package can never reach action policy.
+
+### Persistence/events
+
+- [ ] Firestore repositories;
+- [ ] GCS store;
+- [ ] Pub/Sub publisher/consumer;
+- [ ] processed-event/idempotency persistence;
+- [ ] append-only timeline;
+- [ ] graph/session/run correlation;
+- [ ] restart/redelivery tests.
+
+**Exit:** event processing is durable/idempotent and model errors can self-repair or stop safely.
+
+---
+
+## Aug 23 — Zero-Human Autonomous Action + Machine Ack
+
+### Policy engine
+
+- [ ] deterministic A0/A1/A2/A3 classification;
+- [ ] allow-listed target policy;
+- [ ] authorization config;
+- [ ] A2/A3 hard block;
+- [ ] safe abstention states.
+
+### Freshness
+
+- [ ] incident/package/source watermark;
+- [ ] pre-action deterministic revalidation;
+- [ ] material change → recompute/revalidate;
+- [ ] no stale external action.
+
+### Idempotency
+
+- [ ] action idempotency key/reservation;
+- [ ] delivery attempt/result persistence;
+- [ ] retry behavior;
+- [ ] duplicate event cannot duplicate action.
+
+### Real external integration
+
+Preferred:
 
 ```text
-incident context
-      ↓
-parallel fan-out
-  ├─ profile comparison
-  ├─ baseline summary
-  └─ missing-field assessment
-      ↓
-join
+NotificationPort
+→ authorized external test/sandbox webhook
+→ delivery result
+→ machine acknowledgement callback/event
 ```
 
-- [ ] context node calls inward application contract
-- [ ] deterministic branch nodes
-- [ ] parallel fan-out
-- [ ] typed join result
-- [ ] required branch failure semantics
-- [ ] timeout/retry semantics
-- [ ] no unsafe shared-state mutation
+- [ ] real adapter;
+- [ ] local fake adapter kept for tests;
+- [ ] external delivery ID;
+- [ ] automated acknowledgement;
+- [ ] acknowledgement updates incident;
+- [ ] hero E2E requires no person.
 
-### Routing
-
-- [ ] fixed event/state/validation routing remains code
-- [ ] table-driven deterministic routing tests
-- [ ] verify zero Gemini calls for fixed routing
-
-### Gemini reasoning
-
-- [ ] triage consumes joined deterministic findings
-- [ ] materiality decision for missing context
-- [ ] bounded evidence intent
-- [ ] evidence-grounded synthesis
-- [ ] citation/source ID validation
-- [ ] prohibited-claim validation
-- [ ] deterministic package post-validation
-
-### ADK eval foundation
-
-- [ ] committed eval dataset location
-- [ ] happy-path graph
-- [ ] clarification case
-- [ ] no-evidence case
-- [ ] required-branch failure
-- [ ] fan-out completion-order
-- [ ] fixed-routing-no-model-call
-- [ ] prompt injection
-
-**Exit:** pre-created signal → deterministic graph fan-out/join → bounded Gemini reasoning → valid evidence-backed package locally.
+**Exit:** backend hero flow completes event→ack with zero human intervention.
 
 ---
 
-## Aug 22 — Persistent Event Workflow + Resume / Context Safety
+## Aug 24–25 — Next.js Incident / Autonomy Console
 
-### Infrastructure adapters
+Required views:
 
-- [ ] Firestore repositories
-- [ ] GCS raw/artifact store
-- [ ] Pub/Sub publisher/consumer adapters
-- [ ] processed-event/idempotency persistence
+- [ ] synthetic-data banner;
+- [ ] dashboard/import/signal;
+- [ ] incident detail;
+- [ ] deterministic why-flagged card;
+- [ ] resistance comparison;
+- [ ] graph timeline;
+- [ ] fan-out/branch/join visibility;
+- [ ] bounded Gemini/evidence stages;
+- [ ] package validation/repair state;
+- [ ] autonomy-policy card;
+- [ ] A1 vs blocked A2/A3 state;
+- [ ] freshness/idempotency state;
+- [ ] real action + delivery ID;
+- [ ] machine acknowledgement;
+- [ ] zero-human operational metrics card;
+- [ ] developer/details drawer;
+- [ ] failure/abstention states;
+- [ ] demo reset/seed control.
 
-### Workflow
+Do not make chat or human approval the hero interaction model.
 
-- [ ] incident persistence
-- [ ] append-only event timeline
-- [ ] persist graph/agent session/invocation/run refs
-- [ ] incident/package/source versions + watermarks
-- [ ] resumable incident state
-- [ ] restart/retry path
-- [ ] idempotent redelivery
-- [ ] resume/retry audit events
-- [ ] context rebuild from canonical current state
-- [ ] old session text cannot override current Firestore state
-- [ ] context compaction/bounding only if stable/useful
-- [ ] ADK Web excluded from public deployment
-- [ ] no A2A runtime/service in v0.1
-
-**Exit:** interruption/restart/redelivery cannot duplicate incident/effect; resumed reasoning uses current canonical truth.
-
----
-
-## Aug 23 — Clarification + Human Safety Gate + Freshness + Real Action
-
-### Clarification
-
-- [ ] clarification use case/endpoint
-- [ ] stable ADK human-input integration where useful
-- [ ] deterministic missing-field node identifies missingness
-- [ ] Gemini triage decides materiality
-- [ ] `WAITING_FOR_CLARIFICATION`
-- [ ] resume same incident after answer
-
-### Human review
-
-- [ ] review use case
-- [ ] approve
-- [ ] reject
-- [ ] request more info
-- [ ] persist reviewed package/incident/source watermark references
-- [ ] final authority remains in application/domain state machine
-
-### Pre-action freshness barrier
-
-- [ ] `RevalidateIncidentBeforeAction` (or equivalent) application use case
-- [ ] compare current vs reviewed incident/package/source versions
-- [ ] deterministic material-change policy
-- [ ] unchanged state → action allowed
-- [ ] material new isolate → approval stale
-- [ ] changed AST → approval stale
-- [ ] regenerated package → approval stale
-- [ ] material clarification/evidence change → approval stale where policy requires
-- [ ] telemetry-only change does not invalidate approval
-- [ ] stale path returns visibly to review
-- [ ] stale approval cannot be replayed on retry/redelivery
-
-### Real action
-
-- [ ] NotificationPort
-- [ ] deterministic demo adapter
-- [ ] **real authorized outbound notification adapter**
-- [ ] idempotency key
-- [ ] delivery attempt/result persistence
-- [ ] acknowledgement use case
-- [ ] demo-visible external result
-
-**Exit:** backend E2E completes real approved action only when current reviewed state remains valid.
+**Exit:** judge can understand the zero-human workflow from UI alone.
 
 ---
 
-## Aug 24–25 — Next.js Incident Console
+## Aug 26 — GCP Deployment + Observability + Security/Cost
 
-Implement against the UI/UX contracts.
+- [ ] Cloud Run `ngabo-core`;
+- [ ] Cloud Run `ngabo-web`;
+- [ ] Firestore;
+- [ ] Pub/Sub;
+- [ ] GCS;
+- [ ] Secret Manager/injected secrets;
+- [ ] protected event/callback endpoints;
+- [ ] allow-listed external target config;
+- [ ] min instances `0` unless justified;
+- [ ] max instance caps;
+- [ ] budget + email alert;
+- [ ] structured Cloud Logging;
+- [ ] graph/node/model/action/freshness/ack telemetry;
+- [ ] supported Trace/OpenTelemetry path if stable;
+- [ ] metadata-first content policy.
 
-### Frontend structure
-
-- [ ] `src/domain`
-- [ ] `src/application`
-- [ ] `src/infrastructure/api`
-- [ ] `src/infrastructure/streaming`
-- [ ] `src/presentation`
-- [ ] Next.js `app/` composition/routes
-
-### Required screens/components
-
-- [ ] app shell + synthetic-data banner
-- [ ] dashboard
-- [ ] import/validation
-- [ ] incident queue/detail
-- [ ] deterministic “why flagged” card
-- [ ] resistance-profile comparison
-- [ ] live graph timeline
-- [ ] visible function-node fan-out/branch completion/join
-- [ ] bounded agent-stage visibility without chain-of-thought
-- [ ] interruption/retry/resume/context-rebuilt visibility
-- [ ] targeted clarification card
-- [ ] evidence-backed package + source provenance
-- [ ] professional review panel
-- [ ] freshness check state
-- [ ] stale-approval / re-review state
-- [ ] real-vs-demo response tracking
-- [ ] acknowledgement state
-- [ ] demo reset/seed controls
-- [ ] accessibility/loading/error/empty states
-
-**Exit:** non-developer can understand autonomy, deterministic vs agentic work, safety boundary, freshness and real action from UI alone.
+**Exit:** full hero works on GCP and provides visible proof.
 
 ---
 
-## Aug 26 — GCP Deployment + Observability + Cost / Security
+## Aug 27 — Evaluation + Operational Utility + EmbeddingGemma Gate
 
-### Infrastructure
+### Hero E2E
 
-- [ ] Cloud Storage
-- [ ] Firestore
-- [ ] Pub/Sub
-- [ ] `ngabo-core` Cloud Run
-- [ ] `ngabo-web` Cloud Run
-- [ ] production composition root
+Run three consecutive deployed hero scenarios.
 
-### Cost
+Required:
 
-- [ ] Cloud Run min instances `0` unless documented exception
-- [ ] max-instance caps
-- [ ] right-sized CPU/RAM
-- [ ] Google Cloud budget
-- [ ] budget email alert
-- [ ] artifact/log cleanup policy
+```text
+manual_prompt_count_to_start = 0
+human_intervention_count = 0
+human_active_steps = 0
+clarification_count = 0
+approval_click_count = 0
+external_effect_count = 1
+acknowledgement_count = 1
+```
 
-### Security
+### Safety/architecture eval
 
-- [ ] Secret Manager/injected secrets
-- [ ] no committed credentials
-- [ ] protected event/internal endpoints
-- [ ] Pub/Sub origin/auth validation where applicable
-- [ ] expensive public endpoint protection/rate limits where practical
-- [ ] least-privilege service accounts where practical
-- [ ] ADK Web not publicly deployed
+- [ ] deterministic node tests;
+- [ ] fan-out order independence;
+- [ ] required branch failure;
+- [ ] zero model calls for fixed routing;
+- [ ] prompt injection;
+- [ ] fabricated source/isolate;
+- [ ] package auto-repair;
+- [ ] repair budget exhaustion;
+- [ ] material missingness abstention;
+- [ ] A2/A3 blocks;
+- [ ] non-allow-listed target block;
+- [ ] freshness recompute;
+- [ ] duplicate/redelivery idempotency;
+- [ ] session/canonical truth conflict;
+- [ ] restart/recovery.
 
-### Observability
+### Operational utility / BYOF
 
-- [ ] correlation/event/incident IDs
-- [ ] graph run/node/branch/join telemetry
-- [ ] agent session/invocation/run telemetry
-- [ ] model-call count/latency
-- [ ] pause/resume/context-rebuild events
-- [ ] review/freshness events
-- [ ] action/ack events
-- [ ] Cloud Trace/OpenTelemetry path if stable
-- [ ] metadata-first/no-sensitive-content traces
-- [ ] deployed URLs + commit recorded
-- [ ] Cloud Run/log/trace proof captured
+- [ ] freeze reference builder workflow;
+- [ ] measure human active steps;
+- [ ] capture event→package/action/ack timings;
+- [ ] model/node/repair/retry counts;
+- [ ] write public `EVALUATION.md`.
 
-**Exit:** full scenario works on Google Cloud with inspectable proof and controlled cost/security.
+### EmbeddingGemma
 
----
+Only if core hero/evals are green:
 
-## Aug 27 — Evaluation + Operational Utility + EmbeddingGemma
-
-### Deterministic/application
-
-- [ ] pure domain suite
-- [ ] application use-case tests
-- [ ] infrastructure contract tests
-- [ ] interface/API/event tests
-
-### Graph/orchestration
-
-- [ ] deterministic function-node tests
-- [ ] branch completion-order test
-- [ ] required branch failure
-- [ ] join semantics
-- [ ] deterministic router table tests
-- [ ] zero model call for fixed routing
-- [ ] canonical graph trajectory captured
-
-### Long-running/freshness
-
-- [ ] process restart/recovery
-- [ ] same-incident clarification resume
-- [ ] canonical context rebuild
-- [ ] old session vs current Firestore conflict
-- [ ] approval + no material change → action
-- [ ] approval + new isolate → block
-- [ ] approval + changed AST → block
-- [ ] stale approval replay → block
-- [ ] notification retry/idempotency
-
-### ADK/safety
-
-- [ ] clarification behavior
-- [ ] empty evidence
-- [ ] bounded capability failure
-- [ ] fabricated source
-- [ ] hallucinated isolate
-- [ ] prohibited clinical claims
-- [ ] prompt injection
-- [ ] model/tool budget
-
-### Operational utility
-
-Follow `docs/OPERATIONAL_UTILITY_EVALUATION.md`:
-
-- [ ] document scripted reference workflow
-- [ ] measure reference human active steps
-- [ ] measure Ngabo human interventions/active steps
-- [ ] verify zero prompts to start investigation
-- [ ] capture `signal_to_review_ready_ms`
-- [ ] capture clarification count
-- [ ] capture model/function/tool counts
-- [ ] capture action-to-ack timing where available
-- [ ] report median/range across deployed runs
-- [ ] do not invent hospital productivity percentages
-
-### Deployed E2E
-
-- [ ] full deployed integration test
-- [ ] run canonical hosted scenario three consecutive times
-- [ ] record failures/retries rather than deleting them
-- [ ] architecture dependency audit
-- [ ] create public `EVALUATION.md`
-
-### EmbeddingGemma — only after core E2E green
-
-- [ ] verify exact model usage terms/provenance
-- [ ] precompute approved guidance embeddings
-- [ ] implement `EmbeddingGemmaEvidenceAdapter`
-- [ ] lightweight cosine similarity retrieval
-- [ ] preserve source IDs/chunks/scores
-- [ ] retrieval tests/eval
-- [ ] record actual integration in provenance + submission evidence
-
-**Exit:** measured evidence exists for architecture, reliability, safety and highest-weighted operational utility; EmbeddingGemma claimed only if real.
+- [ ] precompute approved corpus embeddings;
+- [ ] adapter behind `EvidenceSearchPort`;
+- [ ] lightweight similarity retrieval;
+- [ ] retrieval eval/provenance;
+- [ ] claim bonus only if real.
 
 ---
 
-## Aug 28 — Technical Story + Provenance + Submission Evidence + Bonus Readiness
+## Aug 28 — Judge-Facing Technical Story
 
-### Architecture / reproducibility
-
-- [ ] final architecture diagram matches deployed runtime
-- [ ] diagram shows Pub/Sub → ADK graph → deterministic fan-out/join → Gemini → evidence → human boundary → freshness → real action
-- [ ] diagram shows Firestore/GCS/Cloud Run/observability
-- [ ] optional models shown only if implemented
-- [ ] README spin-up/deploy instructions tested and polished
-- [ ] product screenshots captured
-
-### Provenance / ownership
-
-- [ ] complete `docs/THIRD_PARTY_PROVENANCE.md`
-- [ ] exact dependency/model/service versions recorded
-- [ ] evidence-corpus sources have usage/licensing basis
-- [ ] no unauthorized full-text guidance copied
-- [ ] no real patient/lab data
-- [ ] any non-standard pre-existing work disclosed
-- [ ] no third-party media/logo implies endorsement
-
-### Submission evidence
-
-- [ ] update `docs/SUBMISSION_EVIDENCE.md` with actual URLs/artifacts
-- [ ] hosted URL
-- [ ] deployed commit SHA
-- [ ] architecture diagram location
-- [ ] `EVALUATION.md`
-- [ ] cloud proof location
-- [ ] real-action/ack proof
-- [ ] resume/freshness proof
-- [ ] final claim ledger
-
-### Bonus
-
-- [ ] LinkedIn build article final draft
-- [ ] article states it was created for purposes of entering the hackathon
-- [ ] exact social hashtag `#AllThingsAgenticHackathon`
-- [ ] EmbeddingGemma bonus claimed only if real
-- [ ] MedGemma only if core frozen + measured value
-
-**Exit:** every competitive claim has a proof location or is removed/future-labelled.
+- [ ] reconcile `docs/ARCHITECTURE_DIAGRAM.md` to deployed runtime;
+- [ ] export high-resolution diagram if needed;
+- [ ] update README spin-up instructions;
+- [ ] record exact ADK/Gemini/GCP versions;
+- [ ] complete provenance register;
+- [ ] prepare operational benchmark card;
+- [ ] draft final Devpost BYOF story;
+- [ ] draft LinkedIn article with required hackathon-purpose statement;
+- [ ] verify bonus evidence requirements.
 
 ---
 
-## Aug 29 — Demo Freeze + Rehearsal
+## Aug 29 — Demo Rehearsal + Risk Closure
 
-- [ ] freeze canonical seeded scenario
-- [ ] freeze deployed demo candidate after repeated successful runs
-- [ ] no new core architecture changes
-- [ ] write <=4-minute storyboard/script
-- [ ] rehearse live sequence repeatedly
-- [ ] ensure one continuous Proof-of-Action execution segment
-- [ ] verify real action target is authorized
-- [ ] verify stale-approval/freshness behavior separately even if not fully shown in video
-- [ ] verify Google Cloud proof can be shown quickly
-- [ ] verify operational utility result can be explained in one concise statement
+Use `docs/HACKATHON_RISK_REGISTER.md`.
 
-Suggested demo sequence:
+- [ ] rehearse <=4 min;
+- [ ] continuous unedited hero segment has no human input;
+- [ ] external action visible outside Ngabo;
+- [ ] machine acknowledgement returns visibly;
+- [ ] Cloud Run/log proof legible;
+- [ ] architecture diagram readable;
+- [ ] BYOF friction clear in first 30 sec;
+- [ ] no unimplemented feature/model shown;
+- [ ] no clinical overclaiming;
+- [ ] fix all Critical/High risks that can be closed before freeze.
 
-1. friction/problem;
-2. synthetic data/signal;
-3. automatic Pub/Sub trigger;
-4. fan-out/join;
-5. Gemini/evidence;
-6. clarification + resume;
-7. package;
-8. human review;
-9. freshness pass;
-10. real external action;
-11. acknowledgement;
-12. quick Cloud/architecture/evaluation evidence.
+Optional MedGemma/multimodal work only if everything above is stable and time remains.
 
 ---
 
-## Aug 30 — Submission Assembly
+## Aug 30 — Release Candidate / Submission Freeze
 
-- [ ] Devpost description
-- [ ] Taskmaster category selected
-- [ ] features/functionality accurate
-- [ ] technologies actually used listed
-- [ ] data sources/provenance accurate
-- [ ] findings/learnings included
-- [ ] pre-existing-work disclosure included if applicable
-- [ ] repo URL
-- [ ] hosted URL
-- [ ] testing instructions/credentials if needed
-- [ ] architecture diagram
-- [ ] <=4-minute public YouTube/Vimeo video
-- [ ] English/subtitles verified
-- [ ] public article/social/model bonus links
-- [ ] compare every claim to `docs/SUBMISSION_EVIDENCE.md`
-- [ ] remove all unimplemented claims
+Follow `docs/SUBMISSION_FREEZE.md`.
 
----
+```text
+develop
+→ release/v0.1.0
+→ main
+→ tag v0.1.0
+```
 
-## Aug 31 — Final Verification + Submit Early
-
-Do not use deadline day for substantial engineering.
-
-- [ ] clean-environment README sanity check
-- [ ] hosted app reachable
-- [ ] judge access unrestricted/free as required
-- [ ] canonical demo flow still passes
-- [ ] external action target still authorized
-- [ ] secrets absent from repo/video/logs
-- [ ] final architecture diagram matches deployment
-- [ ] `EVALUATION.md` public and truthful
-- [ ] provenance/disclosure complete
-- [ ] bonus links public
-- [ ] video <=4 minutes
-- [ ] submit with buffer before 17:00 PT
-- [ ] keep judge-required infrastructure available through judging period
+- [ ] record submitted commit SHA;
+- [ ] record Cloud Run revisions;
+- [ ] pin deployed URLs to tested revisions;
+- [ ] final `EVALUATION.md` committed;
+- [ ] final diagram committed/exported;
+- [ ] final claim ledger complete;
+- [ ] third-party/provenance complete;
+- [ ] video recorded/uploaded/tested public;
+- [ ] hosted reset path tested;
+- [ ] judge-access smoke test;
+- [ ] article/social URLs captured if published;
+- [ ] remove claims for any incomplete optional feature.
 
 ---
 
-## 3. Scope Freeze / Stretch Order
+## Aug 31 — Submit, Verify, Freeze
 
-Do not implement before the core deployed E2E is stable:
+- [ ] final official-rule re-check;
+- [ ] Devpost category Taskmaster;
+- [ ] hosted URL/repo/video entered;
+- [ ] spin-up instructions visible;
+- [ ] architecture diagram included;
+- [ ] Google Cloud proof in video;
+- [ ] BYOF narrative explicit;
+- [ ] zero-human claim matches actual E2E evidence;
+- [ ] bonuses claimed only with proof;
+- [ ] submit before deadline buffer;
+- [ ] verify Devpost submission from clean browser;
+- [ ] preserve `main`/tag/deployed revisions/video through judging.
+
+---
+
+## 3. Scope Freeze
+
+Until zero-human deployed hero + evaluation are green, do **not** add:
 
 - MedGemma;
 - collaborative specialist-agent topology;
 - runtime-generated dynamic topology;
-- multimodal AST/PDF ingestion;
-- genomics / AMRFinderPlus;
+- multimodal ingestion;
+- genomics/AMRFinderPlus;
 - vector database;
 - GKE;
 - Redis/Kafka;
 - LangGraph;
 - mobile app;
 - real patient data;
-- production hospital connector.
+- real hospital connector;
+- A2/A3 autonomous action.
 
-Preferred stretch order after core freeze:
-
-1. EmbeddingGemma retrieval;
-2. richer architecture/demo visualization;
-3. MedGemma only if evaluation shows value;
-4. multimodal AST/PDF draft UX if time permits;
-5. genomics last.
+EmbeddingGemma is the first optional integration after the core passes.
 
 ---
 
 ## 4. Final Definition of Done
 
-The v0.1 submission is complete only when:
+The hackathon build is complete only when a judge can truthfully observe:
 
-```text
-working hosted product
-+ Taskmaster autonomous workflow
-+ graph-first ADK runtime
-+ deterministic/agentic separation
-+ durable/resumable state
-+ current-context reconstruction
-+ freshness-protected human approval
-+ real idempotent external action
-+ acknowledgement
-+ measured operational utility
-+ public evaluation
-+ provenance/disclosure
-+ architecture diagram
-+ tested reproducibility instructions
-+ visible Google Cloud execution
-+ truthful <=4-minute demo
-+ evidence-backed submission claims
-```
+> **AMR data changed → deterministic Ngabo logic detected a signal → Pub/Sub started the Google ADK workflow → deterministic investigation stages ran in parallel and joined → Gemini reasoned only where needed → approved evidence was assembled → the package passed deterministic validation (and repaired itself if needed) → Ngabo's deterministic safety policy classified the action as safe A1 → freshness/idempotency passed → Ngabo executed a real authorized external action → a machine acknowledgement returned → the workflow completed with zero human intervention.**
 
-If any submitted claim cannot be proven, change the claim or change the product — never fake the proof.
+And the repository proves that A2/A3 clinical/official actions cannot be autonomously executed merely because the hero path is fully autonomous.
