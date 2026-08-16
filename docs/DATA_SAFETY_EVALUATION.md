@@ -1,32 +1,41 @@
 # Ngabo — Data, Safety & Evaluation Design
 
-**Version:** 0.2  
+**Version:** 0.3  
 **Date:** 2026-08-16
+
+---
 
 ## 1. Purpose
 
 Keep Ngabo v0.1:
 
 - scientifically interpretable;
-- auditable;
-- reproducible;
+- auditable and reproducible;
 - honest about uncertainty;
 - safe for a synthetic-data demonstration;
-- resilient under asynchronous/resumable agent execution;
-- measurable through deterministic, agent, and end-to-end evaluation.
+- resilient under asynchronous/resumable graph execution;
+- explicit about human authority;
+- protected against stale approvals and replayed side effects;
+- measurable through deterministic, graph, agent, operational-utility and end-to-end evaluation.
 
 This is **not clinical validation**.
 
-See also:
+Required companion contracts:
 
 - `docs/HACKATHON_ALIGNMENT.md`
 - `docs/ADK_RUNTIME.md`
+- `docs/ORCHESTRATION_PATTERNS.md`
+- `docs/LONG_RUNNING_AGENT.md`
+- `docs/OPERATIONAL_UTILITY_EVALUATION.md`
+- `docs/THIRD_PARTY_PROVENANCE.md`
+
+---
 
 # Part A — Data
 
 ## 2. Canonical Isolate Schema
 
-Illustrative:
+Illustrative domain shape:
 
 ```python
 class Isolate:
@@ -50,31 +59,39 @@ class ASTResult:
 
 MVP detection primarily uses normalized S/I/R interpretation.
 
+---
+
 ## 3. Synthetic Dataset Policy
 
 Public v0.1 data is representative and synthetic.
 
 Rules:
 
-- no real patient names;
-- no real MRNs;
-- no claim that rows came from a named hospital;
-- published distributions may inspire scenarios, but real patient rows are not reconstructed;
-- all screenshots, logs, demo artifacts, and committed eval fixtures use synthetic content.
+- no real patient names/MRNs;
+- no claim rows came from a named hospital;
+- no real laboratory export committed or shown in public demo/logs;
+- published aggregate patterns may inspire scenarios, but real patient rows are not reconstructed;
+- screenshots, logs and committed eval fixtures use synthetic content;
+- every fixture is explicitly labelled synthetic;
+- third-party sample files are not copied unless usage rights/provenance are recorded.
 
 Dataset disclaimer:
 
 > “This dataset is synthetic and intended solely for software demonstration/evaluation. It does not represent real patient records and is not suitable for clinical inference.”
 
-## 4. Scenario Dataset
+See `docs/THIRD_PARTY_PROVENANCE.md`.
 
-Create:
+---
+
+## 4. Required Scenario Fixtures
+
+Create at least:
 
 ### Normal baseline
-Routine variation.
+Routine variation without the seeded suspicious pattern.
 
 ### Noise
-Missing values, duplicates, unusual but isolated resistance.
+Missing values, duplicates and unusual-but-isolated resistance.
 
 ### Seeded suspicious cluster
 For example:
@@ -83,12 +100,17 @@ For example:
 - same neonatal unit;
 - narrow time window;
 - highly similar resistance phenotype;
-- one intentionally missing specimen field.
+- one intentionally missing specimen field for clarification testing.
 
-### Adversarial/untrusted-data case
+### Prompt-injection-as-data
 A free-text field contains instruction-like text intended to manipulate an LLM.
 
-Expected behavior: data remains data; no system/tool instructions are overridden.
+Expected: data remains data; no system/tool instructions are overridden.
+
+### Long-running/freshness fixture
+A deterministic material change is introduced after package review so the stale approval path can be tested.
+
+---
 
 ## 5. Resistance Representation
 
@@ -101,16 +123,15 @@ R -> 2
 UNKNOWN -> excluded from pairwise comparison
 ```
 
-Preferred MVP similarity:
+Preferred MVP similarity is one documented deterministic method such as exact-category agreement or Jaccard similarity of resistant-antibiotic sets.
 
-- exact-category agreement; or
-- Jaccard similarity of resistant-antibiotic sets.
+Persist method/configuration and component outputs.
 
-Pick one primary method and document it.
+---
 
 ## 6. Prototype Signal Score
 
-Possible transparent score:
+Illustrative transparent form:
 
 ```text
 signal_score =
@@ -120,9 +141,11 @@ signal_score =
   + w4 * baseline_excess
 ```
 
-Weights are prototype configuration—not clinically validated parameters.
+Weights/thresholds are prototype configuration, not clinically validated outbreak parameters.
 
-Persist component values with every signal.
+Persist component values and trigger explanation for every signal.
+
+---
 
 # Part B — Safety
 
@@ -140,31 +163,45 @@ Ngabo must not autonomously state:
 
 - “confirmed outbreak”;
 - “these patients infected one another”;
-- “prescribe X”;
-- “start/stop this antibiotic”;
+- “prescribe/start/stop antibiotic X”;
 - “gene X is present” without validated genomic evidence.
 
-## 8. Human Authority
+---
+
+## 8. Deterministic / Agentic / Human Authority Boundary
 
 ```text
-machine:
-ingest
+DETERMINISTIC CODE/FUNCTION NODES
+parse
 validate
-calculate
-detect
-retrieve
-organize
-draft
-coordinate
+normalize
+calculate AST/profile/baseline/window/score
+extract structural missingness
+fixed routing/state validation
+idempotency
+join required findings
+package validation
+freshness/version comparison
 
-human:
-provide missing context where needed
-approve consequential escalation
-confirm outbreak under appropriate process
-make clinical decisions
+GEMINI AGENT NODES
+reason across joined findings
+assess materiality of missing context
+choose bounded evidence intent/optional capability
+ask one targeted clarification
+synthesize retrieved evidence
+produce labelled hypotheses / draft package
+stop with uncertainty when evidence is insufficient
+
+HUMAN
+provide materially missing context when asked
+approve/reject/request more information at consequential boundary
+confirm outbreak through appropriate professional process
+make patient treatment decisions
 ```
 
-Clarification may be agent-orchestrated. Consequential approval remains an authoritative application/domain gate.
+The human safety gate is not manual orchestration of the investigation.
+
+---
 
 ## 9. Prompt-Injection Boundary
 
@@ -172,367 +209,463 @@ Uploaded lab data is **untrusted data**.
 
 Mitigations:
 
-- no raw CSV concatenated directly into system instructions;
+- no raw CSV concatenated into system instructions;
 - agent receives canonical structured fields;
-- free text remains data;
-- evidence corpus is curated;
-- arbitrary external URLs are not followed as approved evidence during v0.1;
-- imported instruction-like text is included in adversarial eval cases;
-- tool access remains narrowly scoped.
+- free text remains explicitly data;
+- approved evidence corpus is curated;
+- arbitrary external URLs are not treated as approved evidence;
+- instruction-like imported text is part of adversarial evals;
+- tool/capability access is allow-listed and typed;
+- fixed routing is ordinary code, not prompt text.
 
-## 10. Source Integrity
+---
+
+## 10. Source / Citation Integrity
 
 Approved evidence records include:
 
 - source ID;
 - publisher;
 - title;
-- URL;
-- version/date;
-- stored excerpt/reference.
+- official URL;
+- version/date where possible;
+- stored excerpt/reference and provenance/usage basis.
 
-Generated package may cite only source IDs retrieved during the investigation.
+Generated package may cite only source IDs retrieved during that investigation.
 
-Application validation rejects unknown source IDs before a package enters review.
+Application validation rejects unknown source IDs before review.
+
+Corpus rights/provenance must pass `docs/THIRD_PARTY_PROVENANCE.md`.
+
+---
 
 ## 11. EmbeddingGemma Evidence Safety
 
-EmbeddingGemma may rank/retrieve only within the approved guidance corpus.
+EmbeddingGemma may rank/retrieve only within the approved corpus.
 
 Rules:
 
-- embedding similarity is a retrieval aid, not evidence authority;
-- returned chunks preserve source IDs and metadata;
-- similarity score is not a clinical confidence score;
-- the LLM may summarize only retrieved approved content;
-- no arbitrary web corpus is silently mixed into the approved evidence index;
-- retrieval quality is evaluated before the bonus integration is claimed.
+- embedding similarity is retrieval, not evidence authority;
+- returned chunks preserve source IDs/metadata;
+- similarity score is not clinical confidence;
+- no arbitrary web corpus is mixed silently into the index;
+- retrieval quality is measured before the integration/bonus is claimed;
+- exact model/license/terms are recorded before release.
 
-## 12. Optional MedGemma Safety
+---
 
-MedGemma, if added, is a bounded evidence-interpretation tool over already approved/retrieved material.
+## 12. Optional MedGemma Safety Gate
+
+If MedGemma is added, it remains a bounded source-traceable interpretation capability over already approved/retrieved material.
 
 It may not:
 
-- prescribe;
 - diagnose;
+- prescribe;
 - confirm outbreaks;
-- replace deterministic calculations;
-- introduce authoritative claims that cannot be traced to approved source IDs.
+- replace deterministic surveillance/AST calculations;
+- introduce uncited authoritative claims;
+- bypass final human review.
 
-The integration is omitted if evaluation shows no meaningful benefit or introduces unacceptable overclaiming/deployment risk.
+Compare against the simpler Gemini+retrieval baseline. Omit if benefit is not measurable or safety/reliability worsens.
+
+---
 
 ## 13. Multimodal Draft Boundary
 
-If the post-core multimodal stretch is implemented:
+If implemented after core freeze:
 
 ```text
 image/scanned PDF AST report
         ↓
 Gemini extraction
         ↓
-DRAFT structured record
+UNVERIFIED DRAFT
         ↓
 human verification
         ↓
-canonical ingestion
+canonical deterministic ingestion
 ```
 
-Model-extracted fields are never canonical laboratory facts before verification.
+The detector cannot consume unverified extraction output.
 
-Evaluation must include incorrect/ambiguous extraction examples and verify that unconfirmed data cannot enter the canonical detector path.
+Evaluation includes ambiguous/incorrect extraction cases.
 
-## 14. Privacy & Telemetry
+---
 
-Hackathon:
+## 14. Long-Running Canonical Truth
 
-- synthetic data only;
-- no real clinical deployment claim.
+Firestore/application state is authoritative for:
 
-Observability must still model future health-data sensitivity.
+- incident/source facts;
+- isolate/AST data;
+- clarifications/provenance;
+- package versions;
+- review decisions;
+- action/acknowledgement state;
+- audit history;
+- source-data/version watermarks.
+
+ADK session/checkpoint state and compacted context are **execution continuity**, not factual authority.
+
+After resume/long wait:
+
+1. restore/recover execution state where safe;
+2. reload current canonical incident state;
+3. rebuild bounded reasoning context;
+4. resume only safe/idempotent work.
+
+Old session text conflicting with current canonical state must lose to canonical state.
+
+---
+
+## 15. Pre-Action Freshness Safety Barrier
+
+Human approval applies to the reviewed package/incident/source-data version.
+
+Immediately before external action, deterministic application logic checks at least:
+
+- current incident version;
+- current package version;
+- source-data watermark/revision;
+- material new/changed isolate or AST facts;
+- material clarification/evidence changes;
+- legal action state;
+- review references to current package/state.
+
+```text
+APPROVED
+   ↓
+freshness check
+   ├─ PASS → authorized action
+   └─ MATERIAL CHANGE → do not act → mark approval stale → re-review
+```
+
+Gemini may contextualize a detected change later; it does not decide whether the version mismatch exists.
+
+---
+
+## 16. Privacy / Telemetry
+
+Hackathon v0.1 uses synthetic data only, but telemetry should model future health-data sensitivity.
 
 Rules:
 
-- structured metadata-first logs/traces;
-- do not enable full prompt/response content capture by default;
+- metadata-first structured logs/traces;
 - no secrets/tokens in logs;
-- no unbounded raw uploaded-data logging;
-- tracing failure must not change domain behavior;
-- document any synthetic-content capture enabled specifically for demo debugging.
+- no unbounded raw upload logging;
+- no default full prompt/response capture;
+- no hidden chain-of-thought in logs/UI;
+- tracing failure must not alter domain behavior;
+- document any synthetic-content tracing enabled solely for demo debugging.
 
-Future deployment requires separate work on:
+Future real deployment requires separate identity/RBAC, tenancy, retention, encryption, residency, legal/regulatory and clinical-governance work.
 
-- identity/RBAC;
-- retention;
-- encryption;
-- facility tenancy;
-- audit;
-- data residency;
-- Ugandan legal/regulatory review;
-- clinical governance.
+---
 
 # Part C — Evaluation
 
-## 15. Evaluation Layers
+## 17. Evaluation Layers
 
-### Layer 1 — Domain/unit tests
+### Layer 1 — Domain/unit
 
-- parser;
-- normalizer;
-- AST mappings;
-- similarity;
-- baseline;
-- time windows;
-- scoring;
-- state transitions;
-- idempotency policy.
+Pure deterministic tests for parser/normalizer, AST mappings, similarity, baseline, windows, scoring, state policy, material-change policy and validation.
 
-### Layer 2 — Application workflow tests
+### Layer 2 — Application workflow
 
-Use fakes/in-memory ports to test:
-
-- start investigation;
-- clarification pause/resume;
-- review gate;
-- notification gating;
-- retry/resume decisions;
-- package validation;
-- duplicate-event behavior.
+Use fakes/in-memory ports for investigation startup, review, clarification, freshness, action gating, acknowledgement, retry/resume and duplicate-event policy.
 
 ### Layer 3 — Scenario benchmark
 
-Synthetic full-dataset cases with expected detector outcomes.
+Synthetic full-dataset cases with expected detector/workflow outcomes.
 
-### Layer 4 — ADK agent evaluations
+### Layer 4 — Function-node / graph tests
 
-Evaluate structured result **and trajectory/tool behavior** where supported by the selected ADK/evaluation tooling.
+Verify deterministic nodes, typed failures, fan-out completion-order independence, join semantics and fixed-router behavior.
 
-### Layer 5 — Infrastructure/contract tests
+### Layer 5 — ADK agent evaluations
 
-- Firestore adapter;
-- Pub/Sub adapter;
-- Cloud Storage adapter;
-- evidence retrieval adapter;
-- notification adapters;
-- model/agent boundary contracts where practical.
+Evaluate structured result and **observable trajectory/capability behavior**, never hidden chain-of-thought.
 
-### Layer 6 — End-to-end deployed test
+### Layer 6 — Infrastructure/contract tests
+
+Firestore, Pub/Sub, Cloud Storage, notification, evidence retrieval, model/runtime boundaries.
+
+### Layer 7 — Deployed end-to-end
 
 ```text
-upload
- -> deterministic signal
- -> Pub/Sub
- -> agent
- -> clarification
- -> resume
- -> package
- -> approval
- -> real notification
- -> acknowledgement
+upload/data arrival
+→ deterministic signal
+→ Pub/Sub
+→ ADK graph start
+→ deterministic fan-out/join
+→ Gemini triage
+→ evidence
+→ clarification
+→ same-incident resume
+→ Gemini synthesis
+→ deterministic package validation
+→ human review
+→ deterministic freshness check
+→ real authorized action
+→ acknowledgement
 ```
 
-## 16. Detector Metrics
+### Layer 8 — Operational utility
+
+Use `docs/OPERATIONAL_UTILITY_EVALUATION.md` to compare human steps/handoffs and deployed latency against a documented scripted reference workflow.
+
+---
+
+## 18. Detector Metrics
 
 Track:
 
 - seeded scenarios detected;
 - false alerts on curated baseline scenarios;
 - latency;
-- reproducibility.
+- deterministic reproducibility.
 
-Example hackathon target:
+Any target such as “100% seeded scenarios / 0 baseline false alerts” is a **committed synthetic software benchmark**, not clinical sensitivity/specificity.
 
-```text
-seeded scenarios detected: 100%
-baseline false alerts: 0 in curated demo benchmark
-```
+---
 
-This is a software benchmark, not a clinical sensitivity/specificity claim.
-
-## 17. Agent Output Metrics
+## 19. Agent Output Metrics
 
 ### Citation integrity
-
-Retrieved source IDs used correctly / all cited source IDs.
-
-Target: 100% in committed demo/eval benchmark.
-
-### Unsupported claims
-
-Target: zero prohibited unsupported clinical claims in committed benchmark.
-
-### Clarification quality
-
-Question asks for genuinely missing, materially relevant information and does not guess.
-
-### Package completeness
-
-Schema passes application validation.
+All cited source IDs exist in retrieved approved evidence.
 
 ### Referential integrity
+All isolate IDs/source IDs referenced in output exist in canonical/retrieved data.
 
-All isolate IDs/source IDs in generated output exist in canonical/retrieved data.
+### Unsupported/prohibited claims
+Target zero prohibited unsupported clinical claims in committed benchmark.
 
-Target: 100% in committed benchmark.
+### Clarification quality
+Question is genuinely missing, materially relevant and does not guess.
 
-## 18. Agent Trajectory Metrics / Assertions
+### Package completeness
+Final package passes deterministic schema/content validation.
 
-Where supported, evaluate whether the agent:
+---
 
-- invokes required deterministic tools;
-- avoids prohibited/unnecessary tools;
-- asks clarification when required;
-- does not ask clarification when data is sufficient;
-- stops after a valid package;
-- handles no-evidence state correctly;
-- avoids repeated tool loops;
-- remains within configured step/tool budgets.
+## 20. Graph / Trajectory Assertions
 
-Do not score private chain-of-thought. Evaluate observable tool/action trajectory.
+Evaluate whether:
 
-## 19. Resumability & Idempotency Tests
+- mandatory deterministic nodes execute;
+- fixed routing invokes zero Gemini calls;
+- parallel branches can complete in any order without semantic change;
+- required branch failure remains visible;
+- agentic routing selects only allow-listed bounded capabilities;
+- clarification is requested only when needed;
+- no-evidence state is handled explicitly;
+- model/tool loops respect budgets;
+- synthesis cannot hide failed required data;
+- package validation runs before review.
 
-Explicitly test:
+Record model/function/tool counts as engineering regression metrics.
 
-### Agent interruption
+---
 
-- start investigation;
-- interrupt/fail after one or more tool calls;
-- resume through the supported ADK/application recovery path;
+## 21. Resumability / Idempotency Tests
+
+### Process/agent interruption
+
+- interrupt after one or more completed steps;
+- recover/resume or safely restart according to supported runtime;
 - verify canonical incident state remains correct;
-- verify no duplicate consequential action.
+- rebuild current context;
+- verify no duplicate consequential effect.
 
 ### Pub/Sub redelivery
 
-- deliver same event more than once;
-- exactly one incident/effect is created.
+Deliver same event multiple times; exactly one intended incident/effect is created.
 
 ### Notification retry
 
-- simulate transient send failure;
-- retry with same idempotency key;
-- verify no ambiguous duplicate delivery record.
+Retry transient failure with same idempotency key; no ambiguous duplicate delivery record.
 
-## 20. Evidence Retrieval Metrics
+### Context truth
 
-For the EmbeddingGemma adapter:
+Make old ADK/session text conflict with updated canonical state; canonical state must win.
+
+---
+
+## 22. Freshness Tests — Required
+
+- approval + no material change → action permitted;
+- approval + new material isolate → action blocked;
+- approval + changed AST fact → action blocked;
+- approval + regenerated package version → action blocked;
+- material human clarification after review → action blocked;
+- telemetry-only/non-semantic change → approval remains valid;
+- stale approval cannot be replayed after retry/redelivery;
+- blocked freshness check creates visible re-review/audit state;
+- no `NOTIFICATION_SENT` state is emitted when freshness blocks action.
+
+---
+
+## 23. Evidence Retrieval Metrics
+
+If EmbeddingGemma is implemented:
 
 - committed query set;
 - expected relevant source IDs/chunks;
-- retrieval recall@k or simple scenario-level hit rate;
+- retrieval recall@k or scenario-level hit rate;
 - latency;
-- deterministic/repeatable post-embedding ranking;
-- source integrity.
+- deterministic/repeatable ranking after embeddings are fixed;
+- source integrity;
+- irrelevant-high-similarity adversarial case.
 
-Do not claim EmbeddingGemma improved the system without measured retrieval evidence.
+Do not claim improvement without measured retrieval evidence.
 
-## 21. MedGemma Evaluation Gate
+---
 
-If MedGemma is considered, compare a baseline (Gemini using retrieved evidence directly) against a candidate pipeline that includes MedGemma.
+## 24. MedGemma Evaluation Gate
 
-Accept the stretch integration only if it provides a clear benefit such as:
+Compare:
 
-- better structured interpretation;
-- fewer unsupported claims;
-- better source-grounding;
-- improved domain-expert readability;
+```text
+baseline: retrieved evidence → Gemini
+candidate: retrieved evidence → MedGemma bounded interpretation → Gemini
+```
 
-without degrading:
+Keep MedGemma only if measured benefit is clear (e.g. structure/source-grounding/readability) without unacceptable safety, latency, deployment or traceability cost.
 
-- safety;
-- latency beyond demo tolerance;
-- deployment reliability;
-- traceability.
+---
 
-Otherwise omit it.
+## 25. Operational Utility Metrics — Required
 
-## 22. Safety Tests
+Report from real runs:
 
-Explicit tests for:
+```text
+signal_to_review_ready_ms
+human_intervention_count
+human_active_steps
+clarification_count
+manual_prompt_count_to_start
+evidence_searches_completed_by_system
+signal_to_action_ready_ms
+action_to_ack_ms
+model_call_count
+deterministic_node_count
+```
 
-- autonomous prescribing language;
-- autonomous outbreak-confirmation language;
-- fabricated source;
+The canonical Taskmaster path requires zero user prompts to start.
+
+If manual reference timing is not credible, report step/handoff comparison instead of invented time-saved percentages.
+
+---
+
+## 26. Safety / Adversarial Test Set
+
+Explicit tests include:
+
+- autonomous prescribing request;
+- autonomous outbreak-confirmation request;
+- fabricated source attempt;
 - hallucinated isolate ID;
 - CSV prompt injection;
-- empty evidence result;
-- malformed tool result;
+- empty evidence;
+- malformed required branch/tool result;
 - duplicate event;
 - repeated notification;
-- agent timeout/loop exhaustion;
+- model timeout/loop exhaustion;
 - resume/recovery;
-- EmbeddingGemma result with irrelevant-but-high-similarity chunk;
-- MedGemma uncited-claim attempt if MedGemma is implemented;
-- multimodal unverified-draft leakage if multimodal is implemented.
+- old session context conflicting with current Firestore state;
+- stale approval replay;
+- EmbeddingGemma irrelevant-high-similarity result if implemented;
+- MedGemma uncited-claim attempt if implemented;
+- multimodal unverified-draft leakage if implemented.
 
-## 23. End-to-End Acceptance Test
+---
 
-Given seeded demo CSV:
+## 27. End-to-End Acceptance Test
 
-1. import succeeds;
-2. expected row count normalizes;
-3. one expected suspicious signal appears;
+Given the seeded synthetic scenario:
+
+1. import/arrival succeeds;
+2. expected rows normalize;
+3. expected suspicious signal appears;
 4. incident is created exactly once;
-5. agent launches automatically from event flow;
-6. required tools run;
-7. intended clarification is requested;
-8. answer resumes the same incident;
-9. package validates;
-10. package has source-backed evidence;
-11. human review is required;
-12. approval causes exactly one real authorized notification/action;
-13. delivery result is persisted;
-14. acknowledgement closes loop;
-15. audit timeline shows all major steps;
-16. logs/traces correlate incident/event/agent/tool execution;
-17. restart/redelivery does not duplicate side effects.
+5. Pub/Sub starts the ADK graph without user prompt;
+6. context function node loads canonical data;
+7. required deterministic branches fan out and join;
+8. fixed routing uses no Gemini call;
+9. Gemini triage uses joined findings;
+10. intended clarification is requested;
+11. answer resumes the same incident;
+12. approved evidence is retrieved;
+13. synthesis returns a structured package;
+14. deterministic package validation passes;
+15. human review is required;
+16. approval is version-scoped;
+17. freshness check passes for unchanged canonical demo path;
+18. exactly one real authorized action occurs;
+19. delivery result is persisted;
+20. acknowledgement closes the loop;
+21. audit/log/trace state correlates major steps;
+22. restart/redelivery cannot duplicate side effects.
 
-## 24. Repeated Deployed Demo Test
+Also run a variant where data changes after review and prove the old approval is blocked.
 
-Before demo freeze, run the full hosted scenario **three consecutive times** with expected outcomes.
+---
+
+## 28. Repeated Hosted Demo Test
+
+Before demo freeze, run the full hosted canonical scenario **three consecutive times**.
 
 Record:
 
 - success/failure;
+- deployed commit/version;
 - total duration;
-- agent/tool latency;
+- signal-to-review-ready time;
+- graph branch/join timing;
+- model/function/tool counts;
+- clarification count;
 - notification result;
-- any retries/resumes;
-- relevant deployed version/commit.
+- acknowledgement;
+- retries/resumes;
+- freshness result.
 
-Only after three consecutive successful runs should the demo candidate be frozen.
+Do not discard failed runs from the engineering record.
 
-## 25. `EVALUATION.md` Submission Artifact
+---
+
+## 29. `EVALUATION.md` Submission Artifact
 
 Before submission create public `EVALUATION.md` containing:
 
-- synthetic dataset description;
+- synthetic dataset/scenario description;
 - detector method/configuration;
-- scenario counts;
-- detector results;
-- ADK agent eval methodology;
-- observable trajectory assertions;
+- scenario counts/results;
+- graph/function-node evaluation;
+- ADK observable trajectory methodology;
 - safety/adversarial tests;
-- resumability/idempotency tests;
+- resumability/idempotency/context tests;
+- freshness-barrier tests;
+- operational-utility before-vs-after methodology/results;
 - EmbeddingGemma retrieval evaluation if integrated;
 - MedGemma comparison if integrated;
-- end-to-end results;
-- model/framework versions;
-- known limitations.
+- deployed E2E results including three consecutive runs;
+- exact model/framework versions;
+- deployed commit/version;
+- known limitations;
+- explicit non-clinical-validation statement.
 
-Never present software benchmark metrics as clinical validation.
+---
 
-## 26. Public Limitations
+## 30. Claim Discipline
 
-State explicitly:
+Allowed only when measured:
 
-- synthetic data;
-- prototype trigger configuration;
-- not clinically validated;
-- no proof of transmission;
-- no genomic relatedness in core v0.1;
-- evidence corpus may be incomplete;
-- EmbeddingGemma ranking is retrieval assistance, not medical authority;
-- MedGemma is included only if actually implemented/evaluated;
-- multimodal extraction, if present, produces human-verified drafts;
-- real-world interoperability varies by facility.
+- software benchmark results on committed synthetic scenarios;
+- operational step/time results from documented protocol;
+- model/retrieval/eval results actually executed;
+- hosted reliability results actually observed.
+
+Never convert these into unsupported claims about hospital outcomes, clinical sensitivity/specificity, Uganda-wide impact or patient benefit.
+
+Cross-check final claims against `docs/SUBMISSION_EVIDENCE.md` before Devpost freeze.

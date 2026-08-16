@@ -21,6 +21,9 @@ The project uses [Semantic Versioning](https://semver.org/) and [Conventional Co
 - ADR 0005 adopting graph-first hybrid orchestration for the v0.1 investigation path.
 - `docs/LONG_RUNNING_AGENT.md` defining canonical-vs-session state, context compaction boundaries, long-running resume semantics, artifact policy, local-only ADK Web, no-A2A-v0.1, optional Scheduler→Pub/Sub follow-up, and a deterministic pre-action freshness barrier.
 - ADR 0006 adopting long-running state, memory/context, freshness, and recovery boundaries.
+- `docs/OPERATIONAL_UTILITY_EVALUATION.md` defining the before-vs-after workflow-friction benchmark for the hackathon's highest-weighted judging criterion.
+- `docs/THIRD_PARTY_PROVENANCE.md` providing a submission-time register for dependencies, evidence/data sources, licensing/usage basis, attribution, and pre-existing-work disclosure.
+- `docs/SUBMISSION_EVIDENCE.md` mapping Taskmaster, architectural-design, demo/production, prize, bonus, ownership, and compliance claims to required proof artifacts.
 
 ### Changed
 
@@ -34,6 +37,10 @@ The project uses [Semantic Versioning](https://semver.org/) and [Conventional Co
 - Human approval is now version-scoped: immediately before consequential external action, Ngabo must deterministically revalidate the incident/package/source-data state and return stale approvals to review instead of acting on changed information.
 - ADK session/checkpoint state and compacted execution context are explicitly non-authoritative; canonical AMR facts are rebuilt from application state after resume or long waits.
 - Unreviewed cross-incident agent memory is disabled as factual input to v0.1 investigations, and ADK Web is explicitly local-development only.
+- Hackathon alignment, UI/UX, data/safety/evaluation, and Claude implementation contracts are synchronized around the graph-first runtime, freshness barrier, long-running truth model, and human-governance boundary.
+- Operational utility is now a measured deliverable: zero-prompt start, human-touch reduction, signal-to-review-ready timing, and related metrics must be reported from real synthetic/deployed runs rather than estimated.
+- Third-party SDK/model/data/evidence provenance and non-standard pre-existing-work disclosure are now explicit submission gates.
+- Submission readiness now requires an evidence ledger that distinguishes architectural intent from actual hosted execution proof, measured evaluation, Google Cloud proof, and truthful bonus claims.
 
 ## [0.1.0] — Planned
 
@@ -50,7 +57,7 @@ synthetic AMR data
 → join
 → bounded Gemini triage/evidence reasoning
 → clarification
-→ safe resume
+→ safe resume using current canonical state
 → evidence-grounded synthesis
 → deterministic package validation
 → human approval
@@ -58,6 +65,7 @@ synthetic AMR data
 → real authorized notification/action only if approval is still current
 → acknowledgement
 → audit/observability trail
+→ measured operational-utility evidence
 ```
 
 `v0.1.0` has not yet been released.
