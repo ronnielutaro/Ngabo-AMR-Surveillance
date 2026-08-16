@@ -1,56 +1,59 @@
 # Ngabo — UI/UX Hackathon Addendum
 
 **Status:** Required extension to `docs/UI_UX_SPEC.md` for v0.1  
-**Version:** 0.2  
+**Version:** 0.3  
 **Date:** 2026-08-16
 
 ---
 
-## 1. Demo Principle
+## 1. Hero Demo Principle
 
-The UI must make autonomous execution **undeniable** within the four-minute demo.
+The judge must visually understand that Ngabo completes the canonical Taskmaster workflow **without human intervention**.
 
-A judge should visually understand:
+Hero flow:
 
 ```text
-AMR data arrives
+AMR data/signal arrives
   ↓
-deterministic signal appears
-  ↓
-Pub/Sub triggers ADK graph automatically
+Pub/Sub triggers ADK workflow automatically
   ↓
 deterministic function nodes fan out
   ↓
 parallel branches complete + join
   ↓
-Gemini reasons where ambiguity exists
+Gemini bounded triage
   ↓
-approved evidence arrives
+approved evidence retrieval
   ↓
-clarification pause only if needed
+Gemini synthesis
   ↓
-same incident resumes
+deterministic validation / automatic repair if needed
   ↓
-package is deterministically validated
+autonomy policy: A1 SAFE EXTERNAL COORDINATION
   ↓
-human reviews consequential action
-  ↓
-freshness check protects the approval
+freshness + idempotency
   ↓
 real external action
   ↓
-acknowledgement
+machine acknowledgement
 ```
 
-No chat prompt should be needed to begin the investigation.
+Required hero counters:
+
+```text
+Prompts required        0
+Human interventions     0
+Clarifications          0
+Approval clicks         0
+```
+
+Do not place a required clarification or approval click inside the canonical filmed path.
 
 ---
 
-## 2. Investigation Timeline — Canonical Event Vocabulary
+## 2. Canonical Timeline Events
 
-The primary timeline should use graph/runtime facts, not the older generic “agent tool” vocabulary where a more specific event exists.
-
-Supported public-safe events include:
+Support public-safe events such as:
 
 ```text
 SIGNAL_DETECTED
@@ -62,24 +65,31 @@ PARALLEL_BRANCH_COMPLETED
 PARALLEL_JOIN_COMPLETED
 AGENT_NODE_STARTED
 EVIDENCE_SEARCH_COMPLETED
-CLARIFICATION_REQUESTED
-AGENT_RUN_PAUSED
-CLARIFICATION_RECEIVED
-AGENT_RUN_RESUMED
-CONTEXT_REBUILT
+PACKAGE_VALIDATION_STARTED
+PACKAGE_VALIDATION_FAILED
+PACKAGE_REPAIR_STARTED
+PACKAGE_REPAIR_COMPLETED
 PACKAGE_VALIDATION_COMPLETED
-PACKAGE_READY_FOR_REVIEW
-REVIEW_APPROVED
-REVIEW_REJECTED
+AUTONOMY_POLICY_EVALUATED
 FRESHNESS_CHECK_STARTED
 FRESHNESS_CHECK_PASSED
 FRESHNESS_CHECK_FAILED
-APPROVAL_MARKED_STALE
+IDEMPOTENCY_RESERVED
 NOTIFICATION_SENT
 NOTIFICATION_ACKNOWLEDGED
+WORKFLOW_COMPLETED
+WORKFLOW_ABSTAINED
 ```
 
-Tool-level details may still appear inside a developer/details view where useful, but the product narrative should expose the graph structure: deterministic nodes, fan-out, join, bounded agent reasoning, pause/resume and action.
+Secondary/evaluation scenarios may also expose:
+
+```text
+AGENT_RUN_PAUSED
+AGENT_RUN_RESUMED
+CONTEXT_REBUILT
+NEEDS_INFORMATION
+POLICY_BLOCKED
+```
 
 Do not expose private chain-of-thought.
 
@@ -87,330 +97,288 @@ Do not expose private chain-of-thought.
 
 ## 3. Fan-Out / Join Visualization
 
-The incident timeline should make parallel deterministic work legible without becoming a developer-only graph editor.
-
-Suggested presentation:
+Make the deterministic parallel work obvious:
 
 ```text
-Investigation context loaded
-
 Parallel investigation
   ✓ Resistance profile comparison    420 ms
   ✓ Baseline summary                 610 ms
   ✓ Missing-field assessment         180 ms
 
-Joined investigation context
+Joined findings
 Gemini triage started
 ```
 
-Requirements:
+Rules:
 
-- branch completion order must not imply semantic priority;
-- required branch failures must be visibly different from optional unavailable work;
-- a failed required branch must not be visually followed by a false “successful synthesis” state;
-- do not present deterministic nodes as if Gemini performed the calculations.
+- branch order does not imply semantic priority;
+- deterministic calculations must not be visually attributed to Gemini;
+- required branch failure must visibly block downstream success;
+- tool-level details can live in a developer/details drawer.
 
 ---
 
-## 4. Agent Reasoning Visibility Without Chain-of-Thought
+## 4. Bounded Agent Visibility
 
-The UI may show bounded stage labels such as:
+Allowed labels:
 
-- `Assessing whether missing context is material`;
+- `Assessing joined findings`;
 - `Selecting approved evidence topic`;
 - `Synthesizing source-grounded incident package`;
-- `Insufficient evidence — stopping with uncertainty`.
+- `Repairing package from validator feedback`;
+- `Insufficient approved evidence — abstaining`.
 
-Do not show hidden reasoning traces or fabricate explanations of private model thought.
-
-Show **what capability ran and what observable result it produced**, not chain-of-thought.
+Show observable stages/results, not hidden reasoning traces.
 
 ---
 
-## 5. Resume / Recovery UI
+## 5. Autonomy Policy Card — Required
 
-If an investigation is interrupted or retried, show a bounded operational state such as:
+Before external action, show a compact deterministic policy result.
+
+Hero example:
+
+```text
+Autonomy policy
+Action class        A1 — Safe external coordination
+Destination         Authorized test webhook
+Package validation  Passed
+Evidence integrity  Passed
+Freshness           Passed
+Idempotency         Reserved
+Decision            AUTO-EXECUTE
+```
+
+Blocked example:
+
+```text
+Action class        A3 — Clinical/official decision
+Decision            BLOCKED FROM AUTONOMOUS EXECUTION
+Reason              Outside v0.1 autonomous action envelope
+```
+
+Never suggest Gemini granted itself permission to act.
+
+---
+
+## 6. Zero-Human Hero Data Contract
+
+The hero fixture contains all material facts required for A1 completion.
+
+Therefore the hero UI must **not** display a clarification card.
+
+Missing-data behavior belongs in secondary/evaluation scenarios:
+
+```text
+Material information unavailable
+→ Ngabo abstained safely
+→ No external action sent
+```
+
+Optional/unknown data may remain visibly `UNKNOWN` when policy permits continuation.
+
+---
+
+## 7. Automatic Repair UI
+
+If synthesis fails deterministic validation, timeline may show:
+
+```text
+Package validation failed
+2 structured issues returned
+Automatic repair attempt 1/2
+Package validation passed
+```
+
+Do not expose raw private reasoning.
+
+If repair budget is exhausted:
+
+```text
+Workflow abstained
+Reason: package could not satisfy deterministic validation
+External action: not sent
+```
+
+---
+
+## 8. Freshness UI
+
+Freshness remains mandatory even without human approval.
+
+Hero:
+
+```text
+Current incident state verified
+Freshness check passed
+```
+
+Changed-state scenario:
+
+```text
+New canonical data arrived before action
+Package marked stale
+Recomputing investigation before external action
+```
+
+No external action may be shown as sent until current-state revalidation passes.
+
+---
+
+## 9. Real External Action + Machine Acknowledgement
+
+The hosted/filmed path should truthfully display:
+
+```text
+Channel        Authorized test webhook
+Mode           Real integration
+Action class    A1
+Delivery ID     ...
+Status          Sent
+Acknowledgement ...
+Completed at    ...
+```
+
+Local automated tests use a separate clearly labelled simulation adapter.
+
+The acknowledgement must be machine-driven for the hero flow; no person should click “acknowledge.”
+
+---
+
+## 10. BYOF / Operational Utility Proof
+
+A compact card can show generated benchmark facts:
+
+```text
+Builder reference workflow   X active human steps
+Ngabo hero                   0 human steps after event
+Prompts to start             0
+Median event→action          X s
+Median action→ack            X ms
+```
+
+Only show values generated in `EVALUATION.md`.
+
+See `docs/BYOF_FRICTION.md` and `docs/OPERATIONAL_UTILITY_EVALUATION.md`.
+
+---
+
+## 11. Technical Proof Drawer
+
+May expose safe metadata:
+
+- incident/correlation/event IDs;
+- graph run ID;
+- node/branch/join IDs;
+- agent run/session/invocation ID;
+- model name;
+- package/incident version;
+- action class;
+- freshness result;
+- idempotency key reference;
+- delivery/ack IDs;
+- retry/repair counts.
+
+This supports architecture judging but must not overwhelm the operational UI.
+
+---
+
+## 12. Failure / Abstention UX
+
+Autonomous safety requires visible non-success states:
+
+- `NEEDS_INFORMATION`;
+- `INSUFFICIENT_APPROVED_EVIDENCE`;
+- `VALIDATION_FAILED`;
+- `POLICY_BLOCKED`;
+- `STALE_RECOMPUTE_REQUIRED`;
+- `ACTION_FAILED_RETRYABLE`;
+- `ACTION_FAILED_TERMINAL`.
+
+Never turn a safe abstention into a green success state for demo aesthetics.
+
+---
+
+## 13. Resume / Recovery Proof
+
+Pause/resume remains a secondary engineering feature.
+
+If exercised in evaluation/technical proof:
 
 ```text
 Investigation interrupted
-Recovery / retry in progress
-```
-
-After recovery:
-
-```text
+Recovery in progress
+Context rebuilt from canonical state
 Investigation resumed
-Current incident context rebuilt from canonical state
 ```
 
-Where useful, developer/details views may show:
-
-- graph run ID;
-- agent run/session/invocation ID;
-- attempt number;
-- correlation ID;
-- resume reason.
-
-The UI must never silently reset the timeline and pretend the interruption did not occur.
+The hero demo should prioritize uninterrupted zero-human completion unless a restart demonstration can be shown without confusing the core story.
 
 ---
 
-## 6. Long-Running Context / Truth UI
+## 14. Evidence Provenance
 
-The product should not expose ADK session memory as if it were incident truth.
-
-When a long-running workflow resumes, the UI may communicate:
-
-> **Investigation resumed using current incident data.**
-
-If current canonical data changed materially during the wait, reflect the updated incident/package state rather than replaying stale text from the previous session.
-
----
-
-## 7. Freshness Barrier / Stale Approval UI
-
-This is a required v0.1 operational state.
-
-After human approval but before consequential external action, Ngabo performs deterministic freshness validation.
-
-### Fresh approval
-
-```text
-Review approved
-Freshness check passed
-Authorized action sent
-```
-
-### Stale approval
-
-If relevant source/incident/package data changed after review, show a clear blocking state:
-
-> **New incident data arrived after this package was reviewed. The previous approval no longer authorizes notification. Review the updated package before action.**
-
-Display where useful:
-
-- reviewed package version;
-- current package version;
-- reviewed/current incident version;
-- last material data change;
-- reason approval became stale;
-- re-review required state.
-
-Do not ask the reviewer to infer staleness from timestamps alone.
-
-Do not display `NOTIFICATION_SENT` when the freshness barrier blocked the action.
-
----
-
-## 8. Evidence Retrieval Provenance
-
-Evidence-source details should show:
+Evidence details show:
 
 - source ID;
 - publisher/title;
 - official URL;
 - version/date where available;
 - retrieval method;
-- excerpt/chunk provenance where appropriate.
+- excerpt/chunk provenance.
 
-If EmbeddingGemma is integrated, label the method truthfully, e.g.:
-
-```text
-Retrieval: EmbeddingGemma semantic retrieval
-```
-
-A retrieval similarity score must never be labelled medical confidence.
-
-If deterministic/tag retrieval is active, label it accurately. Do not imply EmbeddingGemma is running when it is not.
-
----
-
-## 9. Human Safety Boundary Must Look Like Governance, Not Manual Orchestration
-
-The UI should make clear that the human is not driving every investigation step.
-
-Before review, Ngabo should already have completed the autonomous investigation package.
-
-The review panel should focus on:
-
-- observed/derived evidence;
-- hypotheses and uncertainty;
-- missing information;
-- approved-source guidance;
-- draft escalation/action;
-- limitations;
-- approve / reject / request more information.
-
-Avoid UI patterns that make the user choose the next graph node/tool manually during the normal Taskmaster path.
-
----
-
-## 10. Real External Action
-
-The hosted/demo flow should use a real authorized action adapter after approval **and freshness validation**.
-
-Response Tracking must identify channel truthfully, for example:
-
-```text
-Channel        Authorized test webhook
-Mode           Real integration
-Freshness      Passed
-Status         Sent
-Delivery ID    ...
-Sent at        ...
-Acknowledged   ...
-```
-
-For automated/local tests:
-
-```text
-Channel        Demo notification adapter
-Mode           Simulation
-```
-
-Never imply a real hospital/person was contacted unless explicitly authorized and true.
-
----
-
-## 11. Observability / Technical Proof View
-
-A compact developer/details drawer or demo-only technical panel may expose safe execution metadata:
-
-- incident ID;
-- correlation/event ID;
-- graph run ID;
-- node/branch/join IDs;
-- agent run/session/invocation ID;
-- current model name;
-- retry/resume count;
-- package/incident version;
-- freshness result;
-- latest delivery ID/status.
-
-This view supplements the operational UI; it should not dominate it.
-
-The demo may pair this panel with a brief Cloud Run/Cloud Logging/Trace view to prove Google Cloud execution.
-
----
-
-## 12. Operational Utility Proof
-
-The application does not need a full analytics product for v0.1.
-
-A compact Technical/About/Evaluation section may show measured benchmark facts from `EVALUATION.md`, such as:
-
-- zero prompts required to start canonical investigation;
-- human intervention count;
-- signal-to-review-ready timing;
-- deterministic/model call counts;
-- number of committed synthetic scenarios;
-- last evaluated commit/deployment.
-
-Never display estimated or unmeasured productivity percentages.
-
-See `docs/OPERATIONAL_UTILITY_EVALUATION.md`.
-
----
-
-## 13. Evaluation Proof
-
-A compact section may link to public `EVALUATION.md` and summarize only generated facts, including:
-
-- detector/scenario benchmark results;
-- safety/adversarial tests;
-- graph trajectory tests;
-- resume/idempotency tests;
-- freshness-barrier tests;
-- retrieval evaluation if EmbeddingGemma is active;
-- hosted E2E run status.
-
-Never show evaluation metrics that have not actually been produced.
-
----
-
-## 14. Multimodal Stretch UI
-
-Only if implemented after core freeze, the import screen may offer:
-
-```text
-Upload CSV
-or
-Extract draft from image/PDF
-```
-
-Required flow:
-
-```text
-AI-EXTRACTED DRAFT
-       ↓
-Human verify/edit
-       ↓
-Confirm canonical record
-       ↓
-Deterministic ingestion
-```
-
-Use a prominent badge such as:
-
-`UNVERIFIED AI EXTRACTION`
-
-until verification occurs.
-
-The detector must not consume unverified extraction output.
+If EmbeddingGemma is active, label it truthfully. Similarity score is not medical confidence.
 
 ---
 
 ## 15. Four-Minute Demo UX Budget
 
-Target visible sequence:
+Target:
 
-1. import/trigger synthetic scenario;
-2. dashboard signal appears;
-3. incident opens / graph starts automatically;
-4. timeline shows deterministic fan-out + branch completion + join;
-5. Gemini/evidence stage appears;
-6. clarification card appears;
-7. answer once and show resume;
-8. validated package becomes ready;
-9. approve;
-10. freshness check passes;
-11. real external action appears;
-12. acknowledgement closes loop;
-13. quick technical/GCP/evaluation proof.
+1. **0:00–0:25** — personal BYOF friction + value proposition;
+2. **0:25–0:45** — synthetic signal/data arrives;
+3. **0:45–1:45** — automatic graph + fan-out/join + Gemini/evidence;
+4. **1:45–2:20** — package validation + autonomy policy + freshness;
+5. **2:20–2:45** — real external action + machine ack;
+6. **2:45–3:10** — zero-human operational benchmark;
+7. **3:10–3:40** — architecture diagram + Cloud Run/log proof;
+8. **3:40–4:00** — evaluation/limitations/closing.
 
-Avoid decorative transitions or extra screens that consume demo time.
+Exact timing may change, but hero execution must get most of the screen time.
 
 ---
 
-## 16. Submission-Proof Rules
+## 16. Multimodal Stretch
 
-Before demo freeze, cross-check `docs/SUBMISSION_EVIDENCE.md`.
+Only after core freeze:
 
-The UI/video must not imply that any of these are active unless actually implemented:
+```text
+image/PDF AST report
+→ AI-EXTRACTED UNVERIFIED DRAFT
+→ human verification
+→ canonical deterministic ingestion
+```
 
-- EmbeddingGemma;
-- MedGemma;
-- multimodal extraction;
-- real hospital integration;
-- clinical validation;
-- production deployment beyond the actual hackathon environment.
+This optional input workflow may contain human verification because it is **not the canonical Taskmaster hero path**.
+
+The detector must never consume unverified extraction.
 
 ---
 
 ## 17. Acceptance Criteria
 
-- [ ] autonomous event-triggered start is visible;
-- [ ] deterministic function nodes are distinguishable from agent/model work;
-- [ ] fan-out/join is visible where useful;
-- [ ] bounded agent stages are visible without chain-of-thought;
-- [ ] pause/resume/recovery is visible;
-- [ ] failures/retries cannot masquerade as success;
-- [ ] evidence provenance is visible;
-- [ ] human review looks like a consequential safety gate rather than step-by-step orchestration;
-- [ ] freshness check is represented before real action;
-- [ ] stale approval produces a clear re-review state;
-- [ ] real vs demo notification channels are distinguishable;
-- [ ] real action + acknowledgement are visible in hosted/demo path;
-- [ ] operational/evaluation proof uses measured results only;
-- [ ] optional model/multimodal features are labelled only if actually integrated;
-- [ ] the complete product story remains understandable in <4 minutes.
+- [ ] hero path begins automatically from an event;
+- [ ] no chat prompt starts it;
+- [ ] no clarification occurs in hero flow;
+- [ ] no approval click occurs in hero flow;
+- [ ] fan-out/join is legible;
+- [ ] deterministic vs agentic work is distinguishable;
+- [ ] validation/repair behavior is visible when exercised;
+- [ ] autonomy policy proves A1 authorization deterministically;
+- [ ] freshness/idempotency are visible before action;
+- [ ] real external action leaves Ngabo;
+- [ ] machine acknowledgement closes loop;
+- [ ] zero-human benchmark uses measured values only;
+- [ ] blocked/unsafe scenarios visibly abstain;
+- [ ] no optional model/feature is implied unless implemented;
+- [ ] complete story remains understandable within four minutes.

@@ -1,104 +1,25 @@
 # Ngabo — ADK Orchestration Patterns
 
 **Status:** Required v0.1 orchestration contract  
+**Version:** 0.2  
 **Date:** 2026-08-16  
-**Framework:** Google ADK  
-**Applies to:** investigation orchestration inside `ngabo-core`
+**Framework:** Google ADK
 
 ---
 
 ## 1. Decision
 
-Ngabo uses a **graph-first hybrid orchestration model** for v0.1.
-
-The governing rule is:
+Ngabo uses a **graph-first hybrid orchestration model**.
 
 > **Deterministic when the workflow is known; agentic when the decision is ambiguous; dynamic only when the workflow itself cannot reasonably be known in advance.**
 
-This rule exists to improve reliability, cost, latency, testability, and architectural clarity while still giving Gemini meaningful autonomy where reasoning is genuinely required.
+For the Taskmaster hero, the workflow continues beyond package creation through deterministic autonomous-action policy, freshness, idempotency, real A1 external action and machine acknowledgement—without human intervention.
 
-The project must not turn every operation into an agent merely because Google ADK supports multi-agent systems.
-
----
-
-## 2. Why This Fits Ngabo
-
-Ngabo's core investigation has a largely known shape:
-
-```text
-surveillance signal
-    ↓
-load canonical context
-    ↓
-perform reproducible investigation calculations
-    ↓
-reason over findings
-    ↓
-retrieve appropriate approved evidence
-    ↓
-clarify if material information is missing
-    ↓
-synthesize incident package
-    ↓
-human review
-```
-
-Many of these steps are reproducible and should not consume model reasoning.
-
-The official All Things Agentic workshop on ADK orchestration demonstrates the same architectural distinction: deterministic work belongs in function/workflow nodes, model reasoning belongs in agent nodes, independent deterministic work can fan out in parallel and join, and routing may be deterministic or agentic depending on whether the decision can be exhaustively expressed as rules.
+See `docs/TASKMASTER_ZERO_HUMAN_AUTONOMY.md`.
 
 ---
 
-## 3. Node Taxonomy
-
-### 3.1 Function node
-
-Use for deterministic work that should produce the same result for the same inputs.
-
-Ngabo examples:
-
-- load canonical incident context through application ports;
-- resistance-profile comparison;
-- baseline calculation;
-- missing-field extraction;
-- validation;
-- state-policy checks;
-- idempotency checks;
-- deterministic event routing;
-- package post-generation validation.
-
-A function node must not call Gemini merely to perform logic that ordinary code can implement.
-
-### 3.2 Agent node
-
-Use where model reasoning materially adds value.
-
-Ngabo examples:
-
-- deciding whether a data gap materially blocks a defensible assessment;
-- forming a bounded investigation hypothesis;
-- deciding which optional evidence topic or specialist capability is relevant;
-- interpreting multiple structured findings together;
-- producing the source-grounded incident package;
-- deciding when evidence is insufficient and the workflow should stop.
-
-### 3.3 Join node
-
-Use after independent parallel work to create one explicit synchronization point before reasoning proceeds.
-
-### 3.4 Router node
-
-Routing may be deterministic or agentic.
-
-Use a **deterministic router** when rules are known and exhaustive.
-
-Use an **agentic router** only when the input space is ambiguous enough that fixed rules would become brittle or incomplete.
-
----
-
-## 4. v0.1 Selected Topology
-
-The target investigation topology is:
+## 2. v0.1 Hero Topology
 
 ```text
 surveillance.signal.detected
@@ -119,95 +40,130 @@ compare  summary    assessment
           ▼
          JOIN
           ↓
-AGENT: investigation triage
-          │
-          ├── material clarification required?
-          │       ↓ yes
-          │   request clarification
-          │       ↓
-          │   pause / resume
-          │
-          └── evidence needed
-                  ↓
-          EvidenceSearchPort
-          ├── curated/tag retrieval initially
-          └── EmbeddingGemma after core green
-                  ↓
-          optional MedGemma interpretation*
-                  ↓
+AGENT: bounded investigation triage
+          ↓
+approved evidence retrieval
+          ↓
 AGENT: evidence-grounded synthesis
           ↓
-FUNCTION: package validation
+FUNCTION: deterministic package validation
           ↓
-WAITING_FOR_REVIEW
+ROUTE: valid?
+   ├─ no → bounded automatic repair → validate
+   └─ yes
           ↓
-human approval
+FUNCTION: autonomous action policy
+   ├─ A1 eligible → continue
+   └─ blocked/insufficient → autonomous abstention
           ↓
-real authorized action
+FUNCTION: freshness revalidation
+          ↓
+FUNCTION: idempotency reservation
+          ↓
+ADAPTER: real authorized A1 external action
+          ↓
+EVENT/CALLBACK: machine acknowledgement
+          ↓
+FUNCTION: completion state transition
 ```
 
-`*` MedGemma remains a gated stretch and is not required for the core graph.
-
-### Why context runs before fan-out
-
-The parallel branches require a canonical incident/signal/isolate context. Load that once through the application boundary, then pass immutable typed inputs to independent branches.
-
-### Evidence retrieval timing
-
-Evidence retrieval may join the first fan-out **only when the retrieval query can be composed deterministically from canonical incident fields**.
-
-If the evidence topic requires contextual reasoning, the triage agent should first decide the bounded search intent, then call `EvidenceSearchPort`.
-
-Do not force evidence retrieval into parallel execution when doing so weakens relevance or traceability.
+Hero path contains no human clarification/approval node.
 
 ---
 
-## 5. Deterministic Routing Rules
+## 3. Function Nodes / Deterministic Stages
 
-The following must not require Gemini:
+Use ordinary code for same-input/same-policy work:
+
+- canonical context loading via application contract;
+- resistance-profile comparison;
+- baseline calculation/summary;
+- structural missingness;
+- fixed routing;
+- state-transition legality;
+- schema/claim validation;
+- source/citation integrity;
+- action classification A0/A1/A2/A3;
+- destination allow-list authorization;
+- material-change/freshness check;
+- idempotency reservation;
+- join semantics;
+- acknowledgement state transition.
+
+Do not call Gemini to implement deterministic safety policy.
+
+---
+
+## 4. Agent Nodes
+
+Use Gemini where reasoning materially adds value:
+
+- interpret joined structured findings;
+- judge evidence intent when rules are insufficient;
+- formulate bounded hypotheses;
+- synthesize approved evidence into a structured package;
+- repair a package from structured validator errors;
+- stop with uncertainty when approved evidence is insufficient.
+
+Agent nodes must use typed inputs/outputs, bounded tools/steps/time and no direct consequential side effects.
+
+---
+
+## 5. No-Human Missing-Data Routing
+
+The hero fixture contains all material information.
+
+Outside the hero:
 
 ```text
-event type -> event handler
-incident state -> permitted transition
-duplicate event -> idempotency path
-invalid schema -> validation failure
-review approved -> notification workflow
-review rejected -> stop/close path
-notification failed -> retry policy
-critical package validation failure -> do not advance to review
+material fact missing
+→ NEEDS_INFORMATION
+→ autonomous abstention
 ```
 
-If a routing decision can be exhaustively expressed in ordinary code, implement it as ordinary code/function-node policy.
+Do not route to a human question merely to maintain completion.
 
-Do not put fixed routing rules into prompts merely to make the workflow appear more agentic.
-
----
-
-## 6. Agentic Routing Rules
-
-Agentic routing is appropriate for questions such as:
-
-- Which optional investigation capability is relevant to this signal?
-- Is the missing information materially important enough to pause for clarification?
-- Which approved evidence topic should be searched?
-- Would a specialized interpretation tool add value to the current evidence?
-- Is there enough evidence to synthesize a bounded hypothesis, or should Ngabo stop with uncertainty?
-
-Agentic routing must still be bounded by:
-
-- an allow-list of capabilities;
-- typed inputs/outputs;
-- maximum step/tool budgets;
-- evaluation;
-- no direct consequential side effects.
+Optional facts may remain unknown when the A1 policy allows continuation.
 
 ---
 
-## 7. Parallel Fan-Out / Join
+## 6. Deterministic Routing
 
-Independent, read-only deterministic steps should normally run concurrently once their required inputs are available.
+No Gemini for:
 
-Core candidate fan-out:
+```text
+event type -> handler
+incident state -> legal transition
+duplicate event -> idempotency path
+schema invalid -> validation failure
+required branch failed -> bounded failure
+package valid/invalid -> next path
+action class A1 -> autonomy gate
+action class A2/A3 -> block
+non-allow-listed target -> block
+fresh/stale -> execute/recompute
+ack duplicate -> idempotent success
+```
+
+---
+
+## 7. Agentic Routing
+
+Permitted bounded questions:
+
+- Which approved evidence topic is relevant?
+- Is there enough evidence to form a labelled hypothesis?
+- Which optional bounded capability is useful?
+- How should structured findings be synthesized?
+- How should a package be repaired given deterministic validator errors?
+
+Gemini may not decide final action authorization.
+
+---
+
+## 8. Parallel Fan-Out / Join
+
+Core independent read-only branches:
 
 ```text
 compare_resistance_profiles
@@ -215,275 +171,249 @@ get_baseline_summary
 get_missing_fields
 ```
 
-Expected benefits:
+Requirements:
 
-- lower investigation latency;
-- fewer unnecessary model turns;
-- lower token use;
-- easier deterministic testing;
-- clearer traces;
-- a visually legible hackathon demo.
-
-### Guardrail
-
-Parallelism is not a goal by itself.
-
-Do not parallelize operations that:
-
-- have real data dependencies;
-- create ordering ambiguity;
-- mutate shared state unsafely;
-- make failure semantics harder to understand;
-- materially increase complexity without measurable benefit.
+- safe concurrent execution;
+- immutable typed inputs;
+- branch-specific telemetry;
+- explicit join;
+- completion order does not change semantic joined result;
+- required failure blocks downstream synthesis;
+- no external side effects inside fan-out.
 
 ---
 
-## 8. Collaborative Pattern — Selective Use
-
-Ngabo does **not** require a fleet of specialist agents for v0.1.
-
-The collaborative pattern becomes appropriate only when evaluation demonstrates that distinct specialist reasoning domains improve the result.
-
-Possible future specialists:
+## 9. Automatic Repair Loop
 
 ```text
-Ngabo Orchestrator
-   ├── epidemiology specialist
-   ├── evidence specialist
-   ├── genomics specialist
-   └── medical-evidence interpretation specialist
+Gemini synthesis
+→ deterministic validator
+   ├─ valid → autonomy policy
+   └─ invalid → structured errors
+                  ↓
+             Gemini repair
+                  ↓
+               validator
 ```
 
-A coordinator may select only the subset relevant to an incident rather than invoking all specialists.
+Hard max attempts. Suggested `2`.
 
-For v0.1, prefer:
-
-- deterministic function nodes;
-- one primary Gemini orchestrator/synthesis agent;
-- bounded model-tools such as optional MedGemma;
-- additional sub-agents only when they improve evaluation, traceability, or capability separation.
-
-Do not create a sub-agent when a deterministic function or stateless bounded tool is sufficient.
+This is an intentionally bounded loop, not dynamic open-ended planning.
 
 ---
 
-## 9. Dynamic Pattern — Deferred for Core v0.1
+## 10. Autonomy Policy Stage
 
-A dynamic workflow is appropriate when the execution structure itself cannot be reasonably known in advance, for example:
+The deterministic policy engine evaluates:
 
-- open-ended deep research;
-- adaptive multi-source outbreak investigation with unknown branches;
-- later genomics investigations where available evidence determines a runtime research tree.
+- action class;
+- package validity;
+- evidence integrity;
+- material blockers;
+- target allow-list/authorization;
+- required disclaimer/claim boundary.
 
-Ngabo's v0.1 core workflow is sufficiently known to use an explicit graph.
-
-Therefore:
-
-> **Do not use runtime-generated dynamic workflow topology for the core hackathon flow unless a concrete requirement proves the graph insufficient.**
-
-Introducing a dynamic topology to the core path requires an ADR or an amendment to this architecture decision.
-
----
-
-## 10. Model-Call Budget Principle
-
-A model call must have a reason.
-
-Do not use Gemini to:
-
-- fetch data that an adapter can fetch;
-- apply fixed if/else routing;
-- calculate similarity;
-- calculate baselines;
-- detect missing fields;
-- validate schema;
-- join already structured results.
-
-Use Gemini to:
-
-- reason across results;
-- resolve ambiguity;
-- decide bounded optional next steps;
-- formulate a targeted clarification;
-- synthesize an evidence-grounded package.
-
-Evaluation should track model/tool call counts for the canonical demo scenario so architectural changes do not silently create unnecessary LLM turns.
-
----
-
-## 11. Clean Architecture Placement
-
-ADK graph primitives remain infrastructure/runtime implementation details.
+Outcomes:
 
 ```text
-ADK graph / function nodes / agent nodes
-                 ↓
+AUTO_EXECUTE_A1
+POLICY_BLOCKED
+NEEDS_INFORMATION
+INSUFFICIENT_APPROVED_EVIDENCE
+```
+
+The policy stage is application/domain logic exposed to orchestration through a typed contract.
+
+---
+
+## 11. Freshness / Idempotency Stages
+
+Immediately before A1 external action:
+
+```text
+freshness
+→ idempotency reservation
+→ external adapter
+```
+
+Material canonical change causes recompute/revalidation; duplicate/retry must not duplicate external effect.
+
+---
+
+## 12. External Action / Ack
+
+External action is **not** an unrestricted Gemini tool.
+
+```text
+workflow/application use case
+→ NotificationPort
+→ authorized A1 adapter
+→ external service
+→ machine acknowledgement event/callback
+→ application acknowledgement use case
+```
+
+This preserves Clean Architecture and safety.
+
+---
+
+## 13. Clean Architecture Placement
+
+```text
+ADK/workflow primitive
+        ↓
 infrastructure orchestration adapter
-                 ↓
-application use cases / queries / ports
-                 ↓
-domain policy and deterministic services
+        ↓
+application query/use case/port
+        ↓
+domain/application deterministic policy
 ```
-
-Function nodes do **not** get permission to bypass Clean Architecture.
 
 Forbidden:
 
 ```text
-ADK function node -> raw Firestore business query
-ADK function node -> duplicated domain calculation
-ADK router -> direct notification provider
-ADK agent -> direct state transition mutation
+ADK node -> raw Firestore business mutation
+ADK router -> direct notification
+Gemini -> action class authorization
+function node -> duplicated domain calculation
 ```
 
-The graph coordinates inward-facing application contracts; it does not replace them.
+---
+
+## 14. ADK API Fallback
+
+Before coding, complete `docs/ADK_CAPABILITY_SPIKE.md`.
+
+Preferred implementation:
+
+1. supported first-class ADK workflow/graph primitives;
+2. supported Sequential/Parallel/workflow agents + thin deterministic adapters;
+3. application-owned graph/state machine invoking bounded ADK model-agent boundaries.
+
+Architecture semantics matter more than copying webinar class names.
 
 ---
 
-## 12. Failure Semantics
+## 15. Collaborative Pattern
 
-Each parallel branch reports a typed success/failure result.
+Not default for v0.1.
 
-The join must define behavior for:
+Potential future specialists only if evaluation shows measurable value:
 
-- all required branches successful;
-- optional branch unavailable;
-- required branch failed;
-- branch timeout;
-- retryable failure;
-- stale incident/version conflict.
+- epidemiology;
+- evidence;
+- genomics;
+- medical evidence interpretation.
 
-A required deterministic failure must not be hidden by later Gemini synthesis.
-
-If required findings are unavailable, the agent receives an explicit failure/unknown state or the workflow stops visibly.
+Do not add agents for visual complexity or bonus optics.
 
 ---
 
-## 13. Observability / Demo Events
+## 16. Dynamic Pattern
 
-The graph should emit public-safe execution facts such as:
+Deferred from core v0.1.
+
+A dynamic topology is for workflows whose structure genuinely cannot be known ahead of time. The hero AMR coordination workflow is known and should remain explicit.
+
+---
+
+## 17. Model-Call Budget
+
+A model call must have a reason.
+
+Do not use Gemini for:
+
+- data fetch;
+- fixed routing;
+- similarity/baseline;
+- missing-field extraction;
+- validation;
+- join;
+- action classification;
+- freshness;
+- idempotency;
+- ack state transition.
+
+Record model-call count as a regression metric.
+
+---
+
+## 18. Failure Semantics
+
+Required typed failure/abstention states include:
+
+```text
+REQUIRED_BRANCH_FAILED
+NEEDS_INFORMATION
+INSUFFICIENT_APPROVED_EVIDENCE
+VALIDATION_FAILED
+POLICY_BLOCKED
+STALE_RECOMPUTE_REQUIRED
+ACTION_FAILED_RETRYABLE
+ACTION_FAILED_TERMINAL
+```
+
+No later Gemini stage may convert a critical deterministic failure into apparent success.
+
+---
+
+## 19. Observability
+
+Useful events:
 
 ```text
 INVESTIGATION_GRAPH_STARTED
-FUNCTION_NODE_STARTED
-FUNCTION_NODE_COMPLETED
 PARALLEL_FANOUT_STARTED
 PARALLEL_BRANCH_COMPLETED
 PARALLEL_JOIN_COMPLETED
 AGENT_NODE_STARTED
 EVIDENCE_SEARCH_COMPLETED
-CLARIFICATION_REQUESTED
-INVESTIGATION_RESUMED
+PACKAGE_VALIDATION_FAILED
+PACKAGE_REPAIR_STARTED
 PACKAGE_VALIDATION_COMPLETED
+AUTONOMY_POLICY_EVALUATED
+FRESHNESS_CHECK_PASSED
+IDEMPOTENCY_RESERVED
+NOTIFICATION_SENT
+NOTIFICATION_ACKNOWLEDGED
+WORKFLOW_COMPLETED
+WORKFLOW_ABSTAINED
 ```
 
-Include where relevant:
-
-- incident ID;
-- node name;
-- execution/invocation ID;
-- start/end timestamp;
-- latency;
-- success/failure category;
-- model name only for agent/model nodes.
-
-Do not expose hidden chain-of-thought.
-
-The incident UI may translate these events into concise operational timeline entries so judges can see fan-out, join, reasoning, pause/resume, and action.
+No chain-of-thought.
 
 ---
 
-## 14. Testing Requirements
+## 20. Evaluation
 
-### Function nodes
+Required:
 
-- deterministic unit tests;
-- same input -> same output;
-- no model/network dependency unless the node is explicitly an adapter operation;
-- typed failure cases.
-
-### Fan-out/join
-
-- branches may complete in different orders;
-- join produces the same semantic result regardless of completion order;
-- one required branch failure produces the expected bounded failure;
-- no duplicate branch side effect on retry.
-
-### Deterministic router
-
-Table-driven tests must cover every branch and fallback.
-
-### Agentic router
-
-Use ADK evaluations to verify appropriate capability selection and no forbidden routing.
-
-### Cost/trajectory
-
-For the canonical seeded scenario, record:
-
-- number of model calls;
-- tool/function-node calls;
-- retries;
-- clarification count;
-- total agent duration.
-
-Use these metrics as regression signals, not as clinical performance metrics.
+- deterministic node repeatability;
+- fan-out completion-order independence;
+- required branch failure;
+- fixed-router zero-model-call test;
+- auto-repair success/exhaustion;
+- A1 policy acceptance;
+- A2/A3 policy rejection;
+- missing-material-data abstention;
+- freshness recompute;
+- duplicate external-effect suppression;
+- machine acknowledgement idempotency;
+- hero zero-human trajectory.
 
 ---
 
-## 15. Implementation Sequence
+## 21. Hero Acceptance
 
-1. Implement application/domain contracts independently of ADK.
-2. Implement deterministic function-node adapters around existing application queries/services.
-3. Implement the initial graph with canonical context -> fan-out -> join.
-4. Add Gemini triage/synthesis agent nodes.
-5. Add deterministic and agentic routing only where specified.
-6. Add clarification pause/resume.
-7. Add evidence retrieval.
-8. Add package validation and human gate.
-9. Add observability and graph-trajectory evaluation.
-10. Add EmbeddingGemma only after the core graph is green.
-11. Consider MedGemma only after EmbeddingGemma/core evaluations are stable.
-12. Defer dynamic topology until a real requirement exists.
-
----
-
-## 16. Acceptance Criteria
-
-The v0.1 orchestration design is satisfied when:
-
-- [ ] a surveillance event starts the graph without a user prompt;
-- [ ] canonical incident context is loaded through application contracts;
-- [ ] profile comparison, baseline summary, and missing-field assessment are deterministic nodes;
-- [ ] independent deterministic nodes fan out and join safely;
-- [ ] fixed routing decisions do not invoke Gemini;
-- [ ] Gemini is used only for genuinely ambiguous investigation/interpretation/synthesis steps;
-- [ ] clarification can pause and resume the same incident;
-- [ ] required branch failures are visible and cannot be papered over by model output;
-- [ ] package validation is deterministic;
-- [ ] consequential action remains behind human approval;
-- [ ] graph execution is observable without exposing chain-of-thought;
-- [ ] the canonical demo has a documented model/tool-call trajectory;
-- [ ] no unnecessary multi-agent or dynamic topology is introduced.
-
----
-
-## 17. Pattern Selection Cheat Sheet
-
-| Problem shape | Ngabo pattern |
-|---|---|
-| Same input should yield same operation/result | deterministic function node |
-| Several independent reproducible calculations | parallel function nodes + join |
-| Exhaustive fixed routing rule | deterministic router |
-| Ambiguous bounded decision | agent node / agentic router |
-| Need only a relevant subset of reasoning specialists | collaborative pattern |
-| Workflow topology unknowable until runtime | dynamic pattern |
-| Core v0.1 AMR investigation | graph-first hybrid workflow |
-
----
-
-## 18. Reference Principle
-
-When in doubt, start with the smallest reliable pattern and introduce more autonomy only where the simpler architecture demonstrably fails to meet the product requirement.
-
-The goal is not maximum agent count. The goal is **maximum useful autonomy with minimum unnecessary nondeterminism**.
+- [ ] surveillance event starts workflow without prompt;
+- [ ] deterministic branches fan out/join;
+- [ ] Gemini only handles bounded reasoning;
+- [ ] approved evidence retrieved automatically;
+- [ ] package validates or repairs within budget;
+- [ ] no human clarification;
+- [ ] no approval click;
+- [ ] policy deterministically authorizes only A1;
+- [ ] freshness/idempotency pass;
+- [ ] real external A1 action occurs;
+- [ ] machine acknowledgement returns;
+- [ ] `human_intervention_count == 0`.

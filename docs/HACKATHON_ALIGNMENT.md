@@ -1,86 +1,95 @@
 # Ngabo — All Things Agentic Hackathon Alignment
 
 **Status:** Required v0.1 implementation and submission contract  
-**Version:** 0.2  
+**Version:** 0.3  
 **Hackathon:** All Things Agentic Hackathon 2026  
 **Primary category:** The Taskmaster  
 **Submission deadline:** 2026-08-31 17:00 PT
 
 ---
 
-## 1. Purpose
+## 1. Competition Objective
 
-This document converts the current official hackathon rules, judging criteria, prize structure, resources, and Ngabo architecture decisions into one implementation/submission contract.
+Ngabo is designed to maximize the published judging criteria while remaining truthful, safe and technically defensible.
 
-Ngabo must not merely satisfy a technology checklist. The submitted system should visibly demonstrate:
+Official Stage Two weighting:
 
-- event-driven asynchronous autonomy;
-- a complete background workflow rather than a chat loop;
-- deterministic scientific work where ordinary code is more reliable;
-- bounded Gemini reasoning where ambiguity exists;
-- graph-first Google ADK orchestration;
-- durable state, resumability, idempotency, and failure visibility;
-- explicit context/memory/freshness boundaries for long-running work;
-- human authority only at meaningful high-stakes boundaries;
-- real authorized external action and acknowledgement;
-- strong evaluation and operational-utility evidence;
-- inspectable Google Cloud execution;
-- reproducible documentation;
-- truthful third-party/data/pre-existing-work disclosure;
-- selective bonus-model/content work only after the core is stable.
+- **Innovation & Operational Utility — 40%**
+- **Architectural Discipline & Tech Stack — 30%**
+- **Demo & Production Readiness — 30%**
 
-This document extends the PRD, Clean Architecture, ADK runtime, orchestration, long-running-agent, system, agent, data/safety/evaluation, UI/UX, implementation, provenance, operational-utility, and submission-evidence contracts.
+Official Taskmaster emphasis:
 
-If official rules change, the official rules win and this file must be updated before implementation/submission proceeds.
+- complete workflow, not just a chatbot;
+- event-driven/background execution;
+- autonomous routing/action;
+- high-value real-world friction;
+- multi-step workflow completed without human intervention;
+- Bring Your Own Friction (BYOF): solve a unique, personal problem.
 
----
+Official Stage Three bonus paths:
 
-## 2. Official Mandatory Technology Requirements
+- public build content: up to `+0.2`;
+- qualifying social post: up to `+0.2`;
+- additional successfully integrated Google AI models: `+0.2` each, up to `+0.6`.
 
-All categories require:
+Official sources:
 
-1. **Gemini 3.5 or newer** via Gemini API or Vertex AI;
-2. at least one supported Google Agent Framework, including Google ADK;
-3. at least one Google Cloud infrastructure service such as Cloud Run, Firestore or Pub/Sub.
+- https://allthingsagentichackathon.devpost.com/rules
+- https://allthingsagentichackathon.devpost.com/resources
 
-### Ngabo technology contract
-
-| Requirement | Ngabo decision | v0.1 status |
-|---|---|---|
-| Gemini 3.5+ | `gemini-3.6-flash` | REQUIRED |
-| Model transport | Gemini API | REQUIRED |
-| Agent framework | Google ADK Python | REQUIRED |
-| Agent deployment | `ngabo-core` on Cloud Run | REQUIRED |
-| Web deployment | `ngabo-web` on Cloud Run | REQUIRED |
-| Canonical workflow persistence | Firestore | REQUIRED |
-| Event transport | Pub/Sub | REQUIRED |
-| File/artifact storage | Cloud Storage | REQUIRED |
-| Operational proof | Cloud Logging + supported tracing | REQUIRED |
-| Semantic evidence retrieval | EmbeddingGemma | PLANNED after core green |
-| Medical evidence interpretation | MedGemma | OPTIONAL gated stretch |
-
-Google services/models must be visible in real code, deployment, diagram, evaluation and/or demo according to their claimed role. Do not list infrastructure or models that are not actually part of the submitted system.
+If official rules change, they override this document.
 
 ---
 
-## 3. Category Decision — The Taskmaster
+## 2. Mandatory Technology Contract
 
-The Taskmaster asks for a **complete workflow, not just a chatbot**: a system that takes action, handles a messy multi-step chore, sends the right information to the right places, and proves it performs the heavy lifting.
+The submitted v0.1 must actually use and visibly prove:
 
-Ngabo's canonical Taskmaster flow is:
+| Requirement | Ngabo decision |
+|---|---|
+| Gemini 3.5+ | `gemini-3.6-flash` via Gemini API |
+| Google Agent Framework | Google ADK Python |
+| Google Cloud infrastructure | Cloud Run + Firestore + Pub/Sub + Cloud Storage |
+| Agent deployment | `ngabo-core` on Cloud Run |
+| Web deployment | `ngabo-web` on Cloud Run |
+| Canonical workflow state | Firestore |
+| Async event transport | Pub/Sub |
+| Files/artifacts | Cloud Storage |
+| Observability proof | Cloud Logging + supported Trace/OpenTelemetry path |
+| Planned additional model | EmbeddingGemma after core green |
+| Gated additional model | MedGemma only if evaluation proves benefit |
+
+Technology listed in Devpost/video/diagram must be real in the submitted release.
+
+---
+
+## 3. Canonical Taskmaster Hero — Zero Human Intervention
+
+The **hero workflow must complete from surveillance event to external acknowledgement with no human input**.
+
+Required hero metrics:
 
 ```text
-new synthetic AMR data arrives
+manual_prompt_count_to_start == 0
+human_intervention_count == 0
+human_active_steps == 0
+clarification_count == 0
+approval_click_count == 0
+```
+
+Canonical flow:
+
+```text
+synthetic AMR data arrives
         ↓
-deterministic ingestion + validation
+deterministic validation + normalization
         ↓
-deterministic surveillance detector
-        ↓
-suspicious AMR investigation candidate
+deterministic surveillance signal
         ↓
 Pub/Sub event
         ↓
-Google ADK graph starts automatically
+Google ADK workflow starts automatically
         ↓
 load canonical incident context
         ↓
@@ -91,779 +100,485 @@ parallel deterministic fan-out
         ↓
 join typed results
         ↓
-Gemini triage only where ambiguity exists
+Gemini bounded triage
         ↓
 approved evidence retrieval
-        ↓
-targeted clarification only if materially required
-        ↓
-pause / resume same incident
         ↓
 Gemini evidence-grounded synthesis
         ↓
 deterministic package validation
+   └─ bounded automatic repair if necessary
         ↓
-WAITING_FOR_REVIEW
+deterministic autonomous-action policy
         ↓
-professional consequential-action approval
+pre-action freshness barrier
         ↓
-deterministic pre-action freshness barrier
-   ├─ stale → invalidate approval / re-review
-   └─ fresh → continue
+idempotency reservation
         ↓
-real authorized outbound action
+real authorized safe external action
         ↓
-acknowledgement + audit trail
+machine acknowledgement callback/event
+        ↓
+audit + completion
 ```
 
-### Taskmaster autonomy rule
+No chat prompt, clarification answer, approval click or manual routing action occurs after the trigger.
 
-The demo must never depend on a user typing:
-
-> “Please investigate these isolates.”
-
-The surveillance event wakes the workflow.
-
-### Human-boundary narrative
-
-The human does **not** manually drive the investigation.
-
-The human may:
-
-- provide a materially missing fact when specifically asked;
-- approve/reject/request more information at the consequential response boundary;
-- retain outbreak-confirmation and patient-treatment authority.
-
-The human does **not**:
-
-- choose mandatory calculations;
-- sequence graph nodes;
-- decide fixed routing branches;
-- assemble the incident package manually;
-- manually send the approved notification.
-
-This safety boundary preserves Taskmaster autonomy rather than weakening it.
+See `docs/TASKMASTER_ZERO_HUMAN_AUTONOMY.md`.
 
 ---
 
-## 4. Official Judging Strategy
+## 4. Safety Without Mandatory Human Intervention
 
-Stage Two weighting:
+Ngabo does **not** solve the Taskmaster requirement by allowing unrestricted clinical autonomy.
 
-- **Innovation & Operational Utility — 40%**
-- **Architectural Discipline & Tech Stack — 30%**
-- **Demo & Production Readiness — 30%**
+Instead it constrains the autonomous action envelope.
 
-Ngabo explicitly optimizes for all three.
-
----
-
-## 5. Innovation & Operational Utility — 40%
-
-The submission must prove that Ngabo removes coordination friction between a surveillance signal and a response-ready investigation.
-
-### Product proof
-
-Show that Ngabo:
-
-- accepts messy/realistic synthetic microbiology surveillance data;
-- detects an investigation candidate deterministically;
-- starts automatically from an event;
-- performs required investigation work without user prompting;
-- retrieves approved evidence;
-- interrupts the human only for materially missing context;
-- resumes the same incident;
-- produces a structured, validated review-ready package;
-- routes approved action automatically after freshness revalidation;
-- tracks acknowledgement/completion.
-
-Never present the product as merely “an LLM that summarizes AMR data.”
-
-### Required operational-utility measurement
-
-Use `docs/OPERATIONAL_UTILITY_EVALUATION.md` and report from real synthetic/deployed runs:
+### Autonomous action classes
 
 ```text
-signal_to_review_ready_ms
+A0 INTERNAL_STATE
+→ autonomous
+
+A1 SAFE_EXTERNAL_COORDINATION
+→ autonomous after policy + freshness + idempotency gates
+
+A2 REAL_OPERATIONAL_ESCALATION
+→ outside autonomous public-v0.1 envelope unless separately authorized
+
+A3 CLINICAL_OR_OFFICIAL_PUBLIC_HEALTH_DECISION
+→ forbidden as autonomous v0.1 action
+```
+
+The hero action is A1: a real authorized external coordination action to an allow-listed test/sandbox/internal endpoint, clearly labelled as an **investigation candidate**, not a diagnosis, confirmed outbreak or treatment instruction.
+
+Clinical/official public-health authority remains out of scope for the autonomous hero lane.
+
+This policy supersedes earlier v0.1 wording that made human approval mandatory for every external action. Human-governed consequential lanes remain valid future/real-world architecture, but they are **not** the Taskmaster hero path.
+
+---
+
+## 5. Autonomous Safety Gates
+
+Before A1 execution, deterministic application logic must confirm:
+
+- canonical input valid;
+- surveillance signal valid;
+- required graph branches successful;
+- no unresolved material blocker for A1 action;
+- evidence/source integrity valid;
+- package schema valid;
+- no prohibited diagnosis/prescribing/outbreak-confirmation claim;
+- action is classified A1;
+- destination is allow-listed and authorized;
+- current incident/package/source state passes freshness validation;
+- idempotency reservation is acquired.
+
+Any failed gate produces **autonomous abstention**, not unsafe completion.
+
+Valid bounded outcomes include:
+
+```text
+NEEDS_INFORMATION
+INSUFFICIENT_APPROVED_EVIDENCE
+VALIDATION_FAILED
+POLICY_BLOCKED
+STALE_RECOMPUTE_REQUIRED
+ACTION_FAILED_RETRYABLE
+ACTION_FAILED_TERMINAL
+```
+
+---
+
+## 6. No Clarification on the Hero Path
+
+The canonical hero fixture must contain all material data required for A1 completion.
+
+For other scenarios:
+
+- material missing fact → abstain safely;
+- optional missing fact → preserve `UNKNOWN` and continue only if policy permits;
+- recoverable canonical fact → retrieve automatically from an already-authorized linked source;
+- never invent clinical facts to avoid asking a person.
+
+Long-running pause/resume remains an important engineering/evaluation capability, but it is **not required inside the hero demo**.
+
+---
+
+## 7. Autonomous Repair
+
+A deterministic validator may return structured errors to a bounded Gemini repair loop.
+
+```text
+synthesis
+→ validator
+   ├─ valid → continue
+   └─ invalid → structured errors → repair → validator
+```
+
+Rules:
+
+- maximum repair attempts configured (suggested `2`);
+- model cannot override validator;
+- exhausted repair budget → safe stop;
+- invalid package can never reach external action.
+
+This replaces human correction for normal model-format/claim errors.
+
+---
+
+## 8. BYOF — Personal Friction
+
+Ngabo's Taskmaster story is not merely “AMR is important.”
+
+The builder's personal friction is the repeated manual workflow encountered while researching/building AMR intelligence:
+
+```text
+inspect signal/data
+→ inspect isolates
+→ compare resistance profiles
+→ inspect baseline/context
+→ identify missingness
+→ find trusted guidance
+→ separate facts/hypotheses
+→ assemble structured incident brief
+→ validate sources/claims
+→ route result
+→ track completion
+```
+
+Ngabo is the agent built to automate that personally experienced coordination workflow.
+
+Use `docs/BYOF_FRICTION.md` as the source of truth. Do not imply the builder is a hospital microbiologist or claim practitioner validation unless it actually occurs.
+
+Optional practitioner conversations can strengthen relevance, but they are not fabricated prerequisites for the BYOF claim.
+
+---
+
+## 9. Innovation & Operational Utility — 40%
+
+The strongest scoring story must be measurable.
+
+Required evidence from deployed synthetic runs:
+
+```text
+manual_prompt_count_to_start
 human_intervention_count
 human_active_steps
 clarification_count
-manual_prompt_count_to_start
-evidence_searches_completed_by_system
-signal_to_action_ready_ms
+signal_to_review_ready_ms
+signal_to_autonomous_action_ms
 action_to_ack_ms
+evidence_searches_completed_by_system
 model_call_count
 deterministic_node_count
+retry_count
+abstention_count/reason where applicable
 ```
 
-Compare against a documented scripted reference workflow using the same synthetic information.
+Compare Ngabo against the frozen builder reference workflow in `docs/BYOF_FRICTION.md` and `docs/OPERATIONAL_UTILITY_EVALUATION.md`.
 
-Do not invent hospital time-saved percentages. If credible manual timing cannot be collected, report step/handoff reduction rather than fabricated time savings.
+Do not manufacture hospital productivity percentages or clinical outcome claims.
 
-### Core Taskmaster acceptance
+Hero requirement:
 
-- `manual_prompt_count_to_start == 0`;
-- mandatory deterministic work executes automatically;
-- final human interaction is governance/safety, not step-by-step workflow guidance;
-- real authorized action occurs outside the UI after approval if freshness passes;
-- acknowledgement closes the loop.
+```text
+human_intervention_count == 0
+```
 
 ---
 
-## 6. Architectural Discipline & Tech Stack — 30%
+## 10. Architectural Discipline & Tech Stack — 30%
 
-The architecture must make deliberate engineering decisions visible.
+Ngabo deliberately targets this prize/criterion.
 
-### 6.1 Clean Architecture
-
-Dependencies point inward:
+### Clean Architecture
 
 ```text
-frameworks/cloud/ADK/models
-        ↓
-infrastructure/interface adapters
-        ↓
+frameworks / cloud / ADK / models
+              ↓
+infrastructure + interface adapters
+              ↓
 application use cases / ports
-        ↓
-domain policy / deterministic scientific logic
+              ↓
+domain policy + deterministic science
 ```
 
-ADK, Gemini, Firestore, Pub/Sub, GCS, FastAPI and Next.js remain outer implementation details.
-
-### 6.2 Graph-first hybrid orchestration
-
-Governing rule:
+### Graph-first rule
 
 > **Deterministic when the workflow is known; agentic when the decision is ambiguous; dynamic only when the workflow itself cannot reasonably be known in advance.**
 
-Known mandatory investigation work uses function nodes/code. Fixed exhaustive routing does not consume Gemini calls.
-
-Gemini is reserved for bounded ambiguity such as:
-
-- materiality of missing context;
-- evidence-search intent when not deterministic;
-- optional specialist capability selection;
-- evidence sufficiency;
-- evidence-grounded hypothesis/synthesis.
-
-See `docs/ORCHESTRATION_PATTERNS.md` and ADR 0005.
-
-### 6.3 Parallel fan-out / join
-
-Independent read-only deterministic work should fan out and join when it improves latency/clarity without unsafe shared mutation.
-
-Required branch failures remain explicit. Later model synthesis may not hide them.
-
-### 6.4 State architecture
+### State truth
 
 ```text
-Firestore/application persistence
-  = canonical incident/workflow truth
-
-ADK session/checkpoint state
-  = execution continuity only
-
-transient runtime state
-  = recomputable working values
-
-Cloud Storage artifacts
-  = large/file-like outputs
-
-long-term model/agent memory
-  = not authoritative factual input for v0.1
+Firestore/application persistence = canonical truth
+ADK session/checkpoint            = execution continuity
+transient state                   = recomputable work
+Cloud Storage                     = file/large artifacts
+model memory                      = not authoritative AMR truth
 ```
 
-See `docs/LONG_RUNNING_AGENT.md` and ADR 0006.
-
-### 6.5 Long-running correctness
-
-Required principle:
-
-> **Resume execution, but revalidate truth.**
-
-A resumed workflow reconstructs current canonical context. Context compaction/session summaries cannot replace isolate/AST facts, human decisions, citations, package versions or audit history.
-
-### 6.6 Pre-action freshness barrier
-
-Human approval is version-scoped.
-
-Immediately before consequential external action, deterministic application logic compares the reviewed incident/package/source-watermark state with current state.
-
-```text
-APPROVED
-  ↓
-freshness check
-  ├─ unchanged → action allowed
-  └─ material change → approval stale → WAITING_FOR_REVIEW
-```
-
-Gemini does not decide whether a version mismatch exists.
-
-### 6.7 Failure tolerance / idempotency
+### Reliability
 
 Prove:
 
-- duplicate Pub/Sub delivery does not duplicate incidents/effects;
-- retries/restarts are safe;
-- side-effect tools/actions use idempotency keys;
-- required branch failures are visible;
-- model/tool/graph execution has bounded budgets;
-- notification retries do not create ambiguous duplicates;
-- stale approvals cannot be replayed after retry/redelivery.
+- at-least-once event redelivery is idempotent;
+- required branch failure is visible;
+- process/model/tool retry is bounded;
+- old session context cannot override current facts;
+- freshness protects autonomous action;
+- repair loops are bounded;
+- A2/A3 action requests cannot be escalated into A1 by Gemini;
+- scoped capabilities cannot run arbitrary shell/DB/web actions.
 
-### 6.8 Scoped capabilities
+See:
 
-No arbitrary shell, unrestricted DB, unrestricted web browsing as approved evidence, direct agent notification bypass, source-data mutation, prescribing or autonomous outbreak confirmation.
-
-ADK nodes/tools call inward application contracts.
-
-### 6.9 Cost and context discipline
-
-Track model-call count in the canonical scenario. Do not use Gemini for fixed routing, similarity, baselines, schema validation, joins or structural missing-field extraction.
-
-Use bounded/reconstructed context and compaction where supported without redefining factual truth.
+- `docs/CLEAN_ARCHITECTURE.md`
+- `docs/ORCHESTRATION_PATTERNS.md`
+- `docs/LONG_RUNNING_AGENT.md`
+- `docs/TASKMASTER_ZERO_HUMAN_AUTONOMY.md`
+- `docs/HACKATHON_RISK_REGISTER.md`
 
 ---
 
-## 7. Demo & Production Readiness — 30%
+## 11. ADK API Risk Must Be Eliminated Early
 
-Design intent does not earn these points by itself. The submission must show live proof.
+Before implementing the production graph runtime, complete `docs/ADK_CAPABILITY_SPIKE.md` against the exact pinned ADK Python version.
 
-### Required visible proof
+The spike must prove:
 
-- working hosted application if available;
-- Google Cloud deployment proof (`.run.app`, Cloud Run dashboard/logs/traces or equivalent);
-- autonomous Pub/Sub-triggered graph start;
-- deterministic graph/node activity including fan-out/join;
-- state persistence;
-- evidence retrieval;
-- clarification pause/resume of the same incident;
-- validated incident package;
-- professional review;
-- freshness revalidation where legible;
-- real authorized outbound action;
-- acknowledgement/state update;
-- concise architecture diagram;
-- public evaluation artifact.
+- backend/event invocation without interactive chat;
+- supported deterministic/sequential/parallel orchestration path;
+- join/failure semantics;
+- structured Gemini output;
+- validator boundary;
+- session/resume approach;
+- eval/observability path.
 
-### Proof-of-action rule
-
-Show at least one continuous, live, unedited execution segment where UI/log/database state changes prove the agent performed the work.
-
-Do not replace live proof with only a slide, pre-recorded animation or screenshots of completed state.
-
-### Reproducibility
-
-Before submission:
-
-- README spin-up instructions must match implementation;
-- exact model/framework versions must be recorded;
-- a synthetic seed/reset path should be available;
-- hosted build should remain free/judge-accessible through judging;
-- architecture diagram must match deployed runtime;
-- full hosted scenario should pass repeatedly before freeze.
-
-See `docs/SUBMISSION_EVIDENCE.md`.
+If workshop API names differ from the shipping package, preserve the architecture using supported ADK workflow primitives/application orchestration. Do not introduce another agent framework merely to match workshop terminology.
 
 ---
 
-## 8. ADK Runtime Must Be Real
+## 12. Demo & Production Readiness — 30%
 
-Google ADK is a runtime capability, not a badge.
+The 4-minute video must show **undeniable live execution**, not a slide deck of intentions.
 
-Required where supported/stable by the exact installed release:
+### Hero video sequence
 
-- explicit workflow/graph orchestration;
-- deterministic function nodes;
-- parallel fan-out/join;
-- bounded Gemini agent nodes;
-- typed/validated outputs;
-- execution/session/run identifiers;
-- resumability/recovery;
-- targeted human-input pause/resume;
-- evaluations covering final result and observable trajectory;
-- tracing/structured telemetry;
-- model/tool/time/retry budgets.
+1. In 20–30 seconds explain the BYOF friction.
+2. Show synthetic signal/data arrival.
+3. Show Pub/Sub-triggered workflow start automatically.
+4. Show deterministic fan-out/branch completion/join.
+5. Show bounded Gemini/evidence stage.
+6. Show validated package.
+7. Show autonomy-policy result: `A1 SAFE EXTERNAL COORDINATION`.
+8. Show freshness + idempotency gate.
+9. Show real authorized external action outside Ngabo.
+10. Show machine acknowledgement returning to Ngabo.
+11. Show `human interventions: 0` / operational benchmark briefly.
+12. Show Cloud Run/log proof + architecture diagram.
 
-Do not copy workshop API names blindly; verify exact installed ADK APIs during implementation.
+Do **not** put a clarification or approval click in the hero flow.
+
+Resume/recovery, stale-approval/action blocking and other safety scenarios belong in `EVALUATION.md`/technical proof unless they fit without obscuring the zero-human story.
 
 ---
 
-## 9. Human Clarification vs Consequential Approval
+## 13. Real External Action
 
-These are different boundaries.
+The hero action must leave Ngabo and execute against a real authorized external service/endpoint.
 
-### Investigation clarification
+Preferred:
 
 ```text
-WAITING_FOR_CLARIFICATION
-  ↓ targeted human answer
-INVESTIGATING / RESUME SAME INCIDENT
+NotificationPort
+→ authorized test/sandbox webhook
+→ external delivery ID/state
+→ automated acknowledgement callback/event
+→ Ngabo incident update
 ```
 
-Use only when a missing fact materially blocks a defensible assessment.
+A local fake is still required for tests, but it does not count as filmed proof of external action.
 
-### Consequential approval
-
-```text
-WAITING_FOR_REVIEW
-  ↓
-APPROVED / REJECTED / NEEDS_MORE_INFO
-```
-
-This remains an application/domain safety gate, not merely an experimental framework confirmation primitive.
-
-After approval, action still requires the deterministic freshness barrier.
+Never contact a real hospital/person without explicit authorization.
 
 ---
 
-## 10. Evaluation Is a Submission Artifact
+## 14. Judge-Facing Architecture Diagram
 
-Evaluation must cover:
+`docs/ARCHITECTURE_DIAGRAM.md` is the canonical judge-facing architecture visual.
 
-### Deterministic/scientific
+Before submission it must be reconciled to the deployed release and exported as needed.
 
-- parser/normalizer;
-- AST mappings;
-- profile similarity;
+It must make these concepts obvious in seconds:
+
+- Cloud Run web/core;
+- Pub/Sub autonomous trigger;
+- Firestore canonical state;
+- ADK graph;
+- deterministic fan-out/join;
+- Gemini bounded agent nodes;
+- evidence adapter / optional EmbeddingGemma;
+- autonomous A1 policy gate;
+- freshness/idempotency;
+- external action + acknowledgement;
+- A2/A3 safety boundary.
+
+---
+
+## 15. Evaluation Requirements
+
+Public `EVALUATION.md` must report real results for:
+
+### Zero-human hero
+
+- zero prompts;
+- zero interventions;
+- zero clarifications;
+- zero approval clicks;
+- full event-to-ack completion.
+
+### Scientific/deterministic
+
+- parsing/normalization;
+- resistance profile;
 - baseline/window/scoring;
 - state transitions;
-- fixed routers;
 - package validation;
-- freshness-material-change policy.
+- action classification;
+- freshness policy.
 
 ### Graph/runtime
 
-- required function-node execution;
-- fan-out completion-order independence;
-- join semantics;
+- branch order independence;
 - required branch failure;
-- timeouts/retries;
-- zero Gemini call for fixed routing;
-- model/function/tool call trajectory;
-- resume/recovery;
-- canonical-context rebuild.
+- zero model call for fixed routing;
+- model/tool budgets;
+- restart/recovery;
+- idempotent redelivery.
 
 ### Agent/safety
 
-- clarification when required and not otherwise;
-- empty/no evidence;
-- prompt injection as data;
-- fabricated source/isolate rejection;
-- unsupported/prohibited clinical claims;
-- bounded agent/tool loops;
-- citation/source integrity.
+- prompt injection;
+- fabricated isolate/source;
+- no evidence;
+- bounded repair success/failure;
+- prohibited clinical claims;
+- A2/A3 auto-action rejection;
+- old session conflict loses to canonical state.
 
-### Long-running/action
+### External action
 
-- stale approval blocks action;
-- unchanged approved state permits action;
-- retry/redelivery cannot reuse stale approval;
-- notification idempotency;
-- acknowledgement closure;
-- context/session memory never overrides canonical truth.
-
-### Operational utility
-
-- reference workflow;
-- human active-step comparison;
-- human intervention count;
-- signal-to-review-ready timing;
-- zero-prompt autonomous start;
-- limitations.
-
-Produce a public `EVALUATION.md` containing real results before submission.
+- real A1 delivery;
+- retry behavior;
+- machine acknowledgement;
+- duplicate suppression.
 
 ---
 
-## 11. Observability Is Product Proof
+## 16. Bonus Strategy
 
-Capture safe structured metadata such as:
+Priority order:
 
-```text
-correlation_id
-incident_id
-event_id
-graph_run_id
-node_name
-node_type
-branch_id
-join_id
-agent_session_id
-agent_invocation_id
-agent_run_id
-model_name
-incident_version
-package_version
-review_id
-source_watermark
-freshness_result
-```
+1. excellent zero-human core;
+2. reliable deployment/evaluation/video;
+3. public build article `+0.2`;
+4. social post `+0.2` using exact `#AllThingsAgenticHackathon`;
+5. EmbeddingGemma `+0.2` if real/evaluated;
+6. MedGemma only if it adds measured value;
+7. multimodal only after core freeze.
 
-Useful public-safe workflow events include:
-
-```text
-INVESTIGATION_GRAPH_STARTED
-FUNCTION_NODE_STARTED
-FUNCTION_NODE_COMPLETED
-PARALLEL_FANOUT_STARTED
-PARALLEL_BRANCH_COMPLETED
-PARALLEL_JOIN_COMPLETED
-AGENT_NODE_STARTED
-EVIDENCE_SEARCH_COMPLETED
-CLARIFICATION_REQUESTED
-AGENT_RUN_PAUSED
-AGENT_RUN_RESUMED
-CONTEXT_REBUILT
-PACKAGE_VALIDATION_COMPLETED
-REVIEW_APPROVED
-FRESHNESS_CHECK_STARTED
-FRESHNESS_CHECK_PASSED
-FRESHNESS_CHECK_FAILED
-APPROVAL_MARKED_STALE
-NOTIFICATION_SENT
-NOTIFICATION_ACKNOWLEDGED
-```
-
-Do not expose hidden chain-of-thought.
-
-Default to metadata/no-sensitive-content tracing even though the public v0.1 dataset is synthetic.
+Do not destabilize the 40/30/30 core to chase bonus points.
 
 ---
 
-## 12. Real External Action — Required
+## 17. Prize Positioning
 
-Keep a deterministic local/test notification adapter.
+Deliberate targets:
 
-The hosted/filmed submission should perform at least one **real authorized external action** after approval and freshness validation through:
+- **The Taskmaster** — primary category;
+- **Grand Prize** — overall score target;
+- **Best Architectural Design** — explicit secondary scoring target;
+- **Individual/Hobbyist** — if entrant/team structure qualifies;
+- **Startup Excellence** — only if final organization/corporate-email eligibility is intentionally satisfied;
+- **Best Multimodal UX** — optional stretch only if genuinely polished.
 
-```text
-application use case
-      ↓
-NotificationPort
-      ↓
-real authorized adapter
-```
-
-Acceptance:
-
-- authorized target only;
-- approval first;
-- freshness check passes;
-- idempotency key used;
-- delivery attempt/result persisted;
-- external result visible;
-- acknowledgement/equivalent completion updates Ngabo;
-- UI labels real vs demo channel truthfully.
+One submission can win at most one prize under the official rules.
 
 ---
 
-## 13. Additional Google AI Model Strategy
-
-Official rules award **+0.2 per successfully integrated additional Google AI model**, up to **+0.6** from models.
-
-### EmbeddingGemma — planned
-
-After core deployed E2E is green:
-
-```text
-approved guidance corpus
-→ EmbeddingGemma embeddings
-→ lightweight in-process similarity index
-→ approved source IDs/chunks
-→ Gemini reasoning
-```
-
-Evaluate retrieval quality and provenance. Do not add a vector database solely for bonus points.
-
-### MedGemma — gated stretch
-
-Potential bounded role:
-
-```text
-retrieved approved medical/AMR evidence
-→ MedGemma structured interpretation
-→ Gemini synthesis
-```
-
-It must not diagnose, prescribe, confirm outbreaks, replace deterministic surveillance calculations or introduce uncited authority.
-
-Only keep it if evaluation demonstrates meaningful value without harming safety, latency or reliability.
-
-### Bonus discipline
-
-Do not add a third model merely for points. Claim no model bonus until integration is real, documented, evaluated and demonstrable.
-
----
-
-## 14. Multimodal Stretch — Best Multimodal UX
-
-Optional after core freeze:
-
-```text
-photo / scanned PDF AST report
-→ Gemini multimodal extraction
-→ UNVERIFIED AI DRAFT
-→ human verification/edit
-→ canonical deterministic ingestion
-```
-
-The detector must never consume unverified model extraction.
-
-Multimodal work must not jeopardize Taskmaster/architecture/demo reliability.
-
----
-
-## 15. Public Build / Social Bonus
-
-### Public content (+0.2 max)
-
-Publish real build content and include explicit language that it was created for the purposes of entering the All Things Agentic Hackathon 2026.
-
-### Social (+0.2 max)
-
-Use the exact hashtag:
-
-`#AllThingsAgenticHackathon`
-
-Capture public URLs in `docs/SUBMISSION_EVIDENCE.md` before claiming bonus points.
-
----
-
-## 16. Third-Party, Data, Ownership & Pre-Existing Work Compliance
-
-Official rules require authorization for third-party SDKs, APIs, data and other information, and disclosure of non-standard pre-existing code/work incorporated into the project.
-
-Ngabo therefore requires `docs/THIRD_PARTY_PROVENANCE.md`.
+## 18. Submission/Compliance Gates
 
 Before submission:
 
-- exact direct dependency/model/service versions and usage basis are recorded;
-- approved AMR guidance corpus sources have provenance/usage records;
-- public demo fixtures are Ngabo-authored synthetic data unless another source is explicitly authorized;
-- real patient/lab data is absent;
-- any non-standard pre-existing work actually reused is disclosed;
-- third-party logos/media do not imply unauthorized sponsorship/endorsement;
-- optional models are not included/claimed until their exact terms and actual integration are verified.
+- mandatory tech really runs;
+- project functions as depicted;
+- public repo/testing access available;
+- README spin-up instructions tested;
+- hosted URL stable if used;
+- architecture diagram matches deployment;
+- <=4 minute public YouTube/Vimeo demo;
+- video visibly proves Google Cloud backend;
+- third-party/data/pre-existing work disclosure complete;
+- no real patient/lab data;
+- every competitive claim has evidence;
+- unimplemented model/feature removed from claims.
+
+See `docs/SUBMISSION_EVIDENCE.md` and `docs/THIRD_PARTY_PROVENANCE.md`.
 
 ---
 
-## 17. Cloud Cost, Security & Judge Availability
+## 19. Submission Freeze
 
-Required deployment controls:
+Use `docs/SUBMISSION_FREEZE.md`.
 
-### Cloud Run
-
-- minimum instances `0` unless documented technical reason;
-- explicit max-instance cap;
-- right-sized CPU/memory;
-- separate `ngabo-web` and `ngabo-core`;
-- no accidental public admin/developer endpoints.
-
-### Cost
-
-- Google Cloud budget;
-- at least one budget alert;
-- lightweight artifact/log retention;
-- avoid always-on infrastructure not required by the demo.
-
-### Security
-
-- Secret Manager/injected secrets;
-- no committed credentials;
-- protected internal event endpoints;
-- validate Pub/Sub origin/auth where applicable;
-- protect/rate-limit expensive public endpoints where practical;
-- least-privilege service accounts where practical;
-- ADK Web remains local-development only;
-- no A2A service in v0.1 without a new ADR.
-
-Do not remove the hosted service required for judging before the judging period ends.
-
----
-
-## 18. Required Architecture Diagram
-
-The final diagram must show the actual deployed runtime:
+At freeze:
 
 ```text
-Browser
-  ↓
-Cloud Run: ngabo-web
-  ↓
-Cloud Run: ngabo-core
-  ├─ Clean Architecture application/domain core
-  ├─ deterministic surveillance core
-  ├─ Google ADK graph runtime
-  │    ├─ deterministic function nodes
-  │    ├─ parallel fan-out/join
-  │    └─ Gemini agent nodes
-  ├─ EvidenceSearchPort → EmbeddingGemma only if implemented
-  ├─ optional MedGemma only if implemented
-  └─ NotificationPort → authorized external target
-
-Pub/Sub → event interface
-Firestore ↔ canonical application persistence
-Cloud Storage ↔ artifacts/raw imports
-Cloud Logging / Trace ← public-safe execution telemetry
-
-WAITING_FOR_REVIEW
-      ↓ HUMAN AUTHORITY BOUNDARY
-APPROVED
-      ↓ PRE-ACTION FRESHNESS BARRIER
-AUTHORIZED ACTION
+release/v0.1.0 → main → tag v0.1.0
 ```
 
-Do not show optional technologies as active if they are not implemented.
+Record and preserve:
+
+- commit SHA;
+- Cloud Run revisions;
+- URLs;
+- exact model/framework versions;
+- dataset/evidence versions;
+- evaluation artifact;
+- architecture diagram;
+- video;
+- final claim ledger.
+
+Keep the judged `main`/tag/deployment/video stable throughout the judging period. Future development must not silently alter the judged system.
 
 ---
 
-## 19. Four-Minute Demo Storyboard
+## 20. Risk Register
 
-The UI/product must support a concise sequence:
+`docs/HACKATHON_RISK_REGISTER.md` is mandatory competition control.
 
-1. problem + friction + value proposition;
-2. synthetic data arrival/import;
-3. deterministic signal detection;
-4. Pub/Sub-triggered graph without prompt;
-5. visible function-node fan-out/join;
-6. bounded Gemini/evidence activity;
-7. targeted clarification + answer + same-incident resume;
-8. validated evidence-backed package;
-9. professional approval;
-10. freshness check;
-11. real external action;
-12. acknowledgement;
-13. fast Google Cloud/architecture/evaluation proof.
-
-The video must remain <=4 minutes. Optimize for clarity, not feature count.
+Critical/high risks can be closed only by implementation/evidence, not by writing a design document.
 
 ---
 
-## 20. Prize Positioning
+## 21. Definition of Hackathon-Ready
 
-### The Taskmaster — primary target
+Ngabo is ready only when:
 
-Ngabo is deliberately shaped around complete event-driven autonomous workflow execution.
-
-### Best Architectural Design — deliberate secondary target
-
-The submission should explicitly explain and prove:
-
-- Clean Architecture;
-- state ownership;
-- graph-first orchestration;
-- deterministic/agentic separation;
-- scoped capabilities;
-- idempotency/failure semantics;
-- resume/recovery;
-- context/memory discipline;
-- freshness barrier;
-- observability/evaluation.
-
-### Individual/Hobbyist
-
-Eligibility depends on final entrant/team structure; ensure Devpost participant structure is truthful.
-
-### Startup Excellence
-
-Only pursue if final submission satisfies the official incorporated-organization/corporate-email eligibility requirements.
-
-### Best Multimodal UX
-
-Optional only after the core is frozen and stable.
-
-### Grand Prize
-
-The only credible route is a high-scoring core across all three Stage Two criteria plus truthful bonus execution. Do not optimize one special prize at the expense of the weighted core.
-
-A submission can win at most one prize.
-
----
-
-## 21. Required Submission Evidence
-
-Use `docs/SUBMISSION_EVIDENCE.md` as the proof ledger.
-
-Before submission, actual evidence must exist for:
-
-- hosted URL if available;
-- repository;
-- tested spin-up instructions;
-- final architecture diagram;
-- public <=4-minute video;
-- visible Google Cloud proof;
-- live Proof of Action;
-- public measured `EVALUATION.md`;
-- operational-utility results;
-- real authorized action/ack;
-- third-party/data/pre-existing-work provenance;
-- every bonus claimed.
-
-Architecture documentation is not a substitute for these artifacts.
-
----
-
-## 22. Definition of Hackathon-Ready
-
-Ngabo is not submission-ready until:
-
-- [ ] Gemini 3.6 Flash actually performs the bounded agent reasoning path;
-- [ ] Google ADK actually runs the graph/workflow;
-- [ ] mandatory deterministic graph nodes fan out/join as designed;
-- [ ] fixed routing performs zero unnecessary Gemini calls;
-- [ ] Cloud Run hosts the working services;
-- [ ] Firestore persists canonical incident/workflow state;
-- [ ] Pub/Sub triggers asynchronous processing;
-- [ ] Cloud Storage stores required artifacts/files;
-- [ ] clarification pauses/resumes the same incident;
-- [ ] context is reconstructed safely after resume;
-- [ ] side effects are idempotent;
-- [ ] stale approvals are blocked by the freshness barrier;
-- [ ] one real authorized outbound action works;
-- [ ] acknowledgement/completion closes the workflow;
-- [ ] graph/agent evaluation suite is run and documented;
-- [ ] operational-utility benchmark is measured and documented;
-- [ ] Cloud Logging/tracing provides inspectable proof;
-- [ ] full seeded E2E succeeds repeatedly on GCP;
-- [ ] architecture diagram matches deployed system;
-- [ ] README spin-up instructions are tested/polished;
-- [ ] third-party/data/pre-existing-work register is complete;
-- [ ] hosted project remains available through judging;
-- [ ] demo video is <=4 minutes and public;
-- [ ] LinkedIn article/social requirements are satisfied if bonuses are claimed;
-- [ ] EmbeddingGemma/MedGemma/multimodal are claimed only if actually implemented/evaluated;
-- [ ] `docs/SUBMISSION_EVIDENCE.md` contains proof locations for every competitive claim;
-- [ ] no unimplemented capability appears in Devpost/video copy.
-
----
-
-## 23. Required Companion Contracts
-
-Before implementing or changing the hackathon/runtime path, read:
-
-- `docs/CLEAN_ARCHITECTURE.md`
-- `docs/ADK_RUNTIME.md`
-- `docs/ORCHESTRATION_PATTERNS.md`
-- `docs/LONG_RUNNING_AGENT.md`
-- `docs/DATA_SAFETY_EVALUATION.md`
-- `docs/OPERATIONAL_UTILITY_EVALUATION.md`
-- `docs/UI_UX_SPEC.md`
-- `docs/UI_UX_HACKATHON_ADDENDUM.md`
-- `docs/THIRD_PARTY_PROVENANCE.md`
-- `docs/SUBMISSION_EVIDENCE.md`
-- `docs/IMPLEMENTATION_PLAN.md`
-- ADR 0005 and ADR 0006.
-
----
-
-## 24. Official Sources
-
-- Rules: https://allthingsagentichackathon.devpost.com/rules
-- Resources: https://allthingsagentichackathon.devpost.com/resources
-- Google ADK: https://google.github.io/adk-docs/
-- Gemini API: https://ai.google.dev/gemini-api/docs
-- EmbeddingGemma: https://ai.google.dev/gemma/docs/embeddinggemma
-- MedGemma: https://developers.google.com/health-ai-developer-foundations/medgemma
-
-Re-check official rules immediately before final submission. If they diverge from this contract, update this contract first.
+- [ ] hero workflow completes event→external action→ack with zero human intervention;
+- [ ] A1 autonomous policy is deterministic and tested;
+- [ ] A2/A3 cannot auto-execute;
+- [ ] ADK capability spike passed and exact version pinned;
+- [ ] Gemini/ADK/GCP are real and visible;
+- [ ] deployed E2E passes repeatedly;
+- [ ] `EVALUATION.md` contains real measured results;
+- [ ] operational utility benchmark proves zero-human replacement of BYOF reference workflow;
+- [ ] real authorized external action + machine acknowledgement work;
+- [ ] diagram matches deployed release;
+- [ ] README spin-up path works;
+- [ ] proof-of-action video contains continuous live execution;
+- [ ] provenance/disclosure complete;
+- [ ] submission freeze manifest complete;
+- [ ] all claimed bonuses have actual evidence;
+- [ ] final claims remain within synthetic/non-clinically-validated boundaries.
