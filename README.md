@@ -23,15 +23,17 @@ deterministic surveillance signal
         ↓
 Pub/Sub event
         ↓
-Google ADK + Gemini investigation starts automatically
+Google ADK investigation graph starts automatically
         ↓
-bounded tool use + approved evidence
+deterministic function-node fan-out + join
         ↓
-targeted clarification if needed
+Gemini 3.6 Flash reasons where ambiguity exists
+        ↓
+approved evidence + targeted clarification if needed
         ↓
 resume same incident
         ↓
-validated incident package
+deterministically validated incident package
         ↓
 human approval
         ↓
@@ -40,7 +42,7 @@ real authorized external action
 acknowledgement + audit/trace proof
 ```
 
-Read [`docs/HACKATHON_ALIGNMENT.md`](./docs/HACKATHON_ALIGNMENT.md) for the formal compliance/scoring/bonus strategy and [`docs/ADK_RUNTIME.md`](./docs/ADK_RUNTIME.md) for the agent runtime contract.
+Read [`docs/HACKATHON_ALIGNMENT.md`](./docs/HACKATHON_ALIGNMENT.md) for the formal compliance/scoring/bonus strategy, [`docs/ADK_RUNTIME.md`](./docs/ADK_RUNTIME.md) for the runtime contract, and [`docs/ORCHESTRATION_PATTERNS.md`](./docs/ORCHESTRATION_PATTERNS.md) for the graph/function/agent pattern-selection rules.
 
 ## Architecture
 
@@ -78,6 +80,37 @@ ngabo/
 
 Read [`docs/CLEAN_ARCHITECTURE.md`](./docs/CLEAN_ARCHITECTURE.md) and [`docs/adr/0003-clean-architecture-monorepo.md`](./docs/adr/0003-clean-architecture-monorepo.md) for the full implementation contract.
 
+## Graph-First Agent Orchestration
+
+Ngabo's v0.1 ADK runtime follows one rule:
+
+> **Deterministic when the workflow is known; agentic when the decision is ambiguous; dynamic only when the workflow itself cannot reasonably be known in advance.**
+
+Core investigation shape:
+
+```text
+incident context
+      ↓
+parallel deterministic fan-out
+  ├── resistance-profile comparison
+  ├── baseline summary
+  └── missing-field assessment
+      ↓
+join
+      ↓
+Gemini triage
+      ↓
+evidence / targeted clarification
+      ↓
+Gemini evidence-grounded synthesis
+      ↓
+deterministic package validation
+```
+
+Fixed routing rules do not consume Gemini calls. Collaborative specialist agents are introduced only if evaluation shows a real benefit. Runtime-generated dynamic topology is deferred from the core v0.1 flow.
+
+See [`docs/ORCHESTRATION_PATTERNS.md`](./docs/ORCHESTRATION_PATTERNS.md) and [`docs/adr/0005-adk-graph-first-orchestration.md`](./docs/adr/0005-adk-graph-first-orchestration.md).
+
 ## MVP Flow
 
 ```text
@@ -91,13 +124,19 @@ suspicious AMR signal
         ↓
 Pub/Sub event
         ↓
-Google ADK + Gemini 3.6 Flash investigation
+Google ADK graph
         ↓
-approved evidence + targeted clarification
+parallel deterministic investigation + join
+        ↓
+Gemini 3.6 Flash triage / evidence reasoning
+        ↓
+targeted clarification when material
         ↓
 resumable/recoverable investigation
         ↓
-structured validated incident package
+Gemini source-grounded synthesis
+        ↓
+deterministic package validation
         ↓
 human review
         ↓
@@ -114,7 +153,7 @@ audit + observability trail
 - **Repository:** GitHub monorepo
 - **Frontend:** Next.js, TypeScript, Tailwind CSS, shadcn/ui
 - **Backend:** Python, FastAPI, Pydantic v2
-- **Agent runtime:** Google ADK (Python)
+- **Agent runtime:** Google ADK (Python), graph-first hybrid orchestration
 - **Primary model:** Gemini 3.6 Flash via Gemini API
 - **Planned evidence retrieval model:** EmbeddingGemma, after core E2E is stable
 - **Gated stretch model:** MedGemma, only if evaluation shows meaningful value
@@ -132,14 +171,17 @@ Google ADK is not included merely to satisfy the hackathon checklist.
 
 The v0.1 runtime is designed for:
 
-- bounded typed tools;
+- deterministic function/workflow nodes for known work;
+- parallel fan-out/join for independent read-only calculations;
+- deterministic routers for exhaustive rules;
+- Gemini agent nodes only for bounded ambiguity/reasoning/synthesis;
 - persisted agent session/invocation/run references;
 - resumable investigation where supported/stable;
 - targeted human-input pause/resume;
-- structured package validation;
-- ADK evaluations;
-- tool/invocation observability;
-- explicit loop/time/retry limits.
+- deterministic package validation;
+- ADK graph/trajectory evaluations;
+- node/branch/join observability;
+- explicit model/tool/time/retry limits.
 
 Firestore remains Ngabo's canonical workflow/business state. ADK execution state complements it.
 
@@ -173,19 +215,22 @@ lightweight cosine similarity
       ↓
 source IDs + approved chunks
       ↓
-Gemini orchestrator
+Gemini reasoning/synthesis
 ```
 
 No vector database is required merely for the hackathon bonus.
 
-**MedGemma is optional** and will be included only if a bounded source-traceable role improves measured evaluation without weakening safety or demo reliability.
+**MedGemma is optional** and will be included only if a bounded source-traceable role improves measured evaluation without weakening safety or demo reliability. Prefer it as a bounded specialist capability before considering a separate autonomous agent.
 
 ## Evaluation & Proof of Action
 
 Before submission Ngabo will publish `EVALUATION.md` covering:
 
 - deterministic detector/scenario tests;
-- ADK tool/trajectory evaluations where supported;
+- deterministic graph/function-node tests;
+- fan-out/join and fixed-routing tests;
+- ADK agentic-routing/trajectory evaluations where supported;
+- model-call budget for the canonical scenario;
 - prompt-injection and hallucination safety tests;
 - clarification behavior;
 - resumability/idempotency tests;
@@ -219,6 +264,7 @@ Planned only when real and demonstrable:
 Gated stretch:
 
 - MedGemma if it adds evaluated value;
+- collaborative specialist agents only if evaluation demonstrates a real benefit;
 - multimodal AST/PDF extraction only as a **human-verified draft** after core freeze.
 
 No bonus model or feature will be claimed if it exists only in documentation.
@@ -263,9 +309,10 @@ Implementation source-of-truth:
 - [`docs/TECH_STACK.md`](./docs/TECH_STACK.md) — stack and architecture decisions
 - [`docs/CLEAN_ARCHITECTURE.md`](./docs/CLEAN_ARCHITECTURE.md) — dependency/layer/monorepo contract
 - [`docs/HACKATHON_ALIGNMENT.md`](./docs/HACKATHON_ALIGNMENT.md) — hackathon requirements, scoring and bonus strategy
-- [`docs/ADK_RUNTIME.md`](./docs/ADK_RUNTIME.md) — ADK runtime, resumability and evaluation contract
-- [`docs/SYSTEM_DESIGN.md`](./docs/SYSTEM_DESIGN.md) — system/event/state design
-- [`docs/AGENT_ARCHITECTURE.md`](./docs/AGENT_ARCHITECTURE.md) — runtime agent design
+- [`docs/ADK_RUNTIME.md`](./docs/ADK_RUNTIME.md) — ADK graph runtime, resumability and evaluation contract
+- [`docs/ORCHESTRATION_PATTERNS.md`](./docs/ORCHESTRATION_PATTERNS.md) — graph/function/agent/routing pattern-selection contract
+- [`docs/SYSTEM_DESIGN.md`](./docs/SYSTEM_DESIGN.md) — system/event/state/graph design
+- [`docs/AGENT_ARCHITECTURE.md`](./docs/AGENT_ARCHITECTURE.md) — runtime agent and graph design
 - [`docs/DATA_SAFETY_EVALUATION.md`](./docs/DATA_SAFETY_EVALUATION.md) — data, safety and evaluation contracts
 - [`docs/UI_UX_SPEC.md`](./docs/UI_UX_SPEC.md) — frontend implementation contract
 - [`docs/UI_UX_HACKATHON_ADDENDUM.md`](./docs/UI_UX_HACKATHON_ADDENDUM.md) — demo/resume/action UI requirements
@@ -274,6 +321,7 @@ Implementation source-of-truth:
 - [`docs/adr/0002-release-governance.md`](./docs/adr/0002-release-governance.md) — release governance decision
 - [`docs/adr/0003-clean-architecture-monorepo.md`](./docs/adr/0003-clean-architecture-monorepo.md) — Clean Architecture + monorepo decision
 - [`docs/adr/0004-hackathon-agent-runtime-and-bonus-models.md`](./docs/adr/0004-hackathon-agent-runtime-and-bonus-models.md) — hackathon runtime/bonus architecture decision
+- [`docs/adr/0005-adk-graph-first-orchestration.md`](./docs/adr/0005-adk-graph-first-orchestration.md) — graph-first hybrid orchestration decision
 
 ## Current Repository State
 
