@@ -28,19 +28,20 @@ Read in this order:
 10. `docs/ADK_RUNTIME.md`
 11. `docs/ORCHESTRATION_PATTERNS.md`
 12. `docs/LONG_RUNNING_AGENT.md`
-13. `docs/SYSTEM_DESIGN.md`
-14. `docs/AGENT_ARCHITECTURE.md`
-15. `docs/DATA_SAFETY_EVALUATION.md`
-16. `docs/OPERATIONAL_UTILITY_EVALUATION.md`
-17. `docs/UI_UX_SPEC.md`
-18. `docs/UI_UX_HACKATHON_ADDENDUM.md`
-19. `docs/ARCHITECTURE_DIAGRAM.md`
-20. `docs/THIRD_PARTY_PROVENANCE.md`
-21. `docs/SUBMISSION_EVIDENCE.md`
-22. `docs/SUBMISSION_FREEZE.md`
-23. `docs/HACKATHON_RISK_REGISTER.md`
-24. `docs/IMPLEMENTATION_PLAN.md`
-25. relevant ADRs, especially ADR 0005 and ADR 0006.
+13. `docs/AUTONOMOUS_EFFECT_OUTBOX.md`
+14. `docs/SYSTEM_DESIGN.md`
+15. `docs/AGENT_ARCHITECTURE.md`
+16. `docs/DATA_SAFETY_EVALUATION.md`
+17. `docs/OPERATIONAL_UTILITY_EVALUATION.md`
+18. `docs/UI_UX_SPEC.md`
+19. `docs/UI_UX_HACKATHON_ADDENDUM.md`
+20. `docs/ARCHITECTURE_DIAGRAM.md`
+21. `docs/THIRD_PARTY_PROVENANCE.md`
+22. `docs/SUBMISSION_EVIDENCE.md`
+23. `docs/SUBMISSION_FREEZE.md`
+24. `docs/HACKATHON_RISK_REGISTER.md`
+25. `docs/IMPLEMENTATION_PLAN.md`
+26. relevant ADRs, especially ADRs 0005–0008.
 
 Also read `AGENTS.md` and `CHANGELOG.md` before release-oriented work.
 
@@ -55,12 +56,12 @@ THIS FILE + TASKMASTER_ZERO_HUMAN_AUTONOMY
         ↓
 PRD / Clean Architecture
         ↓
-Hackathon / ADK / orchestration / long-running contracts
+Hackathon / ADK / orchestration / long-running / effect-outbox contracts
         ↓
 Evaluation / UI / implementation documents
 ```
 
-**Important amendment:** `docs/TASKMASTER_ZERO_HUMAN_AUTONOMY.md` supersedes older v0.1 wording that required human approval or clarification inside the canonical hackathon hero flow. Human-governed consequential clinical/public-health lanes remain valid future/real-world architecture, but the hero A1 coordination workflow is zero-human.
+**Important amendment:** `docs/TASKMASTER_ZERO_HUMAN_AUTONOMY.md` and ADR 0007 supersede older v0.1 wording that required human approval or clarification inside the canonical hackathon hero flow. Human-governed consequential clinical/public-health lanes remain valid future/real-world architecture, but the hero A1 coordination workflow is zero-human.
 
 ---
 
@@ -93,7 +94,7 @@ synthetic AMR signal
 → deterministic validation / bounded auto repair
 → deterministic A1 autonomy policy
 → freshness
-→ idempotency
+→ transactional ActionIntent + idempotency
 → real authorized external action
 → machine acknowledgement
 ```
@@ -160,7 +161,7 @@ Before A1 execution, deterministic application logic must verify:
 7. action class is A1;
 8. destination allow-listed/authorized;
 9. current state passes freshness validation;
-10. idempotency reservation acquired.
+10. a durable `ActionIntent` is prepared with stable idempotency semantics.
 
 Any failure → safe abstention/recompute. Never ask Gemini to “decide it is safe enough.”
 
@@ -217,7 +218,7 @@ services/core/ngabo/
 - action-class policy;
 - freshness/material-change policy;
 - package/claim validation contracts;
-- idempotency policy;
+- action-intent/idempotency policy;
 - application workflows/ports.
 
 ### Infrastructure owns
@@ -280,7 +281,7 @@ Governing rule:
 - action classification;
 - allow-list authorization;
 - freshness;
-- idempotency;
+- action-intent/idempotency policy;
 - acknowledgement state transition.
 
 ### Gemini
@@ -289,7 +290,7 @@ Governing rule:
 - bounded evidence intent where ambiguous;
 - source-grounded hypothesis/synthesis;
 - structured package drafting;
-- bounded repair from deterministic validator errors;
+- bounded repair from validator errors;
 - stop with uncertainty when evidence insufficient.
 
 Gemini must not own fixed policy merely to make the workflow look agentic.
@@ -380,14 +381,35 @@ Freshness protection applies to **all external A1 action**, not only human-appro
 
 ---
 
-## 14. Real External Action / Ack
+## 14. Exactly-Once Intent / External Effect Safety
+
+Read `docs/AUTONOMOUS_EFFECT_OUTBOX.md` and ADR 0008.
+
+Every autonomous A1 side effect must use a durable immutable `ActionIntent` prepared after current-state/A1/freshness validation.
+
+Required properties:
+
+- stable idempotency key for the logical effect;
+- immutable payload hash/version binding;
+- dispatcher lease/CAS or equivalent single-owner semantics;
+- receiver/provider deduplication where supported;
+- stale unsent intents cancelled;
+- delivery result persisted;
+- acknowledgement replay idempotent.
+
+Do not claim mathematically universal exactly-once delivery. The contract is **exactly-once Ngabo intent plus idempotent external execution**.
+
+---
+
+## 15. Real External Action / Ack
 
 Hosted/filmed hero must perform a real authorized A1 action outside Ngabo.
 
 Preferred:
 
 ```text
-NotificationPort
+ActionIntent
+→ NotificationPort
 → external test/sandbox endpoint
 → delivery ID/result
 → machine acknowledgement callback/event
@@ -400,7 +422,7 @@ Never contact real hospital/person without explicit authorization.
 
 ---
 
-## 15. Observability
+## 16. Observability
 
 Capture safe metadata:
 
@@ -414,6 +436,7 @@ branch_id/join_id
 agent_session_id/invocation_id/run_id
 model_name
 incident_version/package_version
+action_intent_id
 action_class
 autonomy_policy_result
 freshness_result
@@ -428,7 +451,7 @@ No private chain-of-thought.
 
 ---
 
-## 16. Evaluation
+## 17. Evaluation
 
 ### Hero assertions
 
@@ -438,6 +461,7 @@ No private chain-of-thought.
 0 human steps
 0 clarifications
 0 approval clicks
+1 logical ActionIntent
 1 external effect
 1 machine acknowledgement
 ```
@@ -456,14 +480,16 @@ Test:
 - invalid package → repair/stop;
 - repair budget exhaustion → stop;
 - stale state → recompute;
-- duplicate event/retry → one effect;
+- duplicate event/retry → one logical intent/effect;
+- crash after external success → same idempotency key reconciles safely;
+- acknowledgement replay → idempotent;
 - stale session conflict → canonical state wins.
 
 Create real public `EVALUATION.md` before submission.
 
 ---
 
-## 17. UI Contract
+## 18. UI Contract
 
 Read `docs/UI_UX_SPEC.md` + `docs/UI_UX_HACKATHON_ADDENDUM.md`.
 
@@ -474,7 +500,7 @@ Hero UI must show:
 - bounded agent/evidence stages;
 - validation/repair;
 - A1 autonomy-policy card;
-- freshness/idempotency;
+- freshness/action-intent/idempotency;
 - real delivery;
 - machine acknowledgement;
 - zero-human metrics.
@@ -483,7 +509,7 @@ Do not put chat, clarification or approval click in the hero sequence.
 
 ---
 
-## 18. BYOF / Operational Utility
+## 19. BYOF / Operational Utility
 
 Use `docs/BYOF_FRICTION.md`.
 
@@ -495,7 +521,7 @@ Do not manufacture hospital time-saved or clinical benefit claims.
 
 ---
 
-## 19. Cloud / Security / Cost
+## 20. Cloud / Security / Cost
 
 Required:
 
@@ -513,7 +539,7 @@ Required:
 
 ---
 
-## 20. Submission Discipline
+## 21. Submission Discipline
 
 Required docs:
 
@@ -529,7 +555,7 @@ Freeze `main`, tag, Cloud Run revisions, video and claim ledger for judging.
 
 ---
 
-## 21. Implementation Order
+## 22. Implementation Order
 
 1. scaffold/domain/state/action policy;
 2. complete hero synthetic data;
@@ -540,7 +566,7 @@ Freeze `main`, tag, Cloud Run revisions, video and claim ledger for judging.
 7. ADK workflow/fan-out/join;
 8. Gemini triage/evidence/synthesis;
 9. deterministic validation + auto repair;
-10. A1 policy + freshness + idempotency;
+10. A1 policy + freshness + ActionIntent/outbox/idempotency;
 11. real external action + machine ack;
 12. zero-human backend E2E;
 13. UI/autonomy proof;
@@ -552,7 +578,7 @@ Freeze `main`, tag, Cloud Run revisions, video and claim ledger for judging.
 
 ---
 
-## 22. Scope Freeze
+## 23. Scope Freeze
 
 Until zero-human deployed hero is green, do not add:
 
@@ -569,7 +595,7 @@ Until zero-human deployed hero is green, do not add:
 
 ---
 
-## 23. Stop Conditions
+## 24. Stop Conditions
 
 Stop and surface the issue when:
 
@@ -580,17 +606,17 @@ Stop and surface the issue when:
 - hero path requires human clarification/approval;
 - someone proposes fabricating missing clinical data to keep zero-human flow;
 - action is not A1/allow-listed/authorized;
-- external side effect lacks idempotency;
+- external side effect lacks ActionIntent/idempotency semantics;
 - package can bypass validation;
 - a bonus threatens core reliability;
 - submission claim lacks evidence.
 
 ---
 
-## 24. Final Product Standard
+## 25. Final Product Standard
 
 A judge should be able to truthfully see:
 
-> **new AMR data arrived → deterministic logic detected a signal → Pub/Sub started Ngabo automatically → deterministic investigation work ran in parallel and joined → Gemini reasoned only where ambiguity existed → approved evidence was assembled → the package was deterministically validated and automatically repaired if necessary → a deterministic policy classified the action as safe A1 → freshness/idempotency passed → Ngabo executed a real authorized external action → a machine acknowledgement returned → the workflow completed with zero human intervention.**
+> **new AMR data arrived → deterministic logic detected a signal → Pub/Sub started Ngabo automatically → deterministic investigation work ran in parallel and joined → Gemini reasoned only where ambiguity existed → approved evidence was assembled → the package was deterministically validated and automatically repaired if necessary → deterministic policy classified the action as safe A1 → freshness passed → Ngabo committed one durable action intent → a real authorized external effect executed idempotently → a machine acknowledgement returned → the workflow completed with zero human intervention.**
 
 And the code/evals must make equally obvious that clinical/official A2/A3 actions are not autonomously permitted merely because the hero flow is fully autonomous.
