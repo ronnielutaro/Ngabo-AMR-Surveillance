@@ -2,7 +2,7 @@
 
 This file applies to AI coding agents working anywhere in this repository.
 
-Read `CLAUDE.md` first. `CLAUDE.md` is the root implementation contract; this file summarizes execution behavior, architecture, hackathon alignment, Git/release discipline, and stop conditions.
+Read `CLAUDE.md` first. `CLAUDE.md` is the root implementation contract; this file summarizes execution behavior, architecture, orchestration, hackathon alignment, Git/release discipline, and stop conditions.
 
 ---
 
@@ -16,6 +16,7 @@ Optimize for:
 
 - working asynchronous autonomy;
 - deterministic scientific logic;
+- **graph-first hybrid orchestration**;
 - explicit persistent state;
 - resumable/recoverable agent execution;
 - traceability and observability;
@@ -41,13 +42,14 @@ Before major implementation:
 6. `docs/CLEAN_ARCHITECTURE.md`
 7. `docs/HACKATHON_ALIGNMENT.md`
 8. `docs/ADK_RUNTIME.md`
-9. `docs/SYSTEM_DESIGN.md`
-10. `docs/AGENT_ARCHITECTURE.md`
-11. `docs/DATA_SAFETY_EVALUATION.md`
-12. `docs/UI_UX_SPEC.md`
-13. `docs/UI_UX_HACKATHON_ADDENDUM.md`
-14. `docs/IMPLEMENTATION_PLAN.md`
-15. relevant files under `docs/adr/`
+9. `docs/ORCHESTRATION_PATTERNS.md`
+10. `docs/SYSTEM_DESIGN.md`
+11. `docs/AGENT_ARCHITECTURE.md`
+12. `docs/DATA_SAFETY_EVALUATION.md`
+13. `docs/UI_UX_SPEC.md`
+14. `docs/UI_UX_HACKATHON_ADDENDUM.md`
+15. `docs/IMPLEMENTATION_PLAN.md`
+16. relevant files under `docs/adr/`, including ADR 0005 for orchestration work
 
 Consult `CHANGELOG.md` before release-oriented work.
 
@@ -91,8 +93,6 @@ Domain / Entities / Value Objects / Domain Services
 
 ### Backend boundaries
 
-Target package shape:
-
 ```text
 services/core/ngabo/
 ├── domain/
@@ -104,65 +104,29 @@ services/core/ngabo/
 
 #### `domain/`
 
-Owns:
-
-- entities;
-- value objects;
-- domain events;
-- incident state policy;
-- deterministic AMR/surveillance rules;
-- domain exceptions.
+Owns entities, value objects, domain events, incident-state policy, deterministic AMR/surveillance rules, and domain exceptions.
 
 Must not import FastAPI, Firestore, Pub/Sub, GCS, ADK, Gemini, Gemma-family models, notification SDKs, or other outer frameworks.
 
 #### `application/`
 
-Owns:
+Owns use cases, commands/queries, workflows, ports/contracts, application DTOs, agent-facing contracts, review/notification gating, and retry/resume policy.
 
-- use cases;
-- commands/queries;
-- workflows;
-- ports/contracts;
-- application DTOs;
-- agent-facing contracts;
-- review/notification gating;
-- retry/resume policy.
-
-May depend on `domain`.
-
-Must not instantiate Firestore, Pub/Sub, GCS, Gemini, ADK, EmbeddingGemma, MedGemma, or HTTP framework clients directly.
+May depend on `domain`. Must not instantiate outer clients directly.
 
 #### `interfaces/`
 
-Owns:
-
-- FastAPI request/response adaptation;
-- Pub/Sub/event-handler adaptation.
-
-Routes/handlers translate external input into application commands. They must not contain scientific/business logic.
+Owns FastAPI request/response adaptation and Pub/Sub/event-handler adaptation. Routes/handlers translate external input into application commands and must not contain scientific/business logic.
 
 #### `infrastructure/`
 
-Owns concrete adapters for:
-
-- Firestore;
-- GCS;
-- Pub/Sub;
-- Google ADK;
-- Gemini;
-- EmbeddingGemma;
-- optional MedGemma;
-- evidence retrieval;
-- notification providers;
-- logging/tracing/telemetry.
+Owns concrete adapters for Firestore, GCS, Pub/Sub, Google ADK graph/function/agent nodes, Gemini, EmbeddingGemma, optional MedGemma, evidence retrieval, notification providers, and logging/tracing/telemetry.
 
 Infrastructure implements ports defined inward.
 
 #### `bootstrap/`
 
-Owns composition/dependency wiring.
-
-Prefer explicit constructor dependency injection. Avoid hidden service-locator/global-singleton dependencies.
+Owns composition/dependency wiring. Prefer explicit constructor dependency injection.
 
 ### Architecture smell checks
 
@@ -174,12 +138,14 @@ application -> google.cloud.firestore
 application -> Gemini SDK
 application -> ADK SDK
 FastAPI route -> AMR signal calculation
-ADK wrapper -> raw Firestore + business logic
-ADK wrapper -> direct external notification
+ADK function node -> raw Firestore + business logic
+ADK agent tool -> direct external notification
 React component -> Firestore / PubSub / Gemini / ADK
 ```
 
-See `docs/CLEAN_ARCHITECTURE.md` and ADR 0003.
+ADK function nodes are orchestration adapters, not a new business layer.
+
+See `docs/CLEAN_ARCHITECTURE.md`, ADR 0003, and ADR 0005.
 
 ---
 
@@ -215,7 +181,7 @@ Rules:
 Ngabo v0.1 must actually use and visibly demonstrate:
 
 - `gemini-3.6-flash` (or a documented eligible fallback) through Gemini API;
-- Google ADK Python as the agent runtime;
+- Google ADK Python as the graph/agent runtime;
 - Cloud Run for deployed web/core services;
 - Firestore for durable workflow state;
 - Pub/Sub for asynchronous event-triggered processing;
@@ -227,7 +193,7 @@ Do not implement a local-only substitute and then merely list Google Cloud in th
 The canonical Taskmaster trigger is:
 
 ```text
-surveillance signal event -> agent starts automatically
+surveillance signal event -> ADK graph starts automatically
 ```
 
 Do not require a user chat prompt to start the investigation.
@@ -238,7 +204,11 @@ See `docs/HACKATHON_ALIGNMENT.md`.
 
 ## 7. Runtime Responsibility Boundary
 
-### Deterministic layer owns
+The governing rule is:
+
+> **Deterministic when the workflow is known; agentic when the decision is ambiguous; dynamic only when the workflow itself cannot reasonably be known in advance.**
+
+### Deterministic layer / function nodes own
 
 - ingest;
 - parsing;
@@ -249,22 +219,26 @@ See `docs/HACKATHON_ALIGNMENT.md`.
 - temporal/location windows;
 - baseline calculations;
 - signal scoring;
-- state transitions;
-- idempotency policy.
+- structural missing-field extraction;
+- fixed routing/state-transition policy;
+- idempotency policy;
+- joining typed deterministic results;
+- package post-generation validation.
 
-### Agentic layer owns
+### Gemini agent nodes own
 
-- investigation planning;
-- choosing approved tools;
-- gathering contextual evidence;
-- identifying missing information;
+- reasoning across joined deterministic findings;
+- deciding whether missing information is materially blocking;
+- bounded optional capability/evidence-topic selection;
+- contextual evidence intent;
 - asking targeted clarification;
 - evidence synthesis;
 - hypothesis generation with labels;
 - incident-package drafting;
-- bounded resumable investigation execution.
+- bounded resumable reasoning execution;
+- stopping when evidence is insufficient.
 
-### Human owns
+### Humans own
 
 - supplying material missing context when requested;
 - clinically/public-health consequential approval;
@@ -275,20 +249,47 @@ Never blur these boundaries.
 
 ---
 
-## 8. Google ADK Runtime Rules — Mandatory
+## 8. Google ADK Graph Runtime Rules — Mandatory
 
 ADK must provide real runtime value, not just satisfy a checklist.
 
+Core graph target:
+
+```text
+signal event
+   ↓
+context function node
+   ↓
+parallel deterministic fan-out
+   ├── profile comparison
+   ├── baseline summary
+   └── missing-field assessment
+   ↓
+join
+   ↓
+Gemini triage agent node
+   ↓
+evidence / clarification
+   ↓
+Gemini synthesis agent node
+   ↓
+deterministic package validation
+```
+
 Implement where supported/stable by the exact installed version:
 
-- typed bounded tools;
+- explicit graph/workflow orchestration;
+- deterministic function nodes;
+- parallel fan-out/join for independent read-only work;
+- deterministic routers for exhaustive rules;
+- bounded Gemini agent nodes for ambiguity;
 - persisted session/invocation/run identifiers;
 - resumable investigation execution;
 - targeted human-input pause/resume;
 - structured output validation;
 - ADK evaluation datasets/results;
-- tool/invocation tracing;
-- explicit step/tool/time/retry limits.
+- graph/node/invocation tracing;
+- explicit model/tool/time/retry limits.
 
 ### Firestore vs ADK state
 
@@ -297,7 +298,7 @@ Firestore
   = canonical Ngabo business/workflow state
 
 ADK resume/checkpoint state
-  = agent execution continuity
+  = graph/agent execution continuity
 
 Pub/Sub
   = asynchronous trigger/redelivery
@@ -307,20 +308,47 @@ Never make model conversation memory or an ADK session the only source of incide
 
 ### Retry/idempotency rule
 
-A resumed invocation or Pub/Sub redelivery may repeat work.
+A resumed graph or Pub/Sub redelivery may repeat work.
 
 Therefore:
 
-- read-only tools must be safe to repeat;
+- read-only nodes/tools must be safe to repeat;
 - state-changing operations require idempotency;
+- parallel branches must not mutate shared incident state unsafely;
 - consequential external action must not be an unrestricted agent tool;
 - notifications execute only through the post-approval application workflow.
 
-See `docs/ADK_RUNTIME.md`.
+See `docs/ADK_RUNTIME.md` and `docs/ORCHESTRATION_PATTERNS.md`.
 
 ---
 
-## 9. Runtime Agent Restrictions
+## 9. Routing and Runtime Restrictions
+
+### Deterministic routing
+
+If a routing rule is fixed and exhaustive, implement it in code/function-node policy, not a prompt.
+
+Examples:
+
+```text
+event type -> handler
+incident state -> legal transition
+duplicate event -> idempotency path
+validation pass/fail -> next path
+approval -> notification workflow
+rejection -> stop/close
+```
+
+### Agentic routing
+
+Use Gemini only for bounded ambiguous choices such as:
+
+- which optional evidence topic is relevant;
+- whether a missing value materially blocks synthesis;
+- whether an optional specialist capability adds value;
+- whether evidence is sufficient for a bounded hypothesis.
+
+### Runtime agent restrictions
 
 The Ngabo runtime agent must not:
 
@@ -332,12 +360,12 @@ The Ngabo runtime agent must not:
 - prescribe treatment;
 - claim an outbreak is confirmed;
 - fabricate citations;
-- silently ignore a critical tool failure;
+- silently ignore a critical deterministic/tool failure;
 - loop without configured bounds.
 
-Keep runtime tools narrow, typed, and auditable.
+Keep runtime capabilities narrow, typed, and auditable.
 
-An ADK tool should normally call an application use case/query rather than directly implementing domain calculations or database side effects.
+An ADK node/tool should normally call an application use case/query rather than directly implementing domain calculations or database side effects.
 
 ---
 
@@ -368,11 +396,21 @@ Rules:
 
 MedGemma is a gated stretch only.
 
-It may be added as a source-traceable evidence-interpretation tool only after core + deployment + evals + EmbeddingGemma are stable.
+Prefer a bounded/stateless source-traceable evidence-interpretation capability before creating a fully autonomous MedGemma sub-agent.
+
+It may be added only after core + deployment + evals + EmbeddingGemma are stable.
 
 It must not diagnose, prescribe, confirm outbreaks, or replace deterministic surveillance calculations.
 
 If evaluation does not show meaningful benefit, omit it.
+
+### Collaborative agents
+
+Do not create specialist-agent teams by default. Add them only if evaluation demonstrates a meaningful capability/traceability/reliability benefit. A coordinator should invoke only the relevant subset.
+
+### Dynamic workflows
+
+Runtime-generated workflow topology is deferred from the core v0.1 path. Do not add it merely because ADK supports it.
 
 ---
 
@@ -388,7 +426,9 @@ Implement the operational hierarchy from `docs/UI_UX_SPEC.md` plus `docs/UI_UX_H
 - incident detail;
 - deterministic signal explanation;
 - resistance-profile table;
-- agent/tool timeline;
+- graph/node timeline;
+- fan-out/join visibility where useful;
+- agent-stage visibility without chain-of-thought;
 - pause/resume/retry visibility;
 - targeted clarification;
 - structured package;
@@ -429,10 +469,11 @@ Future real-world datasets must follow `ROADMAP.md` and appropriate governance/a
 - event handlers are retry-safe;
 - duplicate Pub/Sub events do not create duplicate actions;
 - persisted audit events are append-only;
-- failed workflow steps produce visible failure state;
+- failed workflow/graph steps produce visible failure state;
 - event handlers are interface adapters, not business-logic containers;
-- persist enough agent execution metadata to correlate retries/resumes;
-- interruption/resume must not reset or falsify incident history.
+- persist enough graph/agent execution metadata to correlate retries/resumes;
+- interruption/resume must not reset or falsify incident history;
+- required parallel branch failure cannot be hidden by later model output.
 
 ---
 
@@ -469,11 +510,16 @@ event_id
 agent_session_id
 agent_invocation_id
 agent_run_id
-tool_name
-tool_status
-package_version
+graph_run_id
+node_name
+node_type
+branch_id
+join_id
 model_name
+package_version
 ```
+
+Expose safe execution facts such as graph start, function-node completion, parallel fan-out, branch completion, join completion, agent-node start, clarification/resume, and package validation.
 
 Use Cloud Logging and supported ADK/Cloud Trace/OpenTelemetry integration when stable.
 
@@ -493,6 +539,22 @@ Pure unit tests. No network, cloud, web framework, model, or ADK dependency.
 
 Use cases/workflows tested with fakes or in-memory port implementations.
 
+### Function nodes
+
+Verify deterministic behavior and typed failure semantics without Gemini.
+
+### Fan-out/join
+
+Verify:
+
+- branch completion order does not alter semantic result;
+- required branch failure produces a bounded visible failure;
+- retry does not duplicate unsafe side effects.
+
+### Deterministic routers
+
+Use table-driven tests for all fixed branches/fallbacks.
+
 ### Infrastructure
 
 Adapter integration/contract tests.
@@ -505,15 +567,16 @@ HTTP/event translation and contract tests.
 
 Evaluate observable final/trajectory behavior where supported:
 
-- tool choice;
-- required tool execution;
+- mandatory graph-node execution;
+- bounded optional capability choice;
 - clarification behavior;
 - no-evidence behavior;
-- failure handling;
+- required branch/tool failure;
 - prompt injection;
 - citation/isolate integrity;
-- loop limits;
-- resume/recovery.
+- model/tool limits;
+- resume/recovery;
+- no Gemini call for fixed routing decisions.
 
 ### End-to-end
 
@@ -521,10 +584,14 @@ Evaluate observable final/trajectory behavior where supported:
 upload
  -> detect
  -> event
- -> investigate
+ -> graph start
+ -> deterministic fan-out/join
+ -> Gemini triage
  -> clarify
  -> resume
- -> package
+ -> evidence
+ -> Gemini synthesis
+ -> deterministic package validation
  -> review
  -> real notify
  -> acknowledge
@@ -532,13 +599,13 @@ upload
 
 A passing E2E test does not replace domain/application/agent evaluations.
 
-Create public `EVALUATION.md` before submission.
+Create public `EVALUATION.md` before submission and record the canonical model/function/tool trajectory as engineering evidence.
 
 ---
 
 ## 17. Bonus / Submission Discipline
 
-The project may pursue hackathon bonuses only after the core is reliable.
+The project may pursue hackathon bonuses only after the core graph is reliable.
 
 Planned:
 
@@ -549,6 +616,7 @@ Planned:
 Gated:
 
 - MedGemma if useful and evaluated;
+- collaborative specialist agents only if evaluation justifies them;
 - multimodal AST/PDF draft extraction only after core demo freeze criteria are nearly satisfied.
 
 Never claim:
@@ -611,7 +679,8 @@ Do not shut down required judge access immediately after recording the demo.
 - structured logs;
 - configuration through settings/environment objects;
 - no secrets in code/docs;
-- boring/testable abstractions preferred over clever frameworks.
+- boring/testable abstractions preferred over clever frameworks;
+- do not create model calls where deterministic code is sufficient.
 
 ---
 
@@ -710,8 +779,8 @@ Examples:
 ```text
 feat(surveillance): add phenotype similarity detector
 fix(events): prevent duplicate incident creation
-test(eval): add prompt injection scenario
-docs(hackathon): define Taskmaster proof-of-action requirements
+test(eval): add graph branch failure scenario
+docs(architecture): adopt graph-first ADK orchestration
 ```
 
 Breaking change:
@@ -735,7 +804,7 @@ A PR should state:
 - tests/evals run;
 - API/schema/event impact;
 - safety/human-review impact;
-- architecture/dependency impact;
+- architecture/dependency/orchestration impact;
 - hackathon requirement/bonus impact if relevant;
 - docs/changelog impact;
 - ADR requirement if applicable.
@@ -763,7 +832,7 @@ pnpm test
 pnpm exec playwright test
 ```
 
-Where agent behavior changes, also run the relevant ADK eval set and compare against baseline where practical.
+Where graph/agent behavior changes, also run relevant ADK evals and compare against baseline where practical.
 
 Verify:
 
@@ -772,6 +841,8 @@ Verify:
 - SemVer/release impact considered;
 - changelog/docs updated when required;
 - Clean Architecture dependency rule preserved;
+- fixed routing is deterministic;
+- mandatory reproducible work is not delegated to Gemini;
 - monorepo/deployable boundaries preserved;
 - safety gate preserved;
 - hackathon technology/Taskmaster behavior not accidentally weakened.
@@ -813,15 +884,21 @@ deterministic validation
   ↓
 surveillance signal
   ↓
-Pub/Sub-triggered autonomous investigation
+Pub/Sub-triggered ADK graph
   ↓
-tool/evidence activity
+deterministic parallel fan-out
+  ↓
+join
+  ↓
+Gemini triage
   ↓
 targeted clarification
   ↓
 resume same incident
   ↓
-validated incident package
+approved evidence + synthesis
+  ↓
+deterministic package validation
   ↓
 human approval
   ↓
@@ -845,10 +922,14 @@ Stop and surface the issue instead of guessing when:
 - a requested feature violates the safety boundary;
 - a dependency requires replacing a frozen architecture decision;
 - domain/application code would need to depend directly on an outer vendor SDK;
+- an ADK node would need to bypass application/domain contracts;
+- a fixed deterministic rule is being moved into an LLM prompt without a measured reason;
+- a required deterministic branch failure would be hidden by model prose;
 - a change would split the monorepo or create a new deployable without an ADR;
 - available data cannot support a claimed calculation;
 - model output cannot be validated;
 - a proposed external action lacks authorization/credentials;
+- collaborative/dynamic complexity is being added without a concrete product need;
 - a bonus-model integration is being added only for points and threatens the core;
 - release/version action conflicts with `ROADMAP.md` or SemVer;
 - branch/merge action violates Gitflow without explicit authorization.
@@ -857,7 +938,7 @@ Stop and surface the issue instead of guessing when:
 
 ## 28. Scope Freeze
 
-Until the end-to-end v0.1 core works and passes acceptance tests, do not add:
+Until the end-to-end v0.1 graph works and passes acceptance tests, do not add:
 
 - pathogen genomics;
 - AMRFinderPlus;
@@ -870,12 +951,14 @@ Until the end-to-end v0.1 core works and passes acceptance tests, do not add:
 - real patient data;
 - production hospital connector;
 - MedGemma;
+- collaborative specialist-agent topology;
+- runtime-generated dynamic workflow topology;
 - multimodal AST/PDF ingestion.
 
-EmbeddingGemma begins only after the deployed core path is green.
+EmbeddingGemma begins only after the deployed core graph is green.
 
 ---
 
 ## 29. Success Criterion
 
-The coding agent succeeds when the repository truthfully demonstrates the PRD's Definition of Done **while preserving Clean Architecture, monorepo boundaries, safety, hackathon alignment, evaluated ADK behavior, and coherent versioned release history**—not when it generates the largest amount of code or the most model integrations.
+The coding agent succeeds when the repository truthfully demonstrates the PRD's Definition of Done **while preserving Clean Architecture, graph-first orchestration, monorepo boundaries, safety, hackathon alignment, evaluated ADK behavior, and coherent versioned release history**—not when it generates the largest amount of code, the most agent nodes, or the most model integrations.
