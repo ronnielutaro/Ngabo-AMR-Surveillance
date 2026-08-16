@@ -19,6 +19,8 @@ The project uses [Semantic Versioning](https://semver.org/) and [Conventional Co
 - ADR 0004 covering ADK runtime advantages, real external action, EmbeddingGemma, gated MedGemma, and post-core multimodal strategy.
 - `docs/ORCHESTRATION_PATTERNS.md` defining Ngabo's graph-first hybrid ADK orchestration model, deterministic/agentic routing rules, parallel fan-out/join, selective collaborative agents, and deferred dynamic topology.
 - ADR 0005 adopting graph-first hybrid orchestration for the v0.1 investigation path.
+- `docs/LONG_RUNNING_AGENT.md` defining canonical-vs-session state, context compaction boundaries, long-running resume semantics, artifact policy, local-only ADK Web, no-A2A-v0.1, optional Scheduler→Pub/Sub follow-up, and a deterministic pre-action freshness barrier.
+- ADR 0006 adopting long-running state, memory/context, freshness, and recovery boundaries.
 
 ### Changed
 
@@ -29,6 +31,9 @@ The project uses [Semantic Versioning](https://semver.org/) and [Conventional Co
 - Collaborative specialist agents are gated by evaluation rather than used by default; runtime-generated dynamic workflow topology is deferred from the core v0.1 path.
 - EmbeddingGemma remains the planned post-core semantic retrieval model over the approved evidence corpus; MedGemma remains a gated bounded specialist capability.
 - Cloud deployment acceptance explicitly includes scale-to-zero, max-instance caps, budget alerts, secret isolation, protected event endpoints, and judge-accessible hosting.
+- Human approval is now version-scoped: immediately before consequential external action, Ngabo must deterministically revalidate the incident/package/source-data state and return stale approvals to review instead of acting on changed information.
+- ADK session/checkpoint state and compacted execution context are explicitly non-authoritative; canonical AMR facts are rebuilt from application state after resume or long waits.
+- Unreviewed cross-incident agent memory is disabled as factual input to v0.1 investigations, and ADK Web is explicitly local-development only.
 
 ## [0.1.0] — Planned
 
@@ -49,7 +54,8 @@ synthetic AMR data
 → evidence-grounded synthesis
 → deterministic package validation
 → human approval
-→ real authorized notification/action
+→ deterministic pre-action freshness check
+→ real authorized notification/action only if approval is still current
 → acknowledgement
 → audit/observability trail
 ```
