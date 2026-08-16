@@ -2,17 +2,17 @@
 
 This file applies to AI coding agents working anywhere in this repository.
 
-Read `CLAUDE.md` first. `CLAUDE.md` contains the project-wide implementation contract; this file summarizes execution behavior and local invariants for coding agents.
+Read `CLAUDE.md` first. `CLAUDE.md` is the root implementation contract; this file summarizes execution behavior, architecture, Git/release discipline, and stop conditions.
 
 ---
 
-## Mission
+## 1. Mission
 
-Build Ngabo as a **safe, event-driven AMR incident-response system**.
+Build Ngabo as a **safe, event-driven AMR surveillance and incident-response system**.
 
-The current release target is the `0.1.x` hackathon MVP, but coding agents must preserve the longer product trajectory documented in `ROADMAP.md`.
+The current release target is `0.1.x`, but agents must preserve the longer trajectory in `ROADMAP.md`.
 
-Do not optimize for feature count. Optimize for:
+Optimize for:
 
 - working autonomy;
 - deterministic scientific logic;
@@ -20,12 +20,14 @@ Do not optimize for feature count. Optimize for:
 - traceability;
 - bounded clinical/public-health claims;
 - reproducibility;
-- maintainable release discipline;
-- a clear 4-minute demo for v0.1.
+- **Clean Architecture**;
+- **monorepo discipline**;
+- maintainable release history;
+- a clear 4-minute v0.1 demo.
 
 ---
 
-## Required Read Order
+## 2. Required Read Order
 
 Before major implementation:
 
@@ -33,17 +35,20 @@ Before major implementation:
 2. `ROADMAP.md`
 3. `CONTRIBUTING.md`
 4. `docs/PRD.md`
-5. `docs/SYSTEM_DESIGN.md`
-6. `docs/AGENT_ARCHITECTURE.md`
-7. `docs/DATA_SAFETY_EVALUATION.md`
-8. `docs/UI_UX_SPEC.md`
-9. `docs/IMPLEMENTATION_PLAN.md`
+5. `docs/TECH_STACK.md`
+6. `docs/CLEAN_ARCHITECTURE.md`
+7. `docs/SYSTEM_DESIGN.md`
+8. `docs/AGENT_ARCHITECTURE.md`
+9. `docs/DATA_SAFETY_EVALUATION.md`
+10. `docs/UI_UX_SPEC.md`
+11. `docs/IMPLEMENTATION_PLAN.md`
+12. relevant files under `docs/adr/`
 
-Also consult `CHANGELOG.md` before release-oriented work.
+Consult `CHANGELOG.md` before release-oriented work.
 
 ---
 
-## Product Identity vs Release Maturity
+## 3. Product Identity vs Release Maturity
 
 Do not describe Ngabo itself as merely “the prototype” in permanent product identity copy.
 
@@ -51,7 +56,7 @@ Preferred:
 
 > **Ngabo is an open-source AMR surveillance and incident-response system.**
 
-Then state maturity separately, for example:
+Then state maturity separately:
 
 > `v0.1.0` hackathon MVP in development.
 
@@ -59,7 +64,140 @@ Use `ROADMAP.md` as the source of truth for maturity stages.
 
 ---
 
-## Runtime Boundary
+## 4. Clean Architecture — Mandatory
+
+Ngabo uses **Clean Architecture**.
+
+The dependency rule is:
+
+```text
+Frameworks / Infrastructure
+          ↓
+Interfaces / Adapters
+          ↓
+Application / Use Cases / Ports
+          ↓
+Domain / Entities / Value Objects / Domain Services
+```
+
+**Dependencies point inward. Inner layers must not depend on outer framework/vendor implementations.**
+
+### Backend boundaries
+
+Target package shape:
+
+```text
+services/core/ngabo/
+├── domain/
+├── application/
+├── interfaces/
+├── infrastructure/
+└── bootstrap/
+```
+
+#### `domain/`
+
+Owns:
+
+- entities;
+- value objects;
+- domain events;
+- incident state policy;
+- deterministic AMR/surveillance rules;
+- domain exceptions.
+
+Must not import FastAPI, Firestore, Pub/Sub, GCS, ADK, Gemini, notification SDKs, or other outer frameworks.
+
+#### `application/`
+
+Owns:
+
+- use cases;
+- commands/queries;
+- workflows;
+- ports/contracts;
+- application DTOs;
+- agent-facing contracts.
+
+May depend on `domain`.
+
+Must not instantiate Firestore, Pub/Sub, GCS, Gemini, ADK, or HTTP framework clients directly.
+
+#### `interfaces/`
+
+Owns:
+
+- FastAPI request/response adaptation;
+- Pub/Sub/event-handler adaptation.
+
+Routes/handlers translate external input into application commands. They must not contain scientific/business logic.
+
+#### `infrastructure/`
+
+Owns concrete adapters for:
+
+- Firestore;
+- GCS;
+- Pub/Sub;
+- Google ADK;
+- Gemini;
+- evidence retrieval;
+- notification providers;
+- logging/telemetry.
+
+Infrastructure implements ports defined inward.
+
+#### `bootstrap/`
+
+Owns composition/dependency wiring.
+
+Prefer explicit constructor dependency injection. Avoid hidden service-locator/global-singleton dependencies.
+
+### Architecture smell checks
+
+Stop and fix the design if you find:
+
+```text
+domain -> FastAPI
+application -> google.cloud.firestore
+application -> Gemini SDK
+FastAPI route -> AMR signal calculation
+ADK wrapper -> raw Firestore + business logic
+React component -> Firestore / PubSub / Gemini
+```
+
+See `docs/CLEAN_ARCHITECTURE.md` and ADR 0003.
+
+---
+
+## 5. Monorepo — Mandatory
+
+Ngabo is implemented in **one repository**.
+
+```text
+ngabo/
+├── apps/web/               # Next.js deployable
+├── services/core/          # FastAPI/ADK deployable
+├── data/
+├── docs/
+├── infra/
+└── .github/
+```
+
+**Monorepo does not mean monolith.** `ngabo-web` and `ngabo-core` are independently deployable Cloud Run services.
+
+Rules:
+
+- do not split frontend/backend into separate repos without an ADR;
+- do not create a new deployable service casually;
+- Python dependencies stay scoped to `services/core`;
+- JS/TS workspace uses pnpm;
+- cross-package imports must respect Clean Architecture;
+- shared contracts need an explicit owner and dependency direction.
+
+---
+
+## 6. Runtime Responsibility Boundary
 
 ### Deterministic layer owns
 
@@ -73,7 +211,7 @@ Use `ROADMAP.md` as the source of truth for maturity stages.
 - baseline calculations;
 - signal scoring;
 - state transitions;
-- idempotency.
+- idempotency policy.
 
 ### Agentic layer owns
 
@@ -96,7 +234,7 @@ Never blur these boundaries.
 
 ---
 
-## Agent Runtime Restrictions
+## 7. Runtime Agent Restrictions
 
 The Ngabo runtime agent must not:
 
@@ -111,9 +249,11 @@ The Ngabo runtime agent must not:
 
 Keep runtime tools narrow, typed, and auditable.
 
+ADK/Gemini are infrastructure concerns. An ADK tool should normally call an application use case/query rather than directly implementing domain calculations or database side effects.
+
 ---
 
-## UI Restrictions
+## 8. UI Rules
 
 Do not build the core experience as a chat window.
 
@@ -133,9 +273,18 @@ Implement the operational hierarchy from `docs/UI_UX_SPEC.md`:
 
 Do not expose hidden model chain-of-thought.
 
+Frontend follows the Clean Architecture dependency philosophy:
+
+```text
+presentation -> application -> domain
+infrastructure implements outer API/SSE access
+```
+
+UI components must not call Firestore, Pub/Sub, Gemini, or backend cloud SDKs directly.
+
 ---
 
-## Data Rules
+## 9. Data Rules
 
 - synthetic demo data only for public v0.1;
 - every fixture declares that it is synthetic;
@@ -144,32 +293,33 @@ Do not expose hidden model chain-of-thought.
 - do not generate plausible-looking values to make a demo prettier;
 - keep raw import and normalized data logically distinct.
 
-Future real-world datasets must follow the governance and release-stage constraints in `ROADMAP.md`.
+Future real-world datasets must follow `ROADMAP.md` and appropriate governance/authorization.
 
 ---
 
-## Evidence Rules
+## 10. Evidence Rules
 
 - evidence corpus is curated for v0.1;
-- each source has source ID, title, publisher, URL, and version/date where possible;
+- every source has source ID, title, publisher, URL, and date/version where possible;
 - generated package may cite only retrieved source IDs;
 - “no source found” is an acceptable result;
 - fabricated guidance is not.
 
 ---
 
-## State / Event Rules
+## 11. State / Event Rules
 
 - Firestore is canonical operational state;
 - incident transitions are explicit;
 - event handlers are retry-safe;
 - duplicate Pub/Sub events do not create duplicate actions;
 - persisted audit events are append-only;
-- failed workflow steps produce visible failure state.
+- failed workflow steps produce visible failure state;
+- event handlers are interface adapters, not business-logic containers.
 
 ---
 
-## Coding Standards
+## 12. Coding Standards
 
 ### Python
 
@@ -178,7 +328,8 @@ Future real-world datasets must follow the governance and release-stage constrai
 - Pydantic v2
 - type annotations on public interfaces
 - pytest
-- keep domain logic independent of HTTP and cloud SDKs
+- domain/application code independent of HTTP/cloud/AI SDKs
+- ports defined inward, adapters implemented outward
 
 ### TypeScript
 
@@ -187,207 +338,190 @@ Future real-world datasets must follow the governance and release-stage constrai
 - shadcn/ui primitives where appropriate
 - avoid client-side reinterpretation of medical/scientific strings
 - Playwright for critical user journeys
+- behavioral client logic separated from presentation when meaningful
 
 ### General
 
 - small modules;
 - explicit dependencies;
+- constructor injection where practical;
 - no magic global state;
 - no swallowed exceptions;
 - structured logs;
-- configuration through environment/settings objects;
-- no secrets in code or docs.
+- configuration through settings/environment objects;
+- no secrets in code/docs;
+- boring/testable abstractions preferred over clever frameworks.
 
 ---
 
-## Gitflow — Mandatory Branch Discipline
+## 13. Testing by Architecture Layer
 
-Ngabo uses a **Gitflow-style workflow** adapted to GitHub.
+### Domain
 
-### Long-lived branches
+Pure unit tests. No network, cloud, web framework, model, or ADK dependency.
 
-- `main` — released / release-ready history;
-- `develop` — integration branch for the next release.
+### Application
 
-Once `develop` exists, feature work must not be committed directly to `main`.
+Use cases/workflows tested with fakes or in-memory port implementations.
 
-### Feature branches
+### Infrastructure
 
-Create from `develop`:
+Adapter integration/contract tests.
+
+### Interfaces
+
+HTTP/event translation and contract tests.
+
+### End-to-end
+
+```text
+upload
+ -> detect
+ -> investigate
+ -> clarify
+ -> package
+ -> review
+ -> notify
+ -> acknowledge
+```
+
+A passing end-to-end test does not replace domain/application tests.
+
+---
+
+## 14. Gitflow — Mandatory Branch Discipline
+
+Long-lived branches:
+
+```text
+main       released / release-ready history
+develop    integration for the next release
+```
+
+Feature work:
 
 ```text
 feature/<short-name>
 ```
 
-Merge through a PR into `develop`.
+Create from `develop`, merge through PR into `develop`.
 
-Examples:
-
-```text
-feature/ast-normalizer
-feature/incident-timeline
-feature/agent-clarification
-```
-
-### Release branches
-
-Create from `develop`:
+Release branches:
 
 ```text
 release/vX.Y.Z
 ```
 
-Release branches are for:
+Create from `develop`; use for final fixes, version metadata, changelog, docs, evaluation/hardening. Do not add new product scope.
 
-- final fixes;
-- version metadata;
-- changelog/release notes;
-- documentation;
-- final evaluation/hardening.
+Completed release:
 
-Do not introduce new product scope on a release branch.
+```text
+release/vX.Y.Z -> main -> tag vX.Y.Z
+                         ↓
+                 reconcile to develop
+```
 
-A completed release merges to `main`, receives tag `vX.Y.Z`, and is merged/reconciled back into `develop`.
-
-### Hotfix branches
-
-Create urgent release fixes from `main`:
+Urgent release fixes:
 
 ```text
 hotfix/vX.Y.Z
 ```
 
-Merge into both `main` and `develop`.
+Create from `main`; merge to both `main` and `develop`.
 
-See `CONTRIBUTING.md` and `ROADMAP.md` for the full workflow.
+Do not commit feature work directly to `main`.
 
 ---
 
-## Semantic Versioning — Mandatory
+## 15. Semantic Versioning — Mandatory
 
-Ngabo uses **Semantic Versioning 2.0.0**.
-
-Formal releases use:
+Ngabo uses Semantic Versioning 2.0.0:
 
 ```text
 MAJOR.MINOR.PATCH
 ```
 
-and Git tags:
+Tags:
 
 ```text
 vMAJOR.MINOR.PATCH
 ```
 
-During `0.y.z` initial development:
+During `0.y.z`:
 
 - bug fix → normally PATCH;
 - backward-compatible feature/release milestone → normally MINOR;
 - breaking change → explicitly marked and normally MINOR while pre-1.0;
-- **never automatically create `1.0.0`** solely because a breaking commit exists.
+- never automatically create `1.0.0` because a breaking commit exists.
 
 `1.0.0` is the deliberate production-readiness milestone defined in `ROADMAP.md`.
 
-Do not mutate an existing released tag/version; create a new release.
-
 ---
 
-## Conventional Commits — Mandatory
+## 16. Conventional Commits — Mandatory
 
-All commits must follow **Conventional Commits 1.0.0**:
+All commits use:
 
 ```text
 <type>[optional scope]: <description>
 ```
 
-Allowed/recommended types:
+Recommended types:
 
-- `feat`
-- `fix`
-- `docs`
-- `test`
-- `refactor`
-- `perf`
-- `build`
-- `ci`
-- `chore`
-- `revert`
+```text
+feat fix docs test refactor perf build ci chore revert
+```
 
 Recommended scopes:
 
-- `web`
-- `core`
-- `surveillance`
-- `agent`
-- `evidence`
-- `events`
-- `data`
-- `eval`
-- `infra`
-- `docs`
-- `release`
+```text
+web core surveillance agent evidence events data eval infra docs release architecture
+```
 
 Examples:
 
 ```text
-feat(agent): add clarification resume workflow
+feat(surveillance): add phenotype similarity detector
 fix(events): prevent duplicate incident creation
 test(eval): add prompt injection scenario
-docs(roadmap): clarify pilot exit criteria
+docs(architecture): define clean architecture boundaries
 ```
 
-Breaking changes must use `!` and/or a `BREAKING CHANGE:` footer:
+Breaking change:
 
 ```text
 feat(events)!: revise surveillance signal schema
 ```
 
-Coding agents must not create vague messages such as:
-
-```text
-update stuff
-fix
-changes
-wip
-```
-
-unless the user explicitly requests a temporary local commit strategy that will be cleaned before merge.
+Do not leave vague merge history such as `update stuff`, `wip`, or `changes`.
 
 ---
 
-## Pull Request Discipline
+## 17. PR / Changelog Discipline
 
-Substantive work should be merged through PRs.
+Substantive work should merge through PRs.
 
 A PR should state:
 
 - scope;
 - reason;
 - tests run;
-- public API/schema/event impact;
+- API/schema/event impact;
 - safety/human-review impact;
-- documentation impact;
+- architecture/dependency impact;
+- docs/changelog impact;
 - ADR requirement if applicable.
 
 Do not merge knowingly failing required tests.
 
----
-
-## Changelog Discipline
-
-Maintain `CHANGELOG.md`.
-
-User/operator-visible changes should enter `Unreleased` during development and move into the appropriate version section during release preparation.
-
-Do not generate a changelog that merely dumps commit hashes; summarize meaningful behavior changes.
+Maintain `CHANGELOG.md`; summarize meaningful user/operator-visible changes under `Unreleased` during development.
 
 ---
 
-## Before Completing Any Task
+## 18. Before Completing Any Task
 
-Run the checks appropriate to the changed surface.
-
-Expected eventual commands may include:
+Run checks appropriate to the changed surface. Expected eventual commands include:
 
 ```bash
 # Python
@@ -402,33 +536,18 @@ pnpm test
 pnpm exec playwright test
 ```
 
-If the repository uses different finalized commands after scaffolding, update README/CLAUDE.md rather than silently diverging.
+Also verify:
 
-Before a commit or PR, also verify:
-
-- branch follows Gitflow naming/purpose;
-- commit message follows Conventional Commits;
-- release impact is compatible with SemVer policy;
-- changelog/docs are updated when required.
-
----
-
-## Commit / Change Discipline
-
-For each milestone:
-
-- keep changes focused;
-- avoid mass formatting unrelated files;
-- do not rename established product concepts casually;
-- update docs when public contracts change;
-- create ADR for material architecture changes;
-- do not introduce stretch features before core acceptance criteria are green.
-
-One commit should represent one coherent purpose where practical.
+- branch follows Gitflow;
+- commit follows Conventional Commits;
+- SemVer/release impact considered;
+- changelog/docs updated when required;
+- Clean Architecture dependency rule preserved;
+- monorepo/deployable boundaries preserved.
 
 ---
 
-## Product Vocabulary
+## 19. Product Vocabulary
 
 Preferred:
 
@@ -450,11 +569,11 @@ Avoid autonomous factual use of:
 
 ---
 
-## Primary Demo Scenario
+## 20. Primary Demo Scenario
 
-The canonical v0.1 demo scenario is a synthetic neonatal-unit *Klebsiella pneumoniae* resistance-pattern cluster with one intentionally missing metadata field.
+The canonical v0.1 demo is a synthetic neonatal-unit *Klebsiella pneumoniae* resistance-pattern cluster with one intentionally missing metadata field.
 
-The system must demonstrate:
+It must demonstrate:
 
 ```text
 import
@@ -478,26 +597,28 @@ notification
 acknowledgement
 ```
 
-Do not replace the real path with canned UI state.
+Do not replace the real path with canned final-state UI.
 
 ---
 
-## Stop Conditions
+## 21. Stop Conditions
 
 Stop and surface the issue instead of guessing when:
 
-- docs contradict each other materially;
+- docs materially contradict each other;
 - a requested feature violates the safety boundary;
 - a dependency requires replacing a frozen architecture decision;
-- the available data cannot support a claimed calculation;
-- a model output cannot be validated;
-- a third-party integration would require credentials/permissions not available;
-- requested release/version action conflicts with `ROADMAP.md` or SemVer policy;
-- a branch/merge request would violate Gitflow and the user has not explicitly authorized an exception.
+- domain/application code would need to depend directly on an outer vendor SDK;
+- a change would split the monorepo or create a new deployable without an ADR;
+- available data cannot support a claimed calculation;
+- model output cannot be validated;
+- third-party integration requires unavailable credentials/permissions;
+- release/version action conflicts with `ROADMAP.md` or SemVer;
+- branch/merge action violates Gitflow without explicit authorization.
 
 ---
 
-## Scope Freeze
+## 22. Scope Freeze
 
 Until the end-to-end v0.1 core works and passes acceptance tests, do not add:
 
@@ -514,6 +635,6 @@ Until the end-to-end v0.1 core works and passes acceptance tests, do not add:
 
 ---
 
-## Success Criterion
+## 23. Success Criterion
 
-The coding agent has succeeded when the repository truthfully demonstrates the PRD's Definition of Done **and** leaves behind a coherent versioned release history—not when it has generated the largest amount of code.
+The coding agent succeeds when the repository truthfully demonstrates the PRD's Definition of Done **while preserving Clean Architecture, monorepo boundaries, safety, and coherent versioned release history**—not when it generates the largest amount of code.

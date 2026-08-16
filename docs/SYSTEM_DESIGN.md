@@ -1,8 +1,9 @@
 # Ngabo — System Design
 
-**Version:** 0.1  
+**Version:** 0.2  
 **Date:** 2026-08-16  
-**Status:** Hackathon MVP system design
+**Status:** Hackathon MVP system design  
+**Architecture:** Clean Architecture in a monorepo
 
 ## 1. Design Objective
 
@@ -10,9 +11,24 @@ Build the smallest architecture that convincingly demonstrates:
 
 > **event-driven AMR surveillance → autonomous investigation → human-reviewed response → observable action**
 
-while preserving deterministic scientific logic and an auditable workflow.
+while preserving deterministic scientific logic, an auditable workflow, and strict Clean Architecture dependency boundaries.
 
-## 2. Context
+See `docs/CLEAN_ARCHITECTURE.md` for the implementation-level dependency contract.
+
+## 2. Architectural Principles
+
+Ngabo follows these system-wide rules:
+
+1. **Clean Architecture:** dependencies point inward toward domain/application policy.
+2. **Monorepo:** frontend, backend, data, infra, docs, tests, and release governance share one repository.
+3. **Independent deployables:** monorepo does not collapse `ngabo-web` and `ngabo-core` into one runtime.
+4. **Deterministic scientific core:** surveillance calculations remain ordinary reproducible code.
+5. **Agentic ambiguity only:** Gemini/ADK handle investigation planning, context, clarification, evidence synthesis, and coordination.
+6. **Ports/adapters:** Firestore, Pub/Sub, GCS, ADK, Gemini, and notifications are outer implementations.
+7. **Persisted workflow:** Firestore is canonical operational state.
+8. **Bounded autonomy:** human approval gates consequential escalation.
+
+## 3. System Context
 
 ```mermaid
 flowchart LR
@@ -38,7 +54,73 @@ flowchart LR
     C --> N
 ```
 
-## 3. Cloud Deployment
+## 4. Clean Architecture View
+
+```mermaid
+flowchart TB
+    subgraph Outer[Frameworks / Infrastructure]
+        FastAPI[FastAPI]
+        Firestore[Firestore]
+        PubSub[Pub/Sub]
+        GCS[Cloud Storage]
+        ADK[Google ADK / Gemini]
+        Notify[Notification Providers]
+    end
+
+    subgraph Interfaces[Interfaces / Adapters]
+        HTTP[HTTP Controllers]
+        EventHandlers[Event Handlers]
+        InfraAdapters[Repository / Messaging / AI Adapters]
+    end
+
+    subgraph Application[Application Layer]
+        UseCases[Use Cases]
+        Workflows[Incident / Investigation Workflows]
+        Ports[Ports / Contracts]
+    end
+
+    subgraph Domain[Domain Layer]
+        Entities[Entities / Value Objects]
+        Rules[AMR / Surveillance Rules]
+        State[Incident State Policy]
+    end
+
+    FastAPI --> HTTP
+    PubSub --> EventHandlers
+    Firestore --> InfraAdapters
+    GCS --> InfraAdapters
+    ADK --> InfraAdapters
+    Notify --> InfraAdapters
+
+    HTTP --> UseCases
+    EventHandlers --> UseCases
+    InfraAdapters --> Ports
+    UseCases --> Entities
+    Workflows --> Rules
+    Ports --> Domain
+```
+
+The diagram expresses **source-code dependency direction**, not runtime data flow. Inner layers never import outer frameworks/vendors.
+
+## 5. Monorepo / Deployment View
+
+```text
+repository
+├── apps/web                  Next.js source
+├── services/core             Python/FastAPI/ADK source
+├── data                      synthetic data, schemas, guidance
+├── docs                      product, architecture, ADR, release docs
+├── infra                     deployment/configuration
+└── .github                   CI/repository automation
+
+runtime
+├── Cloud Run: ngabo-web
+└── Cloud Run: ngabo-core
+```
+
+**One repository; two primary deployables.** Additional deployables require a justified architecture decision.
+
+## 6. Cloud Deployment
 
 ```mermaid
 flowchart TD
@@ -48,20 +130,61 @@ flowchart TD
     Core --> DB[(Firestore)]
     Core --> PS[Pub/Sub]
     PS --> Core
-    Core --> Gemini[Gemini API / ADK]
+    Core --> Gemini[Gemini API / Google ADK]
     Core --> Logs[Cloud Logging]
-    Core --> Notify[Email/Webhook Adapter]
+    Core --> Notify[Email/Webhook/Demo Adapter]
 ```
 
 ### MVP deployment principle
 
-Use one backend deployment but clean internal modules. Split services later only if real scale/fault-isolation requires it.
+Use one backend deployment with clean internal layers. Split services later only when real scale, fault isolation, or product boundaries justify the operational cost.
 
-## 4. Core Entities
+## 7. Backend Package Boundaries
+
+```text
+services/core/ngabo/
+├── domain/
+│   ├── entities/
+│   ├── value_objects/
+│   ├── enums/
+│   ├── events/
+│   ├── exceptions/
+│   └── services/surveillance/
+├── application/
+│   ├── use_cases/
+│   ├── workflows/
+│   ├── commands/
+│   ├── queries/
+│   ├── dto/
+│   ├── ports/
+│   └── agent_contracts/
+├── interfaces/
+│   ├── api/
+│   └── events/
+├── infrastructure/
+│   ├── persistence/firestore/
+│   ├── storage/gcs/
+│   ├── messaging/pubsub/
+│   ├── ai/gemini/
+│   ├── ai/adk/
+│   ├── evidence/
+│   └── notifications/
+└── bootstrap/
+```
+
+### Layer responsibilities
+
+**Domain** — AMR/surveillance entities, value objects, rules, state policy, pure deterministic services.  
+**Application** — use cases, workflows, commands/queries, ports, agent-facing contracts.  
+**Interfaces** — HTTP and event translation into application commands.  
+**Infrastructure** — Firestore/GCS/PubSub/Gemini/ADK/notification implementations.  
+**Bootstrap** — composition root and dependency wiring.
+
+## 8. Core Domain Entities
 
 ### ImportBatch
 - ID
-- raw file URI
+- raw file URI reference
 - SHA-256
 - status
 - received time
@@ -84,65 +207,80 @@ Append-only audit event.
 Approved guidance/reference metadata.
 
 ### Clarification
-Question + human answer.
+Question + human answer/provenance.
 
 ### Notification
 Outbound action + delivery/ack state.
 
-## 5. Import Sequence
+These domain concepts must remain meaningful without knowing which database, web framework, or LLM provider is used.
+
+## 9. Import Sequence
 
 ```mermaid
 sequenceDiagram
     actor User
     participant UI
-    participant API
-    participant GCS
-    participant DB as Firestore
-    participant Bus as Pub/Sub
+    participant API as HTTP Interface
+    participant App as Import Use Case
+    participant Store as RawFileStore Port
+    participant Repo as ImportRepository Port
+    participant Bus as EventPublisher Port
 
     User->>UI: Upload CSV
     UI->>API: POST /imports
-    API->>GCS: Store immutable raw file
-    API->>DB: Create ImportBatch
-    API->>Bus: lab.import.received
+    API->>App: ImportLabData command
+    App->>Store: Save immutable raw file
+    App->>Repo: Create ImportBatch
+    App->>Bus: lab.import.received
+    App-->>API: import_id
     API-->>UI: import_id
 ```
 
-## 6. Detection Sequence
+At runtime, infrastructure adapters implement the ports with GCS, Firestore, and Pub/Sub.
+
+## 10. Normalization + Detection Sequence
 
 ```mermaid
 sequenceDiagram
-    participant Bus as Pub/Sub
-    participant Core
-    participant DB as Firestore
+    participant Bus as Pub/Sub Adapter
+    participant Handler as Event Interface
+    participant App as AnalyzeImport Use Case
+    participant Domain as Deterministic Surveillance
+    participant Repo as Repository Ports
+    participant Events as EventPublisher Port
 
-    Bus->>Core: lab.import.received
-    Core->>Core: Parse + validate + normalize
-    Core->>DB: Persist isolates + validation
-    Core->>Core: Run surveillance detector
+    Bus->>Handler: lab.import.received
+    Handler->>App: AnalyzeImport command
+    App->>Domain: Parse/validate/normalize through deterministic services
+    App->>Repo: Persist normalized isolates + validation
+    App->>Domain: Run surveillance detector
 
     alt suspicious pattern
-        Core->>DB: Persist signal
-        Core->>Bus: surveillance.signal.detected
+        App->>Repo: Persist SurveillanceSignal
+        App->>Events: surveillance.signal.detected
     else no signal
-        Core->>DB: Mark analyzed
+        App->>Repo: Mark import analyzed
     end
 ```
 
-## 7. Agent Investigation
+The event handler contains no AMR/scientific logic.
+
+## 11. Agent Investigation Sequence
 
 ```mermaid
 sequenceDiagram
-    participant Bus as Pub/Sub
-    participant Core
-    participant Agent as Ngabo Agent
-    participant Tools
-    participant DB as Firestore
+    participant Bus as Pub/Sub Adapter
+    participant Handler as Event Interface
+    participant App as Investigation Workflow
+    participant Agent as AgentInvestigationPort
+    participant Tools as Application/Domain Tools
+    participant Repo as Repository Ports
     participant UI
 
-    Bus->>Core: surveillance.signal.detected
-    Core->>DB: Create Incident
-    Core->>Agent: Start investigation
+    Bus->>Handler: surveillance.signal.detected
+    Handler->>App: StartInvestigation command
+    App->>Repo: Create Incident
+    App->>Agent: Investigate incident
     Agent->>Tools: get_incident_context
     Agent->>Tools: compare_resistance_profiles
     Agent->>Tools: get_baseline_summary
@@ -150,42 +288,46 @@ sequenceDiagram
     Agent->>Tools: get_missing_fields
 
     alt clarification needed
-        Agent->>DB: Save question
-        Core->>DB: WAITING_FOR_CLARIFICATION
-        UI->>Core: Submit answer
-        Core->>Agent: Resume
+        Agent->>App: Request clarification
+        App->>Repo: WAITING_FOR_CLARIFICATION
+        UI->>App: Submit clarification
+        App->>Agent: Resume investigation
     end
 
-    Agent->>Tools: prepare_incident_package
-    Core->>DB: WAITING_FOR_REVIEW
+    Agent->>App: Structured incident package
+    App->>Repo: WAITING_FOR_REVIEW
 ```
 
-## 8. Human Review + Action
+Google ADK/Gemini are concrete infrastructure implementations behind the agent/application contract. They do not become the source of domain truth.
+
+## 12. Human Review + Action Sequence
 
 ```mermaid
 sequenceDiagram
     actor Reviewer
     participant UI
-    participant API
-    participant DB as Firestore
-    participant Bus as Pub/Sub
-    participant Notify
+    participant API as HTTP Interface
+    participant App as Review Use Case
+    participant Repo as Repository Port
+    participant Events as EventPublisher Port
+    participant Notify as Notification Port
 
     Reviewer->>UI: Review package
-    UI->>API: Approve / Reject
+    UI->>API: Approve / Reject / More Info
+    API->>App: ReviewIncident command
 
     alt approved
-        API->>DB: Record approval
-        API->>Bus: incident.notification.requested
-        Bus->>API: Event delivery
-        API->>Notify: Send alert
-        API->>DB: Store result
+        App->>Repo: Record approval
+        App->>Events: incident.notification.requested
+        App->>Notify: via later event workflow
     else rejected
-        API->>DB: Record rejection
+        App->>Repo: Record rejection
     end
 ```
 
-## 9. Incident State Machine
+The concrete notification provider is an infrastructure adapter.
+
+## 13. Incident State Machine
 
 ```mermaid
 stateDiagram-v2
@@ -207,32 +349,38 @@ stateDiagram-v2
     REJECTED --> CLOSED
 ```
 
-## 10. Idempotency
+The state-transition policy belongs in the domain/application core, not in FastAPI routes, React components, or Firestore adapters.
+
+## 14. Idempotency
 
 Pub/Sub may redeliver events.
 
 Every event has a unique `event_id`.
 
 Before a state-changing side effect:
-1. check `processed_events/{event_id}`;
-2. perform transition/action transactionally where possible;
-3. record processed marker.
 
-Notifications use an idempotency key:
+1. application workflow checks/uses the idempotency contract;
+2. infrastructure persistence performs the required transactional operation where possible;
+3. processed-event state is persisted;
+4. side effect is not repeated on redelivery.
+
+Notifications use an idempotency key such as:
 
 ```text
 incident_id + action_type + package_version
 ```
 
-## 11. Concurrency
+Idempotency policy belongs inward; Firestore transaction mechanics are infrastructure details.
+
+## 15. Concurrency
 
 Incident has numeric `version`.
 
-Updates require expected version and valid state transition. Conflicts return `409`.
+Updates require expected version and valid state transition. Conflicts return `409` at the HTTP boundary.
 
 This prevents a reviewer approval racing against a still-changing package.
 
-## 12. Data Integrity
+## 16. Data Integrity
 
 ### Immutable
 - raw import file;
@@ -241,15 +389,17 @@ This prevents a reviewer approval racing against a still-changing package.
 - incident event history;
 - generated package versions.
 
-### Explicitly mutable
+### Explicitly mutable through use cases
 - current incident state;
 - human clarification;
 - review decision;
 - acknowledgement.
 
-The agent cannot mutate immutable facts.
+The agent cannot mutate immutable source facts.
 
-## 13. API Surface
+## 17. API Surface
+
+HTTP interfaces expose application use cases.
 
 Imports:
 - `POST /api/v1/imports`
@@ -267,18 +417,45 @@ Demo:
 - `POST /api/v1/demo/reset`
 - `POST /api/v1/demo/run-seeded-scenario`
 
-Private event endpoints:
+Private event interfaces:
 - `/internal/events/imports`
 - `/internal/events/surveillance`
 - `/internal/events/incidents`
 
-## 14. Live UI
+Routes/controllers should remain thin transport adapters.
+
+## 18. Frontend Architecture
+
+```text
+apps/web/src/
+├── domain/
+├── application/
+├── infrastructure/
+│   ├── api/
+│   └── streaming/
+├── presentation/
+└── app/
+```
+
+The Next.js application follows the dependency philosophy pragmatically:
+
+- React/presentation renders state;
+- application owns meaningful client-side workflow behavior;
+- API/SSE access lives in infrastructure;
+- UI never calls GCP/model infrastructure directly;
+- Next.js `app/` is route/composition wiring.
+
+See `docs/UI_UX_SPEC.md` for the product/UI contract.
+
+## 19. Live UI
 
 Preferred: Server-Sent Events for incident state/tool events.
 
-Fallback: short polling if SSE costs implementation stability.
+Fallback: short polling if SSE threatens implementation stability.
 
-## 15. Required Failure Behaviors
+Live-update infrastructure remains replaceable and does not change incident domain state semantics.
+
+## 20. Required Failure Behaviors
 
 | Failure | Behavior |
 |---|---|
@@ -294,9 +471,12 @@ Fallback: short polling if SSE costs implementation stability.
 | notification failure | retryable state |
 | app restart | resume from persisted state |
 
-## 16. Observability
+Errors are translated at outer interfaces; inner layers use domain/application error types rather than framework-specific HTTP exceptions.
+
+## 21. Observability
 
 Every log/event carries where relevant:
+
 - correlation ID;
 - incident ID;
 - event ID;
@@ -304,6 +484,7 @@ Every log/event carries where relevant:
 - tool name.
 
 Track:
+
 - import time;
 - normalization time;
 - detector time;
@@ -312,20 +493,66 @@ Track:
 - package generation time;
 - notification latency.
 
-## 17. Evolution Path
+Observability is infrastructure. Domain behavior must not depend on Cloud Logging being available.
+
+## 22. Testing Strategy by Layer
+
+### Domain
+
+Pure unit tests without cloud, HTTP, model, or network access.
+
+### Application
+
+Use-case/workflow tests using fakes/in-memory port implementations.
+
+### Infrastructure
+
+Adapter integration/contract tests using emulators/test doubles or controlled integration environments.
+
+### Interfaces
+
+API/event contract tests.
+
+### End-to-end
+
+Full seeded workflow:
 
 ```text
-v0.1:
+upload -> signal -> investigate -> clarify -> package -> review -> notify -> acknowledge
+```
+
+## 23. Architecture Enforcement
+
+Before completing a change, verify:
+
+- domain imports no FastAPI/GCP/ADK/Gemini SDK;
+- application does not instantiate Firestore/PubSub/GCS/Gemini clients;
+- routes/event handlers contain no scientific/business rules;
+- ADK wrappers call inward use cases/contracts rather than becoming a parallel business layer;
+- deterministic surveillance tests run without external services;
+- concrete adapters are wired at composition roots;
+- monorepo boundaries remain intact;
+- new deployables/repositories require an ADR.
+
+## 24. Evolution Path
+
+```text
+v0.1.x
+Clean Architecture monorepo
 Cloud Run + Firestore + Pub/Sub + GCS
 curated evidence
 phenotype surveillance
        ↓
-v1:
-RBAC + real connectors + stronger analytics
+0.2–0.5.x
+stronger adapters, governance, observability,
+real-world evaluation under approved conditions
        ↓
-research/deeptech:
-genomics + AMRFinderPlus
+0.9.x / 1.0.0
+production-candidate/production-ready hardening
+       ↓
+research/deeptech extensions
+pathogen genomics + AMRFinderPlus
 phylogenetics
 phenotype/genotype fusion
-validated outbreak models
+validated surveillance models
 ```

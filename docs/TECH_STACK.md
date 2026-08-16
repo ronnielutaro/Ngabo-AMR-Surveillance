@@ -1,20 +1,47 @@
 # Ngabo — Tech Stack & Architecture Decisions
 
-**Version:** 0.1  
+**Version:** 0.2  
 **Date:** 2026-08-16  
-**Status:** Proposed stack to freeze before implementation
+**Status:** Frozen hackathon-MVP architecture baseline
 
-## 1. Stack Decision
+## 1. Architecture Style
+
+Ngabo will be implemented using **Clean Architecture inside a monorepo**.
+
+This is a required architectural decision, not a stylistic preference.
+
+The dependency rule is:
+
+```text
+Frameworks / Infrastructure
+          ↓
+Interfaces / Adapters
+          ↓
+Application / Use Cases / Ports
+          ↓
+Domain / Entities / Value Objects / Domain Services
+```
+
+**Dependencies point inward.** The domain/application core must not depend directly on FastAPI, Firestore, Pub/Sub, Cloud Storage, Google ADK, Gemini, or other vendor/framework SDKs.
+
+See:
+
+- `docs/CLEAN_ARCHITECTURE.md`
+- `docs/adr/0003-clean-architecture-monorepo.md`
+
+## 2. Stack Decision
 
 | Layer | Decision | Why |
 |---|---|---|
-| Web UI | **Next.js + TypeScript** | Fast polished incident console |
+| Architecture | **Clean Architecture** | Protect domain/scientific logic from frameworks/vendors |
+| Repository | **GitHub monorepo** | One product/release history with independently deployable apps/services |
+| Web UI | **Next.js + TypeScript** | Fast polished incident-response console |
 | UI | **Tailwind CSS + shadcn/ui** | Rapid consistent components |
 | Core API | **Python + FastAPI** | Strong fit for scientific processing + ADK |
 | Schemas | **Pydantic v2** | Typed boundaries and output validation |
 | Agent framework | **Google ADK (Python)** | Native fit for hackathon and agent workflows |
 | Primary model | **Gemini 3.6 Flash** | Stable 3.5+ model optimized for agentic workflows |
-| Fallback model | **Gemini 3.5 Flash** | Stable compatibility fallback |
+| Fallback model | **Gemini 3.5 Flash** | Compatibility fallback if required |
 | Analytics | **pandas + NumPy + SciPy** | Reproducible AST/surveillance calculations |
 | State | **Firestore** | Persistent incident/workflow state |
 | Raw files/evidence | **Cloud Storage** | Durable object storage |
@@ -24,9 +51,88 @@
 | Logging | **Cloud Logging + structured logs** | Debugging and demo proof |
 | Tests | **pytest + ADK evals + Playwright** | Domain, agent, and UI coverage |
 | Packages | **uv + pnpm** | Fast deterministic environments |
-| Repo | **GitHub monorepo** | Judge visibility + reproducibility |
 
-## 2. Core Language Decision
+## 3. Monorepo Contract
+
+Ngabo uses one repository for the full product:
+
+```text
+ngabo/
+├── apps/
+│   └── web/                         # Next.js Cloud Run deployable
+├── services/
+│   └── core/                        # FastAPI/ADK Cloud Run deployable
+├── data/
+│   ├── synthetic/
+│   ├── schemas/
+│   └── guidance/
+├── docs/
+│   ├── adr/
+│   ├── product/
+│   └── release/
+├── infra/
+├── .github/
+├── CLAUDE.md
+├── AGENTS.md
+├── ROADMAP.md
+├── CONTRIBUTING.md
+├── CHANGELOG.md
+└── README.md
+```
+
+**Monorepo does not mean monolith.** `ngabo-web` and `ngabo-core` remain independently deployable Cloud Run services.
+
+Do not split them into separate repositories without an ADR.
+
+## 4. Backend Clean Architecture
+
+Target Python package:
+
+```text
+services/core/ngabo/
+├── domain/
+│   ├── entities/
+│   ├── value_objects/
+│   ├── enums/
+│   ├── events/
+│   ├── exceptions/
+│   └── services/
+│       └── surveillance/
+├── application/
+│   ├── use_cases/
+│   ├── workflows/
+│   ├── commands/
+│   ├── queries/
+│   ├── dto/
+│   ├── ports/
+│   └── agent_contracts/
+├── interfaces/
+│   ├── api/
+│   └── events/
+├── infrastructure/
+│   ├── persistence/firestore/
+│   ├── storage/gcs/
+│   ├── messaging/pubsub/
+│   ├── ai/gemini/
+│   ├── ai/adk/
+│   ├── evidence/
+│   └── notifications/
+└── bootstrap/
+    ├── settings.py
+    └── container.py
+```
+
+### Dependency rules
+
+- `domain` depends on no outer Ngabo layer;
+- `application` may depend on `domain`;
+- `interfaces` may depend on `application` and domain-facing contracts;
+- `infrastructure` implements ports/contracts defined inward;
+- `bootstrap` wires concrete dependencies.
+
+The exact file names may evolve. The dependency direction may not be silently inverted.
+
+## 5. Core Language Decision
 
 Use Python for the scientific/agentic core because Ngabo combines:
 
@@ -38,63 +144,83 @@ tabular microbiology data
 + future bioinformatics
 ```
 
-FastAPI provides the HTTP boundary while allowing the surveillance engine and ADK agent to share typed Python domain models.
+FastAPI is an **outer delivery mechanism**. It must not own domain or scientific logic.
 
-## 3. UI Decision
+Pydantic is used at typed boundaries, but domain concepts should not be unnecessarily coupled to HTTP transport models.
 
-Next.js + TypeScript powers:
+## 6. Frontend Clean Architecture
 
-- import workflow;
-- incident tables;
-- status visualizations;
-- timelines;
-- evidence package;
-- human review.
+Next.js + TypeScript powers the incident-response console.
+
+Target shape:
+
+```text
+apps/web/src/
+├── domain/
+├── application/
+├── infrastructure/
+│   ├── api/
+│   └── streaming/
+├── presentation/
+│   ├── components/
+│   ├── features/
+│   └── layouts/
+└── app/                             # Next.js routes/composition
+```
+
+Rules:
+
+- UI does not call Firestore/Pub/Sub/Gemini directly;
+- API/SSE clients live in infrastructure;
+- behavioral application logic is separable from React rendering;
+- presentation renders explicit backend/domain state rather than reinterpreting medical meaning from prose;
+- do not over-engineer trivial presentational components merely for architectural ceremony.
 
 > **UI principle:** Ngabo is an incident-response console. Chat exists only for targeted clarification.
 
-## 4. Gemini Decision
-
-### Model access
+## 7. Gemini Decision
 
 For v0.1, use the **Gemini API** from the ADK-based backend.
 
-Why:
-
-- the hackathon explicitly permits Gemini API or Vertex AI;
-- `gemini-3.6-flash` is currently a stable Gemini model;
-- direct Gemini API access keeps model availability simple while Google Cloud still owns deployment, state, storage, events, logging, and secrets.
-
-Keep model access behind a small `ModelProvider` / configuration boundary so a future Vertex AI switch does not affect domain or agent logic.
-
-Store the Gemini API credential through Secret Manager / Cloud Run secret injection rather than source control.
-
-### Primary model
+Primary model:
 
 `gemini-3.6-flash`
 
 Use for:
+
 - investigation planning;
 - tool selection;
 - contextual synthesis;
 - clarification formulation;
-- package narrative.
+- incident-package narrative.
 
-Start with `thinking_level = medium`.
+Keep model access behind an inward-defined port/contract so future Vertex AI or model changes do not rewrite application/domain logic.
 
-Use lower reasoning effort for simple routing if latency/cost warrants it. Use higher effort only if evaluation shows meaningful gains.
+Store credentials through Secret Manager / Cloud Run secret injection.
 
 Determinism belongs in code and schemas—not sampling tricks.
 
-## 5. ADK Decision
+## 8. Google ADK Decision
 
 Use Google ADK Python.
 
-Agents are used only where ambiguity exists.
+ADK is an **infrastructure/framework concern**.
 
-Do **not** turn deterministic functions into agents.
+Recommended boundary:
 
-## 6. Deployment Shape
+```text
+ADK tool wrapper
+      ↓
+application use case/query
+      ↓
+domain calculation or inward-defined port
+      ↓
+infrastructure adapter when required
+```
+
+Do not turn deterministic functions into agents, and do not let ADK tool wrappers become an alternate service layer with raw database access and ad hoc business logic.
+
+## 9. Deployment Shape
 
 Hackathon MVP uses two Cloud Run services:
 
@@ -104,25 +230,12 @@ ngabo-web
      |
      v
 ngabo-core
-  FastAPI + domain modules + surveillance + ADK
+  FastAPI + Clean Architecture core + ADK adapter
 ```
 
-Logical modules inside `ngabo-core`:
+The backend is **logically modular before physically distributed**. Split into additional deployables later only when scale/fault isolation or product boundaries justify it through an ADR.
 
-```text
-api/
-application/
-domain/
-infrastructure/
-agents/
-surveillance/
-evidence/
-notifications/
-```
-
-This keeps deployment simple while preserving clean internal boundaries.
-
-## 7. Event Architecture
+## 10. Event Architecture
 
 Three Pub/Sub topics:
 
@@ -155,9 +268,9 @@ Event envelope:
 }
 ```
 
-Keep event payloads small; full entity state lives in Firestore.
+Pub/Sub handlers are interface adapters: they validate/translate events and invoke application use cases. They must not duplicate workflow/domain logic.
 
-## 8. Firestore Role
+## 11. Firestore Role
 
 Firestore stores **operational workflow state**, not long-term scientific analytics.
 
@@ -175,9 +288,11 @@ guidance_sources/
 processed_events/
 ```
 
-Future high-scale analytics can move to BigQuery or another analytical store.
+Firestore-specific repository implementations live in `infrastructure/persistence/firestore` and implement inward-defined repository ports.
 
-## 9. Cloud Storage Role
+Future high-scale analytics can move to BigQuery or another analytical store without changing core domain behavior.
+
+## 12. Cloud Storage Role
 
 Prefixes:
 
@@ -188,9 +303,9 @@ normalized-exports/
 demo-artifacts/
 ```
 
-Raw uploaded files are immutable and hashed.
+Cloud Storage is accessed through an infrastructure adapter/port boundary. Raw uploaded files are immutable and hashed.
 
-## 10. Evidence Retrieval
+## 13. Evidence Retrieval
 
 v0.1 uses a curated, versioned evidence library with:
 
@@ -202,28 +317,29 @@ v0.1 uses a curated, versioned evidence library with:
 - tags;
 - approved content/chunks.
 
-Do **not** add a vector database unless the corpus actually requires one.
+Evidence search is exposed to the application/agent through a port. Do not add a vector database unless the corpus actually requires one.
 
-## 11. Notification Boundary
+## 14. Notification Boundary
 
-Define a port:
+Define an inward-facing port such as:
 
 ```python
-class NotificationPort:
+class NotificationPort(Protocol):
     async def send_incident_alert(...): ...
 ```
 
-Adapters:
+Infrastructure adapters:
+
 1. deterministic demo adapter;
 2. optional real email/webhook adapter.
 
-## 12. Surveillance Engine
+## 15. Surveillance Engine
 
-Use ordinary code.
+Deterministic surveillance is core domain/application logic.
 
-Modules:
-- schema validation;
-- AST normalization;
+Modules/concepts include:
+
+- schema/AST normalization policies;
 - resistance-vector construction;
 - profile similarity;
 - temporal concentration;
@@ -231,47 +347,23 @@ Modules:
 - baseline comparison;
 - signal scoring.
 
-The score is an **investigation-priority score**, not an outbreak probability.
+Pure calculations must be testable without FastAPI, Firestore, Pub/Sub, ADK, Gemini, or network access.
 
-## 13. Repository Layout
+The signal score is an **investigation-priority score**, not an outbreak probability.
 
-```text
-ngabo/
-├── apps/web/
-├── services/core/
-│   ├── ngabo/
-│   │   ├── api/
-│   │   ├── application/
-│   │   ├── domain/
-│   │   ├── infrastructure/
-│   │   ├── agents/
-│   │   ├── surveillance/
-│   │   ├── evidence/
-│   │   └── notifications/
-│   └── tests/
-├── data/
-│   ├── synthetic/
-│   ├── schemas/
-│   └── guidance/
-├── docs/
-│   ├── architecture/
-│   └── adr/
-├── infra/
-├── .github/workflows/
-├── README.md
-├── LICENSE
-└── SECURITY.md
-```
+## 16. Architecture Rules
 
-## 14. Architecture Rules
+1. **Clean Architecture dependency rule is mandatory.**
+2. **Monorepo is mandatory unless changed by ADR.**
+3. If a task can be deterministic, make it deterministic.
+4. Domain/application layers do not directly depend on vendor/cloud/AI SDKs.
+5. Agents may request tool results; they may not rewrite source facts.
+6. Every side effect needs an idempotency strategy.
+7. Every meaningful claim is observed data, deterministic calculation, cited guidance, or labelled hypothesis.
+8. Infrastructure implementations are wired at the outer composition root.
+9. Do not add infrastructure merely to make the architecture diagram look impressive.
 
-1. If it can be deterministic, make it deterministic.
-2. Agents may request tool results; they may not rewrite source facts.
-3. Every side effect needs an idempotency key.
-4. Every meaningful claim is observed data, deterministic calculation, cited guidance, or labelled hypothesis.
-5. Do not add infrastructure merely to make the architecture diagram look impressive.
-
-## 15. Deferred Technology
+## 17. Deferred Technology
 
 Not before the core demo works:
 
@@ -287,7 +379,7 @@ Not before the core demo works:
 - AMRFinderPlus;
 - live hospital connectors.
 
-## 16. References
+## 18. References
 
 - Hackathon rules: https://allthingsagentichackathon.devpost.com/rules
 - Hackathon resources: https://allthingsagentichackathon.devpost.com/resources
