@@ -14,7 +14,7 @@ The word **MVP** describes the maturity of the current release—not Ngabo's pro
 
 Ngabo is being built for the **All Things Agentic Hackathon 2026** in **The Taskmaster** category.
 
-The v0.1 design deliberately targets the hackathon's event-driven/autonomous workflow requirements:
+The v0.1 design deliberately targets a complete event-driven autonomous workflow rather than a chat loop:
 
 ```text
 AMR data arrives
@@ -25,30 +25,36 @@ Pub/Sub event
         ↓
 Google ADK investigation graph starts automatically
         ↓
+load canonical incident context
+        ↓
 deterministic function-node fan-out + join
         ↓
 Gemini 3.6 Flash reasons where ambiguity exists
         ↓
 approved evidence + targeted clarification if needed
         ↓
-resume same incident
+resume same incident using current canonical state
         ↓
 deterministically validated incident package
         ↓
-human approval
+human consequential-action approval
+        ↓
+deterministic pre-action freshness barrier
+   ├─ stale → invalidate approval / re-review
+   └─ fresh → continue
         ↓
 real authorized external action
         ↓
 acknowledgement + audit/trace proof
 ```
 
-Read [`docs/HACKATHON_ALIGNMENT.md`](./docs/HACKATHON_ALIGNMENT.md) for the formal compliance/scoring/bonus strategy, [`docs/ADK_RUNTIME.md`](./docs/ADK_RUNTIME.md) for the runtime contract, and [`docs/ORCHESTRATION_PATTERNS.md`](./docs/ORCHESTRATION_PATTERNS.md) for the graph/function/agent pattern-selection rules.
+The human does not manually drive the investigation. Human input is reserved for a materially missing fact when required and the consequential public-health action boundary.
+
+Read [`docs/HACKATHON_ALIGNMENT.md`](./docs/HACKATHON_ALIGNMENT.md) for the formal scoring/prize/submission strategy, [`docs/ADK_RUNTIME.md`](./docs/ADK_RUNTIME.md) for runtime details, [`docs/ORCHESTRATION_PATTERNS.md`](./docs/ORCHESTRATION_PATTERNS.md) for pattern selection, and [`docs/LONG_RUNNING_AGENT.md`](./docs/LONG_RUNNING_AGENT.md) for long-running state/freshness rules.
 
 ## Architecture
 
 Ngabo is implemented using **Clean Architecture inside a monorepo**.
-
-The dependency rule is:
 
 ```text
 Frameworks / Infrastructure
@@ -78,11 +84,11 @@ ngabo/
 
 > **Monorepo does not mean monolith.** `ngabo-web` and `ngabo-core` remain independently deployable Cloud Run services.
 
-Read [`docs/CLEAN_ARCHITECTURE.md`](./docs/CLEAN_ARCHITECTURE.md) and [`docs/adr/0003-clean-architecture-monorepo.md`](./docs/adr/0003-clean-architecture-monorepo.md) for the full implementation contract.
+Read [`docs/CLEAN_ARCHITECTURE.md`](./docs/CLEAN_ARCHITECTURE.md) and [`docs/adr/0003-clean-architecture-monorepo.md`](./docs/adr/0003-clean-architecture-monorepo.md).
 
 ## Graph-First Agent Orchestration
 
-Ngabo's v0.1 ADK runtime follows one rule:
+Ngabo's v0.1 runtime follows one rule:
 
 > **Deterministic when the workflow is known; agentic when the decision is ambiguous; dynamic only when the workflow itself cannot reasonably be known in advance.**
 
@@ -111,6 +117,28 @@ Fixed routing rules do not consume Gemini calls. Collaborative specialist agents
 
 See [`docs/ORCHESTRATION_PATTERNS.md`](./docs/ORCHESTRATION_PATTERNS.md) and [`docs/adr/0005-adk-graph-first-orchestration.md`](./docs/adr/0005-adk-graph-first-orchestration.md).
 
+## Long-Running State & Freshness
+
+Ngabo treats workflow continuity and incident truth as different concerns:
+
+```text
+Firestore/application state = canonical incident/workflow truth
+ADK session/checkpoint       = execution continuity only
+transient state              = recomputable working values
+Cloud Storage artifacts      = file-like outputs
+long-term model memory       = non-authoritative for v0.1 incident facts
+```
+
+The governing rule is:
+
+> **Resume execution, but revalidate truth.**
+
+After a long wait or restart, Ngabo rebuilds current context from canonical state rather than trusting an old conversation/session summary.
+
+Human approval is version-scoped. Before consequential external action, Ngabo executes a deterministic freshness check. If incident/package/source data changed materially after review, the old approval becomes stale and the incident returns to review instead of acting on outdated information.
+
+See [`docs/LONG_RUNNING_AGENT.md`](./docs/LONG_RUNNING_AGENT.md) and [`docs/adr/0006-long-running-agent-state-and-freshness.md`](./docs/adr/0006-long-running-agent-state-and-freshness.md).
+
 ## MVP Flow
 
 ```text
@@ -132,13 +160,15 @@ Gemini 3.6 Flash triage / evidence reasoning
         ↓
 targeted clarification when material
         ↓
-resumable/recoverable investigation
+resumable/recoverable investigation using current canonical state
         ↓
 Gemini source-grounded synthesis
         ↓
 deterministic package validation
         ↓
 human review
+        ↓
+deterministic freshness validation
         ↓
 real authorized notification/action
         ↓
@@ -177,8 +207,9 @@ The v0.1 runtime is designed for:
 - Gemini agent nodes only for bounded ambiguity/reasoning/synthesis;
 - persisted agent session/invocation/run references;
 - resumable investigation where supported/stable;
+- current-context reconstruction after waits/restarts;
 - targeted human-input pause/resume;
-- deterministic package validation;
+- deterministic package and freshness validation;
 - ADK graph/trajectory evaluations;
 - node/branch/join observability;
 - explicit model/tool/time/retry limits.
@@ -202,7 +233,7 @@ Google ADK, Gemini, EmbeddingGemma, Firestore, Pub/Sub, Cloud Storage, and notif
 
 ## Evidence Strategy
 
-The approved evidence corpus is curated and source-traceable.
+The approved evidence corpus is curated, source-traceable, and subject to provenance/usage-right review.
 
 Core implementation can begin with deterministic/tag retrieval. After the deployed core workflow is stable, Ngabo plans to integrate **EmbeddingGemma** for semantic retrieval:
 
@@ -220,25 +251,33 @@ Gemini reasoning/synthesis
 
 No vector database is required merely for the hackathon bonus.
 
-**MedGemma is optional** and will be included only if a bounded source-traceable role improves measured evaluation without weakening safety or demo reliability. Prefer it as a bounded specialist capability before considering a separate autonomous agent.
+**MedGemma is optional** and will be included only if a bounded source-traceable role improves measured evaluation without weakening safety or demo reliability.
 
-## Evaluation & Proof of Action
+See [`docs/THIRD_PARTY_PROVENANCE.md`](./docs/THIRD_PARTY_PROVENANCE.md) for dependency/data/evidence provenance and pre-existing-work disclosure rules.
+
+## Evaluation, Operational Utility & Proof of Action
 
 Before submission Ngabo will publish `EVALUATION.md` covering:
 
 - deterministic detector/scenario tests;
 - deterministic graph/function-node tests;
 - fan-out/join and fixed-routing tests;
-- ADK agentic-routing/trajectory evaluations where supported;
-- model-call budget for the canonical scenario;
+- ADK observable trajectory evaluations where supported;
+- model-call budget for canonical scenario;
 - prompt-injection and hallucination safety tests;
 - clarification behavior;
-- resumability/idempotency tests;
+- resumability/idempotency/context-rebuild tests;
+- stale-approval/freshness tests;
 - deployed E2E runs;
+- operational-utility before-vs-after workflow benchmark;
 - EmbeddingGemma retrieval evaluation if integrated;
 - known limitations.
 
-The hosted/filmed v0.1 is also required to perform at least one **real authorized external action after human approval**. A deterministic demo notification adapter remains available for tests/local reproducibility.
+Operational-utility evidence will measure real synthetic/deployed execution facts such as zero prompts required to start, human intervention/active-step counts, signal-to-review-ready latency, clarification count and model/function/tool trajectory. It will not invent hospital time-saved percentages.
+
+See [`docs/OPERATIONAL_UTILITY_EVALUATION.md`](./docs/OPERATIONAL_UTILITY_EVALUATION.md).
+
+The hosted/filmed v0.1 is also required to perform at least one **real authorized external action after human approval and freshness validation**. A deterministic demo notification adapter remains available for tests/local reproducibility.
 
 ## Cloud Deployment Discipline
 
@@ -251,7 +290,29 @@ The hackathon deployment plan includes:
 - Secret Manager/injected secrets;
 - protected internal event endpoints;
 - lightweight artifact/log retention;
+- ADK Web local-development only;
 - judge-accessible hosted deployment through the required judging window.
+
+## Submission Evidence
+
+Ngabo maintains a submission proof ledger in [`docs/SUBMISSION_EVIDENCE.md`](./docs/SUBMISSION_EVIDENCE.md).
+
+It maps every competitive claim to an actual artifact, including:
+
+- hosted URL;
+- repository/spin-up instructions;
+- architecture diagram;
+- <=4-minute demo video;
+- Google Cloud proof;
+- live Proof of Action;
+- evaluation results;
+- operational-utility results;
+- real action/acknowledgement;
+- resume/freshness proof;
+- third-party/pre-existing-work disclosure;
+- bonus-model/content evidence.
+
+**Architecture intent is not treated as execution proof.** Anything unimplemented at submission freeze must be removed from competitive claims or clearly labelled future work.
 
 ## Bonus Strategy
 
@@ -264,7 +325,7 @@ Planned only when real and demonstrable:
 Gated stretch:
 
 - MedGemma if it adds evaluated value;
-- collaborative specialist agents only if evaluation demonstrates a real benefit;
+- collaborative specialist agents only if evaluation demonstrates real benefit;
 - multimodal AST/PDF extraction only as a **human-verified draft** after core freeze.
 
 No bonus model or feature will be claimed if it exists only in documentation.
@@ -294,7 +355,7 @@ release/vX.Y.Z
 hotfix/vX.Y.Z
 ```
 
-See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the workflow and [`ROADMAP.md`](./ROADMAP.md) for release maturity.
+See [`CONTRIBUTING.md`](./CONTRIBUTING.md) and [`ROADMAP.md`](./ROADMAP.md).
 
 ## Documentation
 
@@ -308,20 +369,25 @@ Implementation source-of-truth:
 - [`docs/PRD.md`](./docs/PRD.md) — product requirements
 - [`docs/TECH_STACK.md`](./docs/TECH_STACK.md) — stack and architecture decisions
 - [`docs/CLEAN_ARCHITECTURE.md`](./docs/CLEAN_ARCHITECTURE.md) — dependency/layer/monorepo contract
-- [`docs/HACKATHON_ALIGNMENT.md`](./docs/HACKATHON_ALIGNMENT.md) — hackathon requirements, scoring and bonus strategy
-- [`docs/ADK_RUNTIME.md`](./docs/ADK_RUNTIME.md) — ADK graph runtime, resumability and evaluation contract
-- [`docs/ORCHESTRATION_PATTERNS.md`](./docs/ORCHESTRATION_PATTERNS.md) — graph/function/agent/routing pattern-selection contract
+- [`docs/HACKATHON_ALIGNMENT.md`](./docs/HACKATHON_ALIGNMENT.md) — hackathon judging/prize/submission strategy
+- [`docs/ADK_RUNTIME.md`](./docs/ADK_RUNTIME.md) — ADK runtime/resumability/evaluation contract
+- [`docs/ORCHESTRATION_PATTERNS.md`](./docs/ORCHESTRATION_PATTERNS.md) — graph/function/agent/routing contract
+- [`docs/LONG_RUNNING_AGENT.md`](./docs/LONG_RUNNING_AGENT.md) — state/context/memory/freshness/recovery contract
 - [`docs/SYSTEM_DESIGN.md`](./docs/SYSTEM_DESIGN.md) — system/event/state/graph design
 - [`docs/AGENT_ARCHITECTURE.md`](./docs/AGENT_ARCHITECTURE.md) — runtime agent and graph design
-- [`docs/DATA_SAFETY_EVALUATION.md`](./docs/DATA_SAFETY_EVALUATION.md) — data, safety and evaluation contracts
+- [`docs/DATA_SAFETY_EVALUATION.md`](./docs/DATA_SAFETY_EVALUATION.md) — data, safety and multi-layer evaluation
+- [`docs/OPERATIONAL_UTILITY_EVALUATION.md`](./docs/OPERATIONAL_UTILITY_EVALUATION.md) — workflow-friction benchmark contract
 - [`docs/UI_UX_SPEC.md`](./docs/UI_UX_SPEC.md) — frontend implementation contract
-- [`docs/UI_UX_HACKATHON_ADDENDUM.md`](./docs/UI_UX_HACKATHON_ADDENDUM.md) — demo/resume/action UI requirements
+- [`docs/UI_UX_HACKATHON_ADDENDUM.md`](./docs/UI_UX_HACKATHON_ADDENDUM.md) — demo/graph/resume/freshness/action UI requirements
+- [`docs/THIRD_PARTY_PROVENANCE.md`](./docs/THIRD_PARTY_PROVENANCE.md) — dependency/data/evidence licensing/provenance + pre-existing work register
+- [`docs/SUBMISSION_EVIDENCE.md`](./docs/SUBMISSION_EVIDENCE.md) — competitive claim/proof ledger
 - [`docs/IMPLEMENTATION_PLAN.md`](./docs/IMPLEMENTATION_PLAN.md) — milestone plan
 - [`docs/adr/0001-hackathon-mvp-architecture.md`](./docs/adr/0001-hackathon-mvp-architecture.md) — MVP architecture baseline
 - [`docs/adr/0002-release-governance.md`](./docs/adr/0002-release-governance.md) — release governance decision
 - [`docs/adr/0003-clean-architecture-monorepo.md`](./docs/adr/0003-clean-architecture-monorepo.md) — Clean Architecture + monorepo decision
-- [`docs/adr/0004-hackathon-agent-runtime-and-bonus-models.md`](./docs/adr/0004-hackathon-agent-runtime-and-bonus-models.md) — hackathon runtime/bonus architecture decision
+- [`docs/adr/0004-hackathon-agent-runtime-and-bonus-models.md`](./docs/adr/0004-hackathon-agent-runtime-and-bonus-models.md) — runtime/bonus architecture decision
 - [`docs/adr/0005-adk-graph-first-orchestration.md`](./docs/adr/0005-adk-graph-first-orchestration.md) — graph-first hybrid orchestration decision
+- [`docs/adr/0006-long-running-agent-state-and-freshness.md`](./docs/adr/0006-long-running-agent-state-and-freshness.md) — long-running state/freshness/memory decision
 
 ## Current Repository State
 
