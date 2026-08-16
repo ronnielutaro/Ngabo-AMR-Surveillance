@@ -1,353 +1,341 @@
 # Ngabo — Hackathon Submission Evidence Matrix
 
 **Status:** Required v0.1 submission-proof contract  
+**Version:** 0.2  
 **Date:** 2026-08-16  
 **Hackathon:** All Things Agentic Hackathon 2026  
 **Primary category:** The Taskmaster
 
 ---
 
-## 1. Purpose
+## 1. Principle
 
-Architecture documents describe intent. Judges score the submitted project, repository, text, images, video, and any working build they inspect.
+> **Nothing in a design document counts as proof until the implementation, artifact, trace, screenshot, video segment or evaluation result exists.**
 
-This document converts every important contest claim into a required piece of evidence.
+The canonical Taskmaster claim is now stronger:
 
-> **Nothing in a design document counts as proof until the implementation, artifact, trace, screenshot, video segment, or evaluation result exists.**
+> **Ngabo completes the hero surveillance-to-safe-coordination workflow from event to machine acknowledgement with zero human intervention.**
+
+That claim may appear in submission materials only after deployed evidence proves it.
 
 ---
 
-## 2. Stage-One Submission Gate
+## 2. Stage-One Gate
 
-Before final submission, verify:
+Before submission verify:
 
 - [ ] project is entered in one category: **The Taskmaster**;
-- [ ] submitted implementation was created during the contest period, with any non-standard pre-existing work disclosed;
-- [ ] Gemini 3.5+ requirement is satisfied by the actually deployed model;
-- [ ] Google Agent Framework requirement is satisfied by the actually running Google ADK integration;
-- [ ] Google Cloud infrastructure requirement is visibly satisfied;
-- [ ] repository URL is public or required judge access is configured;
-- [ ] README contains reproducible local/deployment spin-up instructions;
-- [ ] architecture diagram exists and matches the deployed system;
-- [ ] hosted URL is included if available and remains judge-accessible through the judging period;
-- [ ] demo video is public on YouTube/Vimeo, English or English-subtitled, and <=4 minutes;
-- [ ] video demonstrates the backend running on Google Cloud;
-- [ ] project description lists features, technologies, data sources, findings/learnings, and limitations truthfully;
-- [ ] third-party usage and pre-existing-work disclosure are complete;
-- [ ] no unimplemented feature/model/deployment appears in submission claims.
+- [ ] submitted implementation was built during contest period, with required pre-existing-work disclosure;
+- [ ] deployed Gemini version satisfies 3.5+ rule;
+- [ ] Google ADK is actually used as agent runtime;
+- [ ] Google Cloud infrastructure is actually used;
+- [ ] repo/test access is available;
+- [ ] README contains tested spin-up/deployment instructions;
+- [ ] judge-facing architecture diagram exists and matches deployment;
+- [ ] hosted project URL is included if available and remains free/judge-accessible;
+- [ ] public YouTube/Vimeo video is <=4 minutes and English/English-subtitled;
+- [ ] video visibly proves Google Cloud backend;
+- [ ] description lists actual features, technologies, data sources, findings/learnings and limitations;
+- [ ] third-party/provenance/pre-existing-work checks complete;
+- [ ] no unimplemented model/feature is claimed.
 
 ---
 
 ## 3. Core Evidence Inventory
 
-| Evidence item | Required proof | Location / URL | Status |
+| Evidence | Proof required | Location | Status |
 |---|---|---|---|
-| Hosted Ngabo app | Working judge-accessible URL | `TBD` | PENDING |
-| Public repository | GitHub repo URL | repository root | EXISTS |
-| Spin-up instructions | Reproducible README section | `README.md` | PENDING final implementation update |
-| Architecture diagram | Deployed runtime + Clean Architecture + human boundary | `TBD` | PENDING |
-| Demo video | <=4 min public YouTube/Vimeo | `TBD` | PENDING |
-| Cloud proof | Cloud Run URL/dashboard/logs/traces visible in video | `TBD` | PENDING |
-| Evaluation artifact | Real measured results | `EVALUATION.md` | PENDING |
-| Operational utility evidence | Before-vs-after scripted benchmark | `EVALUATION.md` + `docs/OPERATIONAL_UTILITY_EVALUATION.md` | PENDING execution |
-| Third-party provenance | Dependency/data/source/usage register | `docs/THIRD_PARTY_PROVENANCE.md` | CONTRACT EXISTS; verification pending |
-| Pre-existing work disclosure | Submission-period provenance | `docs/THIRD_PARTY_PROVENANCE.md` + Devpost text | PENDING freeze |
-| Real action proof | Authorized external delivery + persisted result | UI/video/logs | PENDING |
-| Acknowledgement proof | External completion/ack state returns to Ngabo | UI/video/logs | PENDING |
-| Resume proof | Same incident pauses/resumes or controlled recovery evidence | UI/eval/logs | PENDING |
-| Freshness proof | Pre-action revalidation passes or stale approval blocks correctly | eval/logs; optional video | PENDING |
+| Hosted Ngabo | Judge-accessible URL | TBD | PENDING |
+| Submitted repo/release | Public repo + frozen commit/tag | repo / `v0.1.0` | PENDING freeze |
+| Spin-up instructions | Clean-environment-tested README | `README.md` | PENDING implementation |
+| Architecture diagram | Deployed topology + autonomy/safety boundary | `docs/ARCHITECTURE_DIAGRAM.md` + export | TARGET EXISTS; final reconciliation pending |
+| Demo video | <=4m public YouTube/Vimeo | TBD | PENDING |
+| Cloud proof | Cloud Run URL/dashboard/logs/traces | video + evidence | PENDING |
+| Evaluation | Real measured results | `EVALUATION.md` | PENDING |
+| BYOF proof | Personal friction narrative + reference benchmark | `docs/BYOF_FRICTION.md` + `EVALUATION.md` | CONTRACT EXISTS; measurement pending |
+| Zero-human hero | Event→action→ack with no person | UI/video/logs/EVALUATION | PENDING execution |
+| Real external action | Authorized A1 delivery outside Ngabo | UI/video/logs | PENDING |
+| Machine acknowledgement | Callback/event closes workflow | UI/video/logs | PENDING |
+| Action-policy proof | A1 auto / A2-A3 block tests | EVALUATION/source | PENDING |
+| Automatic repair | Validator→bounded repair | EVALUATION/source | PENDING |
+| Freshness proof | Current state revalidated before action | EVALUATION/logs | PENDING |
+| Idempotency proof | duplicate/retry no duplicate effect | EVALUATION/logs | PENDING |
+| ADK capability proof | exact version + supported runtime path | `docs/ADK_CAPABILITY_SPIKE.md` | PENDING spike |
+| Provenance | dependencies/data/evidence/rights | `docs/THIRD_PARTY_PROVENANCE.md` | CONTRACT EXISTS; freeze pending |
+| Submission freeze | release/deployment/video manifest | `docs/SUBMISSION_FREEZE.md` + this file | PENDING |
 
-Statuses must be updated from actual artifacts only.
+Statuses change only from real artifacts.
 
 ---
 
 ## 4. Innovation & Operational Utility (40%) Evidence
 
-The submission must prove the system removes workflow friction rather than merely generating text.
+### Required BYOF story
 
-### Required demonstration
+Submission/video must explain the builder's personal repeated friction from `docs/BYOF_FRICTION.md`:
 
 ```text
-surveillance signal
+inspect AMR signal/data
+→ compare profiles/context
+→ find trusted evidence
+→ separate fact/hypothesis
+→ build defensible package
+→ validate
+→ route
+→ track completion
+```
+
+Do not substitute a generic “AMR is a global problem” statement for the personal friction.
+
+### Required hero proof
+
+```text
+surveillance event
 → automatic Pub/Sub trigger
-→ ADK graph starts without user prompt
-→ deterministic investigation work executes
+→ ADK workflow
+→ deterministic fan-out/join
 → bounded Gemini reasoning
 → evidence retrieval
-→ targeted clarification only if needed
-→ same incident resumes
-→ validated review-ready package
-→ professional review
-→ freshness revalidation
-→ authorized external action
-→ acknowledgement
+→ validated/auto-repaired package
+→ A1 autonomy policy
+→ freshness/idempotency
+→ real external action
+→ machine acknowledgement
 ```
 
-### Required measured evidence
+Required measured assertions:
 
-From `docs/OPERATIONAL_UTILITY_EVALUATION.md`:
+- [ ] `manual_prompt_count_to_start == 0`;
+- [ ] `human_intervention_count == 0`;
+- [ ] `human_active_steps == 0`;
+- [ ] `clarification_count == 0`;
+- [ ] `approval_click_count == 0`;
+- [ ] event→package/action/ack timings measured;
+- [ ] model/deterministic call counts measured;
+- [ ] builder reference human-step count measured;
+- [ ] no fabricated hospital/clinical productivity claim.
 
-- [ ] zero manual prompts required to start investigation;
-- [ ] human intervention count measured;
-- [ ] human active steps measured against scripted reference workflow;
-- [ ] signal-to-review-ready latency measured on deployed runs;
-- [ ] clarification count measured;
-- [ ] model/function/tool trajectory counts measured;
-- [ ] no hospital/clinical time-saving claim made without real evidence.
+Preferred claim after proof:
 
-### Taskmaster wording rule
-
-Preferred submission framing:
-
-> Ngabo autonomously performs the surveillance-to-investigation coordination work. A human supplies a material missing fact only when necessary and retains authority at the consequential public-health action boundary; the human does not manually drive the investigation.
-
-Avoid framing the safety gate as evidence that the workflow is manually guided.
+> Ngabo autonomously completes the builder's surveillance-to-investigation coordination workflow from event to safe external action and acknowledgement with zero human interventions in the canonical synthetic benchmark.
 
 ---
 
-## 5. Architectural Discipline & Tech Stack (30%) Evidence
+## 5. Safety Evidence for Zero-Human Autonomy
 
-Judges should be able to answer these questions from the repository/diagram/demo.
+Zero-human must be accompanied by proof that autonomy is bounded rather than reckless.
 
-| Judge question | Ngabo evidence |
+Required:
+
+- [ ] deterministic A0/A1/A2/A3 action classifier;
+- [ ] hero external action classified A1;
+- [ ] A2 cannot execute autonomously;
+- [ ] A3 cannot execute autonomously;
+- [ ] non-allow-listed target blocked;
+- [ ] missing material fact causes abstention, not fabricated fact;
+- [ ] invalid package cannot reach action;
+- [ ] exhausted repair budget stops safely;
+- [ ] prohibited diagnosis/prescribing/outbreak-confirmation language rejected;
+- [ ] source integrity enforced;
+- [ ] freshness required immediately before action;
+- [ ] idempotency protects external side effect.
+
+This is the key answer to: **“How can you remove the human without creating unacceptable risk?”**
+
+---
+
+## 6. Architectural Discipline & Tech Stack (30%) Evidence
+
+A judge should answer these from repo/diagram/video:
+
+| Judge question | Required evidence |
 |---|---|
-| How are systems decoupled? | Clean Architecture dependency diagram + ports/adapters |
-| Who owns truth? | Firestore/application state vs non-authoritative ADK session/context |
-| Why use an LLM here? | Deterministic-vs-agentic orchestration rule |
-| How are fixed workflows handled? | ADK graph with deterministic function nodes and routers |
-| How is parallel work coordinated? | Fan-out/join graph + branch telemetry/tests |
-| What happens on duplicate events? | Idempotency persistence/test |
-| What happens if process/model/tool fails? | Resume/recovery + visible typed failure semantics |
-| What happens if a required branch fails? | Join rejects/degrades visibly; Gemini cannot hide failure |
-| How are model/tool loops bounded? | Model/tool/time/retry budgets + ADK evals |
-| How are tools scoped? | Inward application ports, no arbitrary DB/shell/web access |
-| How is long-running context controlled? | Context reconstruction/compaction policy |
-| What if model memory conflicts with current data? | Canonical Firestore/application truth wins |
-| What if data changes after approval? | Deterministic pre-action freshness barrier |
-| What prevents unsafe notification? | Human application/domain gate + freshness check + NotificationPort |
-| What proves the architecture works? | Deployed E2E, logs/traces, public evaluation |
+| How are systems decoupled? | Clean Architecture dependency diagram + source |
+| Who owns truth? | Firestore/application state vs ADK session/context |
+| Why is Gemini used? | deterministic-vs-agentic rule |
+| How is mandatory work orchestrated? | ADK graph / supported runtime equivalent |
+| How is parallel work coordinated? | fan-out/join source + traces/tests |
+| What if ADK API differs from webinar? | completed capability spike + pinned version/fallback |
+| What if a required branch fails? | typed failure blocks false synthesis |
+| What if Gemini output is invalid? | deterministic validator + bounded auto repair |
+| What if event is duplicated? | idempotency proof |
+| What if data changes before action? | freshness/recompute proof |
+| What if the proposed action is unsafe? | deterministic action class/policy block |
+| What if model memory is stale? | canonical-state reconstruction proof |
+| How are tools secured? | typed inward ports, no arbitrary shell/DB/web |
+| What proves it all works? | deployed E2E + logs/traces + EVALUATION |
 
-### Required architecture diagram layers
-
-The final visual must show at minimum:
-
-```text
-Browser
-  ↓
-Cloud Run: ngabo-web
-  ↓
-Cloud Run: ngabo-core
-  ├─ deterministic AMR/domain/application core
-  ├─ Google ADK graph runtime
-  │    ├─ deterministic function nodes
-  │    ├─ parallel fan-out/join
-  │    └─ Gemini agent nodes
-  ├─ EvidenceSearchPort → EmbeddingGemma only if implemented
-  ├─ optional MedGemma only if implemented
-  └─ NotificationPort → authorized external target
-
-Pub/Sub → ngabo-core event interface
-Firestore ↔ application persistence
-Cloud Storage ↔ artifact adapters
-Cloud Logging/Trace ← safe telemetry
-
-WAITING_FOR_REVIEW
-      ↓ HUMAN AUTHORITY BOUNDARY
-APPROVED
-      ↓ deterministic freshness barrier
-AUTHORIZED ACTION
-```
+Required diagram: `docs/ARCHITECTURE_DIAGRAM.md` reconciled to final release.
 
 ---
 
-## 6. Demo & Production Readiness (30%) Evidence
+## 7. Demo & Production Readiness (30%) Evidence
 
-The demo must show live state change rather than only slides/mockups.
+### Continuous hero segment
 
-### Required proof sequence
+The video must visibly include an unedited live sequence where:
 
-1. show working Ngabo UI;
-2. introduce synthetic data/signal;
-3. show automatic event-triggered investigation;
-4. show graph/node activity including fan-out/join;
-5. show evidence/clarification;
-6. answer clarification and show same incident resume;
-7. show validated package;
-8. approve through the professional safety gate;
-9. show freshness check in UI/logs if legible;
-10. show real authorized action outside Ngabo;
-11. show acknowledgement/state update;
-12. show Cloud Run / Google Cloud proof;
-13. show architecture/evaluation proof briefly.
+1. surveillance signal/event appears;
+2. Pub/Sub/Ngabo automatically starts workflow;
+3. graph node/fan-out/join state changes;
+4. Gemini/evidence stage executes;
+5. package validates;
+6. action policy shows A1 auto-execute;
+7. freshness/idempotency pass;
+8. external target receives real action;
+9. machine acknowledgement returns;
+10. Ngabo closes/updates incident.
 
-### Proof-of-action rule
+No person should click or type inside this sequence.
 
-At least one key workflow should be shown in a continuous, unedited live execution segment. Do not rely only on screenshots of a previously completed run.
+### Technical proof
 
-### Reproducibility rule
-
-Before submission:
-
-- [ ] README commands tested from a clean environment where practical;
-- [ ] required environment variables documented without secrets;
-- [ ] synthetic seed/reset path documented;
-- [ ] exact model/framework versions recorded;
-- [ ] three consecutive hosted E2E runs completed successfully before demo freeze;
-- [ ] deployed commit SHA recorded.
+- [ ] Cloud Run proof visible;
+- [ ] Google ADK/Gemini usage visible from architecture/log/code proof;
+- [ ] Firestore/PubSub state/execution visible where useful;
+- [ ] deployment URLs accessible;
+- [ ] exact deployed commit/revisions recorded;
+- [ ] three consecutive deployed hero E2E runs pass before freeze.
 
 ---
 
-## 7. Prize Positioning Evidence
+## 8. Prize Positioning Evidence
 
 ### Taskmaster — primary
 
-Must prove:
-
-- [ ] event-driven autonomous start;
-- [ ] complete multi-step workflow;
-- [ ] system performs heavy lifting without step-by-step human guidance;
-- [ ] action occurs outside the UI after approval;
-- [ ] acknowledgement closes loop.
+- [ ] zero-human background workflow;
+- [ ] BYOF personal friction;
+- [ ] event-driven start;
+- [ ] complete multi-step heavy lifting;
+- [ ] real external action;
+- [ ] machine acknowledgement.
 
 ### Best Architectural Design — deliberate secondary target
 
-Must make visible:
-
-- [ ] decoupling;
+- [ ] Clean Architecture;
 - [ ] state boundaries;
+- [ ] graph-first orchestration;
 - [ ] deterministic/agentic separation;
-- [ ] graph orchestration;
+- [ ] parallel fan-out/join;
 - [ ] scoped tools;
 - [ ] failure handling;
 - [ ] idempotency;
-- [ ] resumability;
-- [ ] context/memory discipline;
-- [ ] freshness barrier;
+- [ ] resumability/context discipline;
+- [ ] deterministic action-policy boundary;
+- [ ] freshness;
+- [ ] automatic validation/repair;
 - [ ] observability/evaluation.
 
 ### Individual/Hobbyist
 
-Eligibility depends on final entrant/team structure. No architecture change is required; ensure Devpost participant structure is accurate.
+Final entrant/team structure must be accurate.
 
 ### Startup Excellence
 
-Only pursue if the final submission is made on behalf of an eligible incorporated organization and the required corporate email/other eligibility conditions are satisfied. Do not alter the technical narrative merely to chase this prize.
+Only claim/pursue if submitting on behalf of an eligible incorporated organization with required corporate email and other conditions.
 
-### Best Multimodal UX — optional stretch
+### Best Multimodal UX
 
-Claim only if implemented and polished:
-
-```text
-image/PDF AST report
-→ AI-extracted UNVERIFIED DRAFT
-→ human verification
-→ canonical deterministic ingestion
-```
-
-Do not allow unverified extraction into surveillance calculations.
+Optional only if polished after core freeze.
 
 ---
 
-## 8. Bonus Evidence
+## 9. Bonus Evidence
 
-### Public build content (+0.2 max)
+### Public build content `+0.2`
 
-- [ ] public article/content exists;
-- [ ] contains required statement that it was created for purposes of entering the hackathon;
-- [ ] explains real implementation, trade-offs, evaluation, and learnings;
-- [ ] URL entered in submission where appropriate.
-
-### Social post (+0.2 max)
-
-- [ ] public post exists;
-- [ ] uses exact hashtag `#AllThingsAgenticHackathon`;
+- [ ] public;
+- [ ] contains required hackathon-purpose statement;
+- [ ] discusses real implementation/evaluation/tradeoffs;
 - [ ] URL captured.
 
-### Additional Google AI models (+0.2 each, max +0.6)
+### Social `+0.2`
 
-For each claimed model:
+- [ ] public post;
+- [ ] exact `#AllThingsAgenticHackathon`;
+- [ ] URL captured.
 
-- [ ] real code integration exists;
-- [ ] model executes in tested/submitted path;
-- [ ] role materially contributes to product;
+### Additional Google models `+0.2` each
+
+For each claimed:
+
+- [ ] real code path;
+- [ ] executes in submitted build;
+- [ ] role materially contributes;
 - [ ] evaluation exists;
-- [ ] architecture diagram/doc reflects it;
-- [ ] video/submission claim is truthful;
-- [ ] usage terms/license recorded in provenance register.
+- [ ] diagram/docs/video truthful;
+- [ ] license/terms recorded.
 
-EmbeddingGemma is planned after core green. MedGemma remains gated. Do not add a third model solely for points.
-
----
-
-## 9. Human Safety Gate Narrative
-
-This distinction must be consistent across README, Devpost text, diagram and video:
-
-```text
-HUMAN DOES NOT:
-- prompt the investigation to start
-- select mandatory calculations
-- manually route every workflow step
-- write the incident package
-- send the approved notification manually
-
-HUMAN DOES:
-- provide a materially missing fact when asked
-- review consequential escalation/action
-- retain outbreak-confirmation and treatment authority
-```
-
-Therefore the safety boundary does not weaken the Taskmaster claim. It defines where autonomy should stop.
+EmbeddingGemma planned. MedGemma gated. No third model solely for points.
 
 ---
 
-## 10. Submission-Period / Ownership Evidence
+## 10. Claim Ledger
 
-Before final submission:
+At freeze complete:
 
-- [ ] verify commit history supports the contest-period build claim;
-- [ ] list any pre-existing non-standard work actually incorporated;
-- [ ] list third-party SDKs/APIs/data/information and usage basis;
-- [ ] verify synthetic data ownership/provenance;
-- [ ] verify approved evidence-corpus rights/provenance;
-- [ ] ensure no real patient/laboratory data appears in repo/video/logs;
-- [ ] ensure third-party logos/media do not imply sponsorship or violate rights.
-
-See `docs/THIRD_PARTY_PROVENANCE.md`.
-
----
-
-## 11. Final Claim Ledger
-
-Before locking Devpost copy, create a final table in this file or `EVALUATION.md`:
-
-| Claim | Implemented? | Evidence location | Allowed in submission? |
+| Claim | Implemented? | Evidence | Allowed in Devpost? |
 |---|---|---|---|
-| Event-triggered autonomous start | TBD | TBD | only if yes |
-| Graph fan-out/join | TBD | TBD | only if yes |
-| Resume same incident | TBD | TBD | only if yes |
-| Real authorized action | TBD | TBD | only if yes |
-| Freshness barrier | TBD | TBD | only if yes |
+| Zero-human event→ack hero | TBD | TBD | only if yes |
+| BYOF reference benchmark | TBD | TBD | only if measured |
+| ADK workflow | TBD | TBD | only if yes |
+| deterministic fan-out/join | TBD | TBD | only if yes |
+| real A1 external action | TBD | TBD | only if yes |
+| machine acknowledgement | TBD | TBD | only if yes |
+| deterministic action classification | TBD | TBD | only if yes |
+| bounded automatic repair | TBD | TBD | only if yes |
+| freshness barrier | TBD | TBD | only if yes |
 | EmbeddingGemma | TBD | TBD | only if yes |
 | MedGemma | TBD | TBD | only if yes |
-| Multimodal AST draft | TBD | TBD | only if yes |
-| Operational utility result | TBD | TBD | only after measured |
-
-Anything marked `no` or `TBD` at submission freeze must be removed from competitive claims unless clearly labelled future work.
+| multimodal draft | TBD | TBD | only if yes |
+| practitioner validation | TBD | TBD | only if actually obtained |
+| clinical validation | NO | N/A | NO |
+| real hospital deployment | NO unless facts change | N/A | NO |
 
 ---
 
-## 12. Freeze Checklist
+## 11. Submission Freeze Manifest
 
-Submission evidence is ready only when:
+Complete from `docs/SUBMISSION_FREEZE.md`:
 
-- [ ] Stage-One gate is complete;
-- [ ] every implemented competitive claim has a proof location;
-- [ ] every unimplemented claim is removed/labelled future;
-- [ ] hosted project works from judge-accessible environment;
+```text
+submitted_commit_sha:
+submitted_tag: v0.1.0
+web_cloud_run_revision:
+core_cloud_run_revision:
+hosted_url:
+repository_url:
+architecture_diagram_path/url:
+evaluation_artifact:
+video_url:
+article_url:
+social_url:
+model_versions:
+adk_version:
+dataset_version_hash:
+evidence_corpus_version_hash:
+submission_timestamp:
+```
+
+Freeze judged `main`/tag/deployment/video through the judging period.
+
+---
+
+## 12. Final Freeze Checklist
+
+- [ ] Stage-One gate complete;
+- [ ] zero-human hero proven three consecutive deployed runs;
+- [ ] BYOF friction clearly stated and measured;
+- [ ] safety policy proves no autonomous A2/A3 action;
+- [ ] ADK capability spike complete and dependency pinned;
 - [ ] architecture diagram matches deployed runtime;
-- [ ] `EVALUATION.md` reports measured results;
-- [ ] provenance/disclosure register is complete;
-- [ ] public content/social/model bonuses have actual URLs/evidence if claimed;
-- [ ] demo remains <=4 minutes;
-- [ ] judge availability remains enabled through judging period.
+- [ ] every competitive claim has proof location;
+- [ ] every unimplemented claim removed/labelled future;
+- [ ] hosted project judge-accessible;
+- [ ] `EVALUATION.md` contains real results;
+- [ ] provenance/disclosure complete;
+- [ ] bonus URLs/evidence real if claimed;
+- [ ] demo <=4 minutes;
+- [ ] continuous live proof-of-action segment contains no human intervention;
+- [ ] freeze manifest complete;
+- [ ] judged release remains stable through judging.
