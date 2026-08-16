@@ -1,6 +1,6 @@
 # Ngabo — Tech Stack & Architecture Decisions
 
-**Version:** 0.2  
+**Version:** 0.3  
 **Date:** 2026-08-16  
 **Status:** Frozen hackathon-MVP architecture baseline
 
@@ -22,12 +22,15 @@ Application / Use Cases / Ports
 Domain / Entities / Value Objects / Domain Services
 ```
 
-**Dependencies point inward.** The domain/application core must not depend directly on FastAPI, Firestore, Pub/Sub, Cloud Storage, Google ADK, Gemini, or other vendor/framework SDKs.
+**Dependencies point inward.** The domain/application core must not depend directly on FastAPI, Firestore, Pub/Sub, Cloud Storage, Google ADK, Gemini, Gemma-family models, or other vendor/framework SDKs.
 
 See:
 
 - `docs/CLEAN_ARCHITECTURE.md`
+- `docs/HACKATHON_ALIGNMENT.md`
+- `docs/ADK_RUNTIME.md`
 - `docs/adr/0003-clean-architecture-monorepo.md`
+- `docs/adr/0004-hackathon-agent-runtime-and-bonus-models.md`
 
 ## 2. Stack Decision
 
@@ -35,13 +38,15 @@ See:
 |---|---|---|
 | Architecture | **Clean Architecture** | Protect domain/scientific logic from frameworks/vendors |
 | Repository | **GitHub monorepo** | One product/release history with independently deployable apps/services |
-| Web UI | **Next.js + TypeScript** | Fast polished incident-response console |
+| Web UI | **Next.js + TypeScript** | Polished incident-response console |
 | UI | **Tailwind CSS + shadcn/ui** | Rapid consistent components |
 | Core API | **Python + FastAPI** | Strong fit for scientific processing + ADK |
 | Schemas | **Pydantic v2** | Typed boundaries and output validation |
-| Agent framework | **Google ADK (Python)** | Native fit for hackathon and agent workflows |
-| Primary model | **Gemini 3.6 Flash** | Stable 3.5+ model optimized for agentic workflows |
+| Agent framework | **Google ADK (Python)** | Required/strong fit for asynchronous agent workflows |
+| Primary orchestrator model | **Gemini 3.6 Flash** | Stable 3.5+ model optimized for agentic workflows |
 | Fallback model | **Gemini 3.5 Flash** | Compatibility fallback if required |
+| Planned retrieval model | **EmbeddingGemma** | Lightweight semantic retrieval over approved guidance |
+| Gated medical model | **MedGemma** | Optional bounded evidence interpretation after core stability/evaluation |
 | Analytics | **pandas + NumPy + SciPy** | Reproducible AST/surveillance calculations |
 | State | **Firestore** | Persistent incident/workflow state |
 | Raw files/evidence | **Cloud Storage** | Durable object storage |
@@ -49,8 +54,11 @@ See:
 | Compute | **Cloud Run** | Serverless, scales to zero |
 | Secrets | **Secret Manager / environment-bound secrets** | No committed credentials |
 | Logging | **Cloud Logging + structured logs** | Debugging and demo proof |
+| Tracing | **ADK/Cloud Trace/OpenTelemetry where stable** | Inspect agent/tool execution without exposing hidden reasoning |
 | Tests | **pytest + ADK evals + Playwright** | Domain, agent, and UI coverage |
 | Packages | **uv + pnpm** | Fast deterministic environments |
+
+EmbeddingGemma is a planned post-core v0.1 integration. MedGemma is a gated stretch. Neither is allowed to delay the required Gemini + ADK + Cloud Run + Firestore + Pub/Sub core.
 
 ## 3. Monorepo Contract
 
@@ -115,6 +123,8 @@ services/core/ngabo/
 │   ├── messaging/pubsub/
 │   ├── ai/gemini/
 │   ├── ai/adk/
+│   ├── ai/embedding_gemma/
+│   ├── ai/medgemma/                 # only if stretch is accepted
 │   ├── evidence/
 │   └── notifications/
 └── bootstrap/
@@ -170,7 +180,7 @@ apps/web/src/
 
 Rules:
 
-- UI does not call Firestore/Pub/Sub/Gemini directly;
+- UI does not call Firestore/Pub/Sub/Gemini/ADK directly;
 - API/SSE clients live in infrastructure;
 - behavioral application logic is separable from React rendering;
 - presentation renders explicit backend/domain state rather than reinterpreting medical meaning from prose;
@@ -194,6 +204,8 @@ Use for:
 - clarification formulation;
 - incident-package narrative.
 
+Use Flash first. Do not introduce an expensive model escalation path until evaluation proves a narrow step needs it.
+
 Keep model access behind an inward-defined port/contract so future Vertex AI or model changes do not rewrite application/domain logic.
 
 Store credentials through Secret Manager / Cloud Run secret injection.
@@ -202,9 +214,20 @@ Determinism belongs in code and schemas—not sampling tricks.
 
 ## 8. Google ADK Decision
 
-Use Google ADK Python.
+Use Google ADK Python as the actual agent runtime.
 
-ADK is an **infrastructure/framework concern**.
+ADK is an **infrastructure/framework concern** but must provide real runtime value rather than existing only to satisfy the rules.
+
+Required v0.1 usage:
+
+- bounded typed tools;
+- persisted session/invocation/run references;
+- resumable investigation execution where supported and stable by the installed ADK version;
+- targeted human input for clarification;
+- structured outputs;
+- ADK evaluation;
+- tracing/observability integration;
+- explicit loop/time/retry limits.
 
 Recommended boundary:
 
@@ -220,6 +243,8 @@ infrastructure adapter when required
 
 Do not turn deterministic functions into agents, and do not let ADK tool wrappers become an alternate service layer with raw database access and ad hoc business logic.
 
+See `docs/ADK_RUNTIME.md`.
+
 ## 9. Deployment Shape
 
 Hackathon MVP uses two Cloud Run services:
@@ -234,6 +259,19 @@ ngabo-core
 ```
 
 The backend is **logically modular before physically distributed**. Split into additional deployables later only when scale/fault isolation or product boundaries justify it through an ADR.
+
+### Hackathon deployment controls
+
+Required:
+
+- Cloud Run minimum instances `0` unless documented exception;
+- explicit maximum-instance caps;
+- right-sized CPU/RAM;
+- Google Cloud budget + email alert;
+- secrets injected, never committed;
+- internal/event endpoints protected;
+- expensive public endpoints protected/rate-limited where practical;
+- judge-accessible hosted service retained through the judging period.
 
 ## 10. Event Architecture
 
@@ -270,11 +308,13 @@ Event envelope:
 
 Pub/Sub handlers are interface adapters: they validate/translate events and invoke application use cases. They must not duplicate workflow/domain logic.
 
+At-least-once delivery means all state-changing consumers must be idempotent.
+
 ## 11. Firestore Role
 
 Firestore stores **operational workflow state**, not long-term scientific analytics.
 
-Collections:
+Collections may include:
 
 ```text
 imports/
@@ -282,11 +322,14 @@ isolates/
 signals/
 incidents/
 incident_events/
+agent_runs/
 clarifications/
 notifications/
 guidance_sources/
 processed_events/
 ```
+
+Persist agent session/invocation/run references without making ADK state the authoritative business state.
 
 Firestore-specific repository implementations live in `infrastructure/persistence/firestore` and implement inward-defined repository ports.
 
@@ -305,6 +348,8 @@ demo-artifacts/
 
 Cloud Storage is accessed through an infrastructure adapter/port boundary. Raw uploaded files are immutable and hashed.
 
+Keep storage footprints light; do not retain large temporary execution artifacts indefinitely.
+
 ## 13. Evidence Retrieval
 
 v0.1 uses a curated, versioned evidence library with:
@@ -317,9 +362,45 @@ v0.1 uses a curated, versioned evidence library with:
 - tags;
 - approved content/chunks.
 
-Evidence search is exposed to the application/agent through a port. Do not add a vector database unless the corpus actually requires one.
+Evidence search is exposed through an inward-defined `EvidenceSearchPort`.
 
-## 14. Notification Boundary
+### Initial fallback
+
+A simple deterministic/tag/keyword implementation is acceptable while the core workflow is being built.
+
+### Planned EmbeddingGemma adapter
+
+After the deployed core flow is stable:
+
+```text
+approved guidance corpus
+       ↓
+EmbeddingGemma embeddings
+       ↓
+lightweight deterministic similarity index
+       ↓
+source IDs + approved chunks
+```
+
+For hackathon scale, prefer a small in-process NumPy/cosine implementation. Do not add a vector database solely to earn a bonus.
+
+## 14. Optional MedGemma Boundary
+
+MedGemma is **not** core v0.1 infrastructure.
+
+It may be added only as a bounded evidence-interpretation adapter after the core, EmbeddingGemma, deployment, and evaluations are stable.
+
+It may not:
+
+- prescribe;
+- diagnose;
+- confirm an outbreak;
+- own deterministic surveillance logic;
+- create uncited guidance.
+
+If it does not materially improve evaluation, omit it.
+
+## 15. Notification Boundary
 
 Define an inward-facing port such as:
 
@@ -330,10 +411,12 @@ class NotificationPort(Protocol):
 
 Infrastructure adapters:
 
-1. deterministic demo adapter;
-2. optional real email/webhook adapter.
+1. deterministic demo adapter for tests/local reproducibility;
+2. **at least one real authorized external adapter for the hosted/demo v0.1 path**.
 
-## 15. Surveillance Engine
+The real adapter must execute only after human approval, persist delivery result, and support idempotent retry.
+
+## 16. Surveillance Engine
 
 Deterministic surveillance is core domain/application logic.
 
@@ -347,11 +430,46 @@ Modules/concepts include:
 - baseline comparison;
 - signal scoring.
 
-Pure calculations must be testable without FastAPI, Firestore, Pub/Sub, ADK, Gemini, or network access.
+Pure calculations must be testable without FastAPI, Firestore, Pub/Sub, ADK, Gemini, Gemma models, or network access.
 
 The signal score is an **investigation-priority score**, not an outbreak probability.
 
-## 16. Architecture Rules
+## 17. Observability
+
+Ngabo uses structured application logs plus ADK/runtime tracing where stable.
+
+Required correlation fields include:
+
+```text
+correlation_id
+incident_id
+event_id
+agent_session_id
+agent_invocation_id
+agent_run_id
+tool_name
+package_version
+```
+
+Prefer metadata-first/no-content traces. Do not enable broad prompt-response content capture by default, even though v0.1 uses synthetic data.
+
+BigQuery agent analytics remains deferred unless it produces clear v0.1 value; do not add it simply because tooling supports it.
+
+## 18. Testing & Evaluation
+
+Required layers:
+
+- pure domain/unit tests;
+- application use-case tests with fakes;
+- infrastructure adapter/contract tests;
+- API/event interface tests;
+- ADK trajectory/output evaluations;
+- Playwright E2E;
+- deployed seeded scenario.
+
+A public `EVALUATION.md` is a submission deliverable.
+
+## 19. Architecture Rules
 
 1. **Clean Architecture dependency rule is mandatory.**
 2. **Monorepo is mandatory unless changed by ADR.**
@@ -361,9 +479,11 @@ The signal score is an **investigation-priority score**, not an outbreak probabi
 6. Every side effect needs an idempotency strategy.
 7. Every meaningful claim is observed data, deterministic calculation, cited guidance, or labelled hypothesis.
 8. Infrastructure implementations are wired at the outer composition root.
-9. Do not add infrastructure merely to make the architecture diagram look impressive.
+9. Firestore owns workflow truth; ADK resumability complements it.
+10. Bonus models may not weaken the core architecture or demo reliability.
+11. Do not add infrastructure merely to make the architecture diagram look impressive.
 
-## 17. Deferred Technology
+## 20. Deferred Technology / Features
 
 Not before the core demo works:
 
@@ -373,18 +493,23 @@ Not before the core demo works:
 - vector DB;
 - Redis/Kafka;
 - LangGraph;
-- additional LLM vendors;
+- additional non-Google LLM vendors;
 - full RBAC platform;
 - genomic pipeline;
 - AMRFinderPlus;
-- live hospital connectors.
+- live hospital connectors;
+- MedGemma unless gated criteria pass;
+- multimodal AST/PDF ingestion until the core is frozen.
 
-## 18. References
+## 21. References
 
 - Hackathon rules: https://allthingsagentichackathon.devpost.com/rules
 - Hackathon resources: https://allthingsagentichackathon.devpost.com/resources
-- Gemini 3.6 Flash: https://ai.google.dev/gemini-api/docs/models/gemini-3.6-flash
 - Google ADK: https://google.github.io/adk-docs/
+- Google Agents CLI: https://google.github.io/agents-cli/
+- Gemini API: https://ai.google.dev/gemini-api/docs
+- EmbeddingGemma: https://ai.google.dev/gemma/docs/embeddinggemma
+- MedGemma: https://developers.google.com/health-ai-developer-foundations/medgemma
 - Cloud Run: https://cloud.google.com/run/docs
 - Firestore: https://cloud.google.com/firestore/docs
 - Pub/Sub: https://cloud.google.com/pubsub/docs
