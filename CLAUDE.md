@@ -5,6 +5,7 @@ This file is the root implementation contract for Claude Code working on Ngabo.
 **Project:** Ngabo — Autonomous AMR Surveillance & Incident Response  
 **Competition:** All Things Agentic Hackathon 2026 — Taskmaster  
 **Primary stack:** Next.js + TypeScript; Python + FastAPI; Google ADK; Gemini 3.6 Flash; Firestore; Cloud Storage; Pub/Sub; Cloud Run  
+**Current release target:** `v0.1.0`  
 **MVP deadline:** 2026-08-31, 5:00 PM Pacific Time
 
 ---
@@ -13,14 +14,21 @@ This file is the root implementation contract for Claude Code working on Ngabo.
 
 Before implementing or changing architecture, read these files in order:
 
-1. `docs/PRD.md`
-2. `docs/TECH_STACK.md`
-3. `docs/SYSTEM_DESIGN.md`
-4. `docs/AGENT_ARCHITECTURE.md`
-5. `docs/DATA_SAFETY_EVALUATION.md`
-6. `docs/UI_UX_SPEC.md`
-7. `docs/IMPLEMENTATION_PLAN.md`
-8. `docs/adr/0001-hackathon-mvp-architecture.md`
+1. `ROADMAP.md`
+2. `CONTRIBUTING.md`
+3. `docs/PRD.md`
+4. `docs/TECH_STACK.md`
+5. `docs/SYSTEM_DESIGN.md`
+6. `docs/AGENT_ARCHITECTURE.md`
+7. `docs/DATA_SAFETY_EVALUATION.md`
+8. `docs/UI_UX_SPEC.md`
+9. `docs/IMPLEMENTATION_PLAN.md`
+10. `docs/adr/0001-hackathon-mvp-architecture.md`
+
+Also read:
+
+- `AGENTS.md` for coding-agent execution rules;
+- `CHANGELOG.md` before release-oriented work.
 
 Product/evidence context:
 
@@ -42,16 +50,27 @@ UI/UX Spec
         ↓
 Tech Stack
         ↓
+ROADMAP release-stage constraints
+        ↓
 Implementation Plan
 ```
 
-Do not resolve material conflicts silently. Document them and propose an ADR.
+Git/release mechanics are governed by `CONTRIBUTING.md` and the release sections of this file.
+
+Do not resolve material conflicts silently. Document them and propose an ADR where appropriate.
 
 ---
 
 ## 2. Product Definition
 
-Ngabo is an **event-driven AMR surveillance-to-action system**.
+Ngabo is an **open-source, event-driven AMR surveillance and incident-response system**.
+
+Do not make “prototype” part of Ngabo's permanent product identity. Communicate maturity separately through the current release stage.
+
+For example:
+
+> **Product:** Ngabo — AMR Surveillance & Incident Response  
+> **Current status:** `v0.1.0` hackathon MVP in development.
 
 The v0.1 proof is:
 
@@ -80,6 +99,8 @@ audit trail
 Ngabo is **not a chatbot product**.
 
 The web application is an incident-response console that makes this workflow visible.
+
+See `ROADMAP.md` for the intended evolution from hackathon MVP through technical/research prototypes, shadow-mode pilot, validation, production candidate, and `1.0.0`.
 
 ---
 
@@ -165,6 +186,8 @@ Never implement autonomous treatment/antibiotic recommendations.
 ### I. Synthetic data only for public v0.1
 
 Do not add real patient records to fixtures, screenshots, logs, or repository history.
+
+Future stages may introduce governed real-world data only as described in `ROADMAP.md` and under appropriate authorization/security.
 
 ### J. No hidden chain-of-thought UI
 
@@ -315,20 +338,12 @@ Specifically do not add without a documented requirement:
 
 ## 9. Google ADK / Agents CLI Guidance
 
-Google's current Agents CLI can install coding-agent skills for ADK development and explicitly supports Claude Code.
-
-If available in the development environment, initial setup may use:
-
-```bash
-uvx google-agents-cli setup
-```
-
-Then use the official ADK/Agents CLI workflow skills where they help with scaffolding, evaluation, deployment, and observability.
+If available in the development environment, official Google ADK/Agents CLI tooling may be used to assist scaffolding, evaluation, deployment, and observability.
 
 Important:
 
 - do not let a scaffold overwrite Ngabo's established monorepo/product architecture;
-- use generated templates as implementation aids, not as product requirements;
+- use generated templates as implementation aids, not product requirements;
 - preserve the architectural invariants in this file.
 
 ---
@@ -362,6 +377,9 @@ ngabo/
 ├── .github/
 ├── CLAUDE.md
 ├── AGENTS.md
+├── ROADMAP.md
+├── CONTRIBUTING.md
+├── CHANGELOG.md
 ├── README.md
 ├── LICENSE
 └── SECURITY.md
@@ -371,7 +389,104 @@ Do not reorganize top-level structure casually once implementation begins.
 
 ---
 
-## 11. Implementation Order
+## 11. Git & Release Governance — Non-Negotiable
+
+Read `CONTRIBUTING.md` before creating branches, commits, pull requests, tags, or releases.
+
+Ngabo uses:
+
+- **Semantic Versioning 2.0.0**;
+- **Conventional Commits 1.0.0**;
+- **Gitflow-style branching** adapted to `main` + `develop`;
+- `CHANGELOG.md`;
+- release tags `vX.Y.Z`.
+
+### Branches
+
+Long-lived:
+
+```text
+main
+ develop
+```
+
+Supporting:
+
+```text
+feature/<short-name>
+release/vX.Y.Z
+hotfix/vX.Y.Z
+```
+
+Once Gitflow initialization is complete:
+
+- feature work branches from `develop`;
+- features merge into `develop` through PRs;
+- release branches originate from `develop`;
+- releases merge to `main`, are tagged, then reconcile back to `develop`;
+- hotfixes originate from `main` and merge to both `main` and `develop`.
+
+Do not commit feature work directly to `main`.
+
+### Conventional Commits
+
+Every commit must use:
+
+```text
+<type>[optional scope]: <description>
+```
+
+Preferred types:
+
+```text
+feat fix docs test refactor perf build ci chore revert
+```
+
+Preferred scopes:
+
+```text
+web core surveillance agent evidence events data eval infra docs release
+```
+
+Examples:
+
+```text
+feat(surveillance): add phenotype similarity detector
+fix(events): prevent duplicate incident creation
+test(eval): add prompt injection scenario
+docs(roadmap): define validation stage
+```
+
+Breaking change example:
+
+```text
+feat(events)!: revise surveillance signal schema
+```
+
+Do not create vague commit messages such as `update`, `fix stuff`, `wip`, or `changes` for repository history intended to be merged.
+
+### Semantic Versioning During 0.x
+
+Ngabo remains in SemVer initial development until the explicit `1.0.0` production-readiness decision.
+
+Project policy:
+
+- fix → normally PATCH;
+- feature/release milestone → normally MINOR;
+- breaking change → mark explicitly and normally increment MINOR during `0.x`;
+- do **not** automatically promote to `1.0.0` because a breaking commit exists.
+
+`1.0.0` is governed by the exit criteria in `ROADMAP.md`.
+
+### Changelog
+
+Update `CHANGELOG.md` for meaningful user/operator-visible behavior.
+
+Use `Unreleased` during development and move entries under the released version during release preparation.
+
+---
+
+## 12. Implementation Order
 
 Follow `docs/IMPLEMENTATION_PLAN.md`.
 
@@ -393,11 +508,11 @@ High-level milestones:
 14. Cloud Run deployment;
 15. evaluation and demo hardening.
 
-Do not start genomics before the core flow is green.
+Do not start genomics before the core v0.1 flow is green.
 
 ---
 
-## 12. Definition of Done Per Milestone
+## 13. Definition of Done Per Milestone
 
 Before marking a milestone complete:
 
@@ -407,13 +522,16 @@ Before marking a milestone complete:
 - no architectural invariant was violated;
 - docs are updated if contracts changed;
 - relevant lint/type checks pass;
+- branch follows Gitflow purpose/naming;
+- commits follow Conventional Commits;
+- changelog/release impact is considered;
 - code is committed in a coherent state.
 
 Do not declare success merely because the happy-path UI renders.
 
 ---
 
-## 13. Test Requirements
+## 14. Test Requirements
 
 At minimum cover:
 
@@ -454,7 +572,7 @@ upload
 
 ---
 
-## 14. Failure Handling
+## 15. Failure Handling
 
 A failed step must leave a persisted, inspectable state.
 
@@ -470,11 +588,15 @@ Examples:
 
 ---
 
-## 15. Scope Control
+## 16. Scope Control
 
 When tempted to add a feature, ask:
 
-> “Does this strengthen the v0.1 promise: suspicious AMR signal -> evidence-backed, human-reviewable incident package -> coordinated action?”
+> “Does this strengthen the current release's stated objective in `ROADMAP.md`?”
+
+For `v0.1.0`, ask specifically:
+
+> “Does this strengthen: suspicious AMR signal -> evidence-backed, human-reviewable incident package -> coordinated action?”
 
 If no, defer it.
 
@@ -491,7 +613,7 @@ Explicitly deferred until core completion:
 
 ---
 
-## 16. Architecture Changes
+## 17. Architecture Changes
 
 If implementation reveals that a frozen decision is wrong:
 
@@ -505,24 +627,17 @@ Small refactors that preserve public contracts do not require an ADR.
 
 ---
 
-## 17. Hackathon Constraints
+## 18. Hackathon Constraints
 
-Keep the public project consistent with the current official requirements:
-
-- Gemini 3.5 or newer;
-- qualifying Google Agent Framework;
-- at least one Google Cloud infrastructure service;
-- repository + spin-up instructions;
-- architecture diagram;
-- <=4-minute public demo;
-- demo visibly proves Google Cloud backend execution;
-- project behaves as shown in the demo.
+Keep the public v0.1 project consistent with current official hackathon requirements and the fact-checked project documentation.
 
 Do not implement shortcuts that make the demo fake or non-reproducible.
 
+The hackathon is the first release cycle, not the final product boundary.
+
 ---
 
-## 18. Working Style for Claude Code
+## 19. Working Style for Claude Code
 
 - inspect before editing;
 - make focused changes;
@@ -532,16 +647,35 @@ Do not implement shortcuts that make the demo fake or non-reproducible.
 - prefer boring, testable code over clever abstractions;
 - avoid premature microservices;
 - avoid premature generic frameworks;
-- report discovered contradictions rather than guessing.
+- report discovered contradictions rather than guessing;
+- obey Gitflow, SemVer, Conventional Commits, and changelog rules;
+- do not silently version-bump or create release tags.
 
 When asked to implement a milestone, stay inside that milestone unless a prerequisite must be fixed.
 
 ---
 
-## 19. Final Product Standard
+## 20. Release Actions Require Deliberate Intent
 
-A judge should be able to see:
+Coding agents may prepare release metadata when asked, but must not independently decide that Ngabo has earned a new maturity stage.
+
+In particular, do not autonomously declare:
+
+- research validation complete;
+- pilot readiness;
+- production readiness;
+- `1.0.0` readiness.
+
+Those milestones require evidence and explicit project-owner/stakeholder decisions under `ROADMAP.md`.
+
+---
+
+## 21. Final Product Standard
+
+For v0.1, a judge should be able to see:
 
 > **new AMR data arrived -> Ngabo detected a signal -> the agent investigated autonomously -> asked for one necessary clarification -> assembled evidence -> a professional approved the package -> Ngabo routed the action -> the audit trail recorded everything.**
 
-If the code cannot demonstrate that truthfully, the MVP is not complete.
+Longer-term releases must progressively earn the stronger technical, scientific, security, governance, and deployment claims documented in `ROADMAP.md`.
+
+If the code cannot demonstrate a claim truthfully, do not make the claim.
