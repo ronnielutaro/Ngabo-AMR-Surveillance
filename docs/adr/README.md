@@ -10,10 +10,21 @@ Current ADRs:
 - `0004-hackathon-agent-runtime-and-bonus-models.md` — hackathon agent-runtime, proof-of-action, and bonus-model strategy
 - `0005-adk-graph-first-orchestration.md` — graph-first hybrid ADK orchestration and deterministic-vs-agentic routing
 - `0006-long-running-agent-state-and-freshness.md` — long-running state, context/memory boundaries, pre-action freshness, and recovery
+- `0007-zero-human-safe-coordination.md` — zero-human Taskmaster hero via bounded A1 safe coordination rather than autonomous clinical/official action
 
-For long-running-agent, resumability, memory/context, review/action, or scheduled-follow-up work, read ADR 0006 together with `docs/LONG_RUNNING_AGENT.md`.
+## Supersession Note
 
-## When to create an ADR
+ADR 0007 supersedes older v0.1 wording that required human clarification or approval inside the **canonical hackathon hero path**.
+
+Human-governed consequential patterns remain valid for future A2/A3 real-world workflows and secondary evaluation scenarios.
+
+For the current hero, read ADR 0007 together with:
+
+- `docs/TASKMASTER_ZERO_HUMAN_AUTONOMY.md`
+- `docs/HACKATHON_ALIGNMENT.md`
+- `docs/LONG_RUNNING_AGENT.md`
+
+## When to Create an ADR
 
 Create an ADR when a change materially affects:
 
@@ -22,8 +33,9 @@ Create an ADR when a change materially affects:
 - AI orchestration framework;
 - deterministic vs agentic responsibility boundaries;
 - long-running execution or memory/context policy;
-- human-review/safety boundary;
+- autonomous/human safety boundary;
+- action authorization classes;
 - major infrastructure selection;
 - release/versioning governance.
 
-Routine refactors that preserve existing contracts do not need an ADR.
+Routine refactors preserving existing contracts do not need an ADR.
