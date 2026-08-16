@@ -8,7 +8,9 @@ Read `CLAUDE.md` first. `CLAUDE.md` contains the project-wide implementation con
 
 ## Mission
 
-Build Ngabo as a **safe, event-driven AMR incident-response system** for the hackathon MVP.
+Build Ngabo as a **safe, event-driven AMR incident-response system**.
+
+The current release target is the `0.1.x` hackathon MVP, but coding agents must preserve the longer product trajectory documented in `ROADMAP.md`.
 
 Do not optimize for feature count. Optimize for:
 
@@ -18,7 +20,8 @@ Do not optimize for feature count. Optimize for:
 - traceability;
 - bounded clinical/public-health claims;
 - reproducibility;
-- a clear 4-minute demo.
+- maintainable release discipline;
+- a clear 4-minute demo for v0.1.
 
 ---
 
@@ -27,12 +30,32 @@ Do not optimize for feature count. Optimize for:
 Before major implementation:
 
 1. `CLAUDE.md`
-2. `docs/PRD.md`
-3. `docs/SYSTEM_DESIGN.md`
-4. `docs/AGENT_ARCHITECTURE.md`
-5. `docs/DATA_SAFETY_EVALUATION.md`
-6. `docs/UI_UX_SPEC.md`
-7. `docs/IMPLEMENTATION_PLAN.md`
+2. `ROADMAP.md`
+3. `CONTRIBUTING.md`
+4. `docs/PRD.md`
+5. `docs/SYSTEM_DESIGN.md`
+6. `docs/AGENT_ARCHITECTURE.md`
+7. `docs/DATA_SAFETY_EVALUATION.md`
+8. `docs/UI_UX_SPEC.md`
+9. `docs/IMPLEMENTATION_PLAN.md`
+
+Also consult `CHANGELOG.md` before release-oriented work.
+
+---
+
+## Product Identity vs Release Maturity
+
+Do not describe Ngabo itself as merely “the prototype” in permanent product identity copy.
+
+Preferred:
+
+> **Ngabo is an open-source AMR surveillance and incident-response system.**
+
+Then state maturity separately, for example:
+
+> `v0.1.0` hackathon MVP in development.
+
+Use `ROADMAP.md` as the source of truth for maturity stages.
 
 ---
 
@@ -114,12 +137,14 @@ Do not expose hidden model chain-of-thought.
 
 ## Data Rules
 
-- synthetic demo data only;
+- synthetic demo data only for public v0.1;
 - every fixture declares that it is synthetic;
 - never commit real patient data;
 - unknown/missing values remain unknown/missing;
 - do not generate plausible-looking values to make a demo prettier;
 - keep raw import and normalized data logically distinct.
+
+Future real-world datasets must follow the governance and release-stage constraints in `ROADMAP.md`.
 
 ---
 
@@ -175,6 +200,189 @@ Do not expose hidden model chain-of-thought.
 
 ---
 
+## Gitflow — Mandatory Branch Discipline
+
+Ngabo uses a **Gitflow-style workflow** adapted to GitHub.
+
+### Long-lived branches
+
+- `main` — released / release-ready history;
+- `develop` — integration branch for the next release.
+
+Once `develop` exists, feature work must not be committed directly to `main`.
+
+### Feature branches
+
+Create from `develop`:
+
+```text
+feature/<short-name>
+```
+
+Merge through a PR into `develop`.
+
+Examples:
+
+```text
+feature/ast-normalizer
+feature/incident-timeline
+feature/agent-clarification
+```
+
+### Release branches
+
+Create from `develop`:
+
+```text
+release/vX.Y.Z
+```
+
+Release branches are for:
+
+- final fixes;
+- version metadata;
+- changelog/release notes;
+- documentation;
+- final evaluation/hardening.
+
+Do not introduce new product scope on a release branch.
+
+A completed release merges to `main`, receives tag `vX.Y.Z`, and is merged/reconciled back into `develop`.
+
+### Hotfix branches
+
+Create urgent release fixes from `main`:
+
+```text
+hotfix/vX.Y.Z
+```
+
+Merge into both `main` and `develop`.
+
+See `CONTRIBUTING.md` and `ROADMAP.md` for the full workflow.
+
+---
+
+## Semantic Versioning — Mandatory
+
+Ngabo uses **Semantic Versioning 2.0.0**.
+
+Formal releases use:
+
+```text
+MAJOR.MINOR.PATCH
+```
+
+and Git tags:
+
+```text
+vMAJOR.MINOR.PATCH
+```
+
+During `0.y.z` initial development:
+
+- bug fix → normally PATCH;
+- backward-compatible feature/release milestone → normally MINOR;
+- breaking change → explicitly marked and normally MINOR while pre-1.0;
+- **never automatically create `1.0.0`** solely because a breaking commit exists.
+
+`1.0.0` is the deliberate production-readiness milestone defined in `ROADMAP.md`.
+
+Do not mutate an existing released tag/version; create a new release.
+
+---
+
+## Conventional Commits — Mandatory
+
+All commits must follow **Conventional Commits 1.0.0**:
+
+```text
+<type>[optional scope]: <description>
+```
+
+Allowed/recommended types:
+
+- `feat`
+- `fix`
+- `docs`
+- `test`
+- `refactor`
+- `perf`
+- `build`
+- `ci`
+- `chore`
+- `revert`
+
+Recommended scopes:
+
+- `web`
+- `core`
+- `surveillance`
+- `agent`
+- `evidence`
+- `events`
+- `data`
+- `eval`
+- `infra`
+- `docs`
+- `release`
+
+Examples:
+
+```text
+feat(agent): add clarification resume workflow
+fix(events): prevent duplicate incident creation
+test(eval): add prompt injection scenario
+docs(roadmap): clarify pilot exit criteria
+```
+
+Breaking changes must use `!` and/or a `BREAKING CHANGE:` footer:
+
+```text
+feat(events)!: revise surveillance signal schema
+```
+
+Coding agents must not create vague messages such as:
+
+```text
+update stuff
+fix
+changes
+wip
+```
+
+unless the user explicitly requests a temporary local commit strategy that will be cleaned before merge.
+
+---
+
+## Pull Request Discipline
+
+Substantive work should be merged through PRs.
+
+A PR should state:
+
+- scope;
+- reason;
+- tests run;
+- public API/schema/event impact;
+- safety/human-review impact;
+- documentation impact;
+- ADR requirement if applicable.
+
+Do not merge knowingly failing required tests.
+
+---
+
+## Changelog Discipline
+
+Maintain `CHANGELOG.md`.
+
+User/operator-visible changes should enter `Unreleased` during development and move into the appropriate version section during release preparation.
+
+Do not generate a changelog that merely dumps commit hashes; summarize meaningful behavior changes.
+
+---
+
 ## Before Completing Any Task
 
 Run the checks appropriate to the changed surface.
@@ -196,6 +404,13 @@ pnpm exec playwright test
 
 If the repository uses different finalized commands after scaffolding, update README/CLAUDE.md rather than silently diverging.
 
+Before a commit or PR, also verify:
+
+- branch follows Gitflow naming/purpose;
+- commit message follows Conventional Commits;
+- release impact is compatible with SemVer policy;
+- changelog/docs are updated when required.
+
 ---
 
 ## Commit / Change Discipline
@@ -208,6 +423,8 @@ For each milestone:
 - update docs when public contracts change;
 - create ADR for material architecture changes;
 - do not introduce stretch features before core acceptance criteria are green.
+
+One commit should represent one coherent purpose where practical.
 
 ---
 
@@ -235,7 +452,7 @@ Avoid autonomous factual use of:
 
 ## Primary Demo Scenario
 
-The canonical demo scenario is a synthetic neonatal-unit *Klebsiella pneumoniae* resistance-pattern cluster with one intentionally missing metadata field.
+The canonical v0.1 demo scenario is a synthetic neonatal-unit *Klebsiella pneumoniae* resistance-pattern cluster with one intentionally missing metadata field.
 
 The system must demonstrate:
 
@@ -274,13 +491,15 @@ Stop and surface the issue instead of guessing when:
 - a dependency requires replacing a frozen architecture decision;
 - the available data cannot support a claimed calculation;
 - a model output cannot be validated;
-- a third-party integration would require credentials/permissions not available.
+- a third-party integration would require credentials/permissions not available;
+- requested release/version action conflicts with `ROADMAP.md` or SemVer policy;
+- a branch/merge request would violate Gitflow and the user has not explicitly authorized an exception.
 
 ---
 
 ## Scope Freeze
 
-Until the end-to-end core works and passes acceptance tests, do not add:
+Until the end-to-end v0.1 core works and passes acceptance tests, do not add:
 
 - pathogen genomics;
 - AMRFinderPlus;
@@ -297,4 +516,4 @@ Until the end-to-end core works and passes acceptance tests, do not add:
 
 ## Success Criterion
 
-The coding agent has succeeded when the repository truthfully demonstrates the PRD's Definition of Done, not when it has generated the largest amount of code.
+The coding agent has succeeded when the repository truthfully demonstrates the PRD's Definition of Done **and** leaves behind a coherent versioned release history—not when it has generated the largest amount of code.
