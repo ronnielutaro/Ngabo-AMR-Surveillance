@@ -2,42 +2,35 @@
 
 This file applies to AI coding agents working anywhere in this repository.
 
-Read `CLAUDE.md` first. `CLAUDE.md` is the root implementation contract; this file summarizes execution behavior, architecture, orchestration, long-running safety, hackathon evidence, Git/release discipline, and stop conditions.
+Read `CLAUDE.md` first. It is the root implementation contract.
 
 ---
 
 ## 1. Mission
 
-Build Ngabo as a **safe, event-driven AMR surveillance and incident-response system**.
-
-The current release target is `0.1.x`. Preserve the longer trajectory in `ROADMAP.md`.
+Build Ngabo as a safe, event-driven AMR surveillance and incident-response system whose **canonical Taskmaster hero workflow completes with zero human intervention** while keeping clinical/official public-health decisions outside the autonomous v0.1 action envelope.
 
 Optimize for:
 
-- working asynchronous autonomy;
+- asynchronous event-driven autonomy;
+- zero-human hero completion;
 - deterministic scientific logic;
 - graph-first hybrid orchestration;
-- explicit persistent state;
-- resumable/recoverable long-running execution;
-- current-context reconstruction;
-- pre-action freshness protection;
-- traceability/observability;
-- bounded clinical/public-health claims;
-- reproducibility;
+- safe A1 external coordination;
+- deterministic action policy;
+- bounded automatic repair;
+- freshness/idempotency;
+- safe abstention;
+- canonical state discipline;
+- observability/evaluation;
 - Clean Architecture;
 - monorepo discipline;
-- measured operational utility;
-- third-party/data provenance;
-- hackathon scoring/technology compliance;
-- truthful proof of execution;
-- maintainable release history;
-- a clear <=4-minute demo.
+- BYOF operational utility;
+- truthful submission evidence.
 
 ---
 
 ## 2. Required Read Order
-
-Before major implementation:
 
 1. `CLAUDE.md`
 2. `ROADMAP.md`
@@ -46,41 +39,103 @@ Before major implementation:
 5. `docs/TECH_STACK.md`
 6. `docs/CLEAN_ARCHITECTURE.md`
 7. `docs/HACKATHON_ALIGNMENT.md`
-8. `docs/ADK_RUNTIME.md`
-9. `docs/ORCHESTRATION_PATTERNS.md`
-10. `docs/LONG_RUNNING_AGENT.md`
-11. `docs/SYSTEM_DESIGN.md`
-12. `docs/AGENT_ARCHITECTURE.md`
-13. `docs/DATA_SAFETY_EVALUATION.md`
-14. `docs/OPERATIONAL_UTILITY_EVALUATION.md`
-15. `docs/UI_UX_SPEC.md`
-16. `docs/UI_UX_HACKATHON_ADDENDUM.md`
-17. `docs/THIRD_PARTY_PROVENANCE.md`
-18. `docs/SUBMISSION_EVIDENCE.md`
-19. `docs/IMPLEMENTATION_PLAN.md`
-20. relevant ADRs, especially ADR 0005 and ADR 0006 for runtime work.
+8. `docs/TASKMASTER_ZERO_HUMAN_AUTONOMY.md`
+9. `docs/BYOF_FRICTION.md`
+10. `docs/ADK_CAPABILITY_SPIKE.md`
+11. `docs/ADK_RUNTIME.md`
+12. `docs/ORCHESTRATION_PATTERNS.md`
+13. `docs/LONG_RUNNING_AGENT.md`
+14. `docs/SYSTEM_DESIGN.md`
+15. `docs/AGENT_ARCHITECTURE.md`
+16. `docs/DATA_SAFETY_EVALUATION.md`
+17. `docs/OPERATIONAL_UTILITY_EVALUATION.md`
+18. `docs/UI_UX_SPEC.md`
+19. `docs/UI_UX_HACKATHON_ADDENDUM.md`
+20. `docs/ARCHITECTURE_DIAGRAM.md`
+21. `docs/THIRD_PARTY_PROVENANCE.md`
+22. `docs/SUBMISSION_EVIDENCE.md`
+23. `docs/SUBMISSION_FREEZE.md`
+24. `docs/HACKATHON_RISK_REGISTER.md`
+25. `docs/IMPLEMENTATION_PLAN.md`
+26. relevant ADRs, especially 0005 and 0006.
 
-Consult `CHANGELOG.md` before release-oriented work.
-
-If official hackathon rules change, update repository contracts before implementing against stale assumptions.
-
----
-
-## 3. Product Identity / Maturity
-
-Preferred permanent identity:
-
-> **Ngabo is an open-source AMR surveillance and incident-response system.**
-
-State maturity separately:
-
-> `v0.1.0` hackathon MVP in development.
-
-Do not overclaim hospital use, clinical validation or production readiness.
+If older documents still mention mandatory human approval/clarification in the v0.1 hero, `docs/TASKMASTER_ZERO_HUMAN_AUTONOMY.md` and `CLAUDE.md` supersede that wording for the safe A1 hero lane.
 
 ---
 
-## 4. Clean Architecture — Mandatory
+## 3. Hero Invariant
+
+Required canonical flow:
+
+```text
+signal
+→ Pub/Sub
+→ ADK workflow
+→ deterministic fan-out/join
+→ bounded Gemini reasoning
+→ approved evidence
+→ synthesis
+→ deterministic validation / bounded repair
+→ deterministic A1 autonomy policy
+→ freshness
+→ idempotency
+→ real external action
+→ machine acknowledgement
+```
+
+Required counters:
+
+```text
+manual_prompt_count_to_start = 0
+human_intervention_count = 0
+human_active_steps = 0
+clarification_count = 0
+approval_click_count = 0
+```
+
+Do not implement the hero as an interactive chat or human-guided workflow.
+
+---
+
+## 4. Safety Envelope
+
+Action classes:
+
+```text
+A0 INTERNAL_STATE                autonomous
+A1 SAFE_EXTERNAL_COORDINATION    autonomous after gates
+A2 REAL_OPERATIONAL_ESCALATION   not autonomous public-v0.1 by default
+A3 CLINICAL/OFFICIAL DECISION    never autonomous v0.1
+```
+
+Rules:
+
+- action class is deterministic application/domain policy;
+- Gemini cannot promote A2/A3 to A1;
+- hero target must be allow-listed and authorized;
+- hero payload is an investigation candidate/synthetic demonstration;
+- no prescribing, diagnosis or autonomous outbreak confirmation;
+- no real hospital/person contact without explicit authorization.
+
+---
+
+## 5. Missing Data
+
+Do not use a human question to keep the hero moving.
+
+```text
+material fact absent → NEEDS_INFORMATION → no action
+optional fact absent → UNKNOWN; continue only if policy permits
+recoverable fact → fetch automatically only from authorized canonical source
+```
+
+Never invent a clinical fact for zero-human completion.
+
+The hero fixture must be complete enough to finish safely.
+
+---
+
+## 6. Clean Architecture
 
 ```text
 Frameworks / Infrastructure
@@ -89,487 +144,255 @@ Interfaces / Adapters
           ↓
 Application / Use Cases / Ports
           ↓
-Domain / Entities / Value Objects / Domain Services
+Domain
 ```
 
-### Backend shape
+Inner layers must not import FastAPI/GCP/ADK/Gemini/Next.js.
+
+ADK nodes/tools call inward application contracts.
+
+Forbidden:
 
 ```text
-services/core/ngabo/
-├── domain/
-├── application/
-├── interfaces/
-├── infrastructure/
-└── bootstrap/
-```
-
-### Rules
-
-- domain owns deterministic AMR/scientific policy and imports no outer frameworks;
-- application owns use cases/workflows/ports and imports no concrete cloud/model SDKs;
-- interfaces translate HTTP/events only;
-- infrastructure implements Firestore/GCS/PubSub/ADK/Gemini/evidence/notification/telemetry ports;
-- bootstrap owns dependency wiring;
-- React UI calls backend/application abstractions, not cloud/model SDKs directly.
-
-Stop and fix:
-
-```text
-domain -> FastAPI
-application -> google.cloud.firestore
-application -> Gemini SDK
-application -> ADK SDK
-route -> AMR calculation
-ADK function node -> raw Firestore + business logic
-ADK agent -> direct notification provider
-React component -> Firestore / PubSub / Gemini / ADK
-```
-
-ADK function nodes are orchestration adapters, not a new business layer.
-
----
-
-## 5. Monorepo — Mandatory
-
-```text
-ngabo/
-├── apps/web/
-├── services/core/
-├── data/
-├── docs/
-├── infra/
-└── .github/
-```
-
-`ngabo-web` and `ngabo-core` remain independently deployable Cloud Run services.
-
-Do not split repos or add deployables without an ADR.
-
----
-
-## 6. Hackathon Technology Contract
-
-The submitted v0.1 must actually use and visibly demonstrate:
-
-- Gemini 3.6 Flash (or documented eligible fallback) through Gemini API;
-- Google ADK Python as graph/agent runtime;
-- Cloud Run for web/core;
-- Firestore for canonical durable workflow state;
-- Pub/Sub for asynchronous trigger/redelivery;
-- Cloud Storage for artifacts/raw files;
-- Cloud Logging/supported tracing for proof.
-
-Primary category: **The Taskmaster**.
-
-Canonical trigger:
-
-```text
-surveillance signal event -> ADK graph starts automatically
-```
-
-Never require a user chat prompt to start the normal investigation.
-
----
-
-## 7. Runtime Responsibility Boundary
-
-Governing rule:
-
-> **Deterministic when the workflow is known; agentic when the decision is ambiguous; dynamic only when the workflow itself cannot reasonably be known in advance.**
-
-### Deterministic layer/function nodes
-
-Own parsing, validation, normalization, AST calculations, similarity, temporal/location windows, baselines, signal scoring, structural missingness, fixed routing/state policy, idempotency, typed joins, package validation and freshness/version comparison.
-
-### Gemini agent nodes
-
-Own reasoning across joined findings, materiality assessment, bounded evidence intent/optional capability choice, targeted clarification, evidence synthesis, labelled hypotheses, package drafting and stopping with uncertainty.
-
-### Humans
-
-Own materially missing context when asked, consequential response approval, outbreak confirmation under appropriate process and patient treatment decisions.
-
-The human does not manually sequence the normal graph.
-
----
-
-## 8. Google ADK Graph Runtime
-
-Core target:
-
-```text
-signal
- ↓
-context function
- ↓
-parallel deterministic fan-out
- ├─ profile comparison
- ├─ baseline summary
- └─ missing-field assessment
- ↓
-join
- ↓
-Gemini triage
- ↓
-evidence / clarification
- ↓
-Gemini synthesis
- ↓
-deterministic validation
- ↓
-review
-```
-
-Implement where supported/stable:
-
-- graph/workflow orchestration;
-- deterministic function nodes;
-- fan-out/join;
-- deterministic routers;
-- bounded agent nodes;
-- persisted run/session/invocation refs;
-- pause/resume/recovery;
-- typed outputs;
-- evals;
-- tracing;
-- model/tool/time/retry budgets.
-
-Required deterministic branch failure must remain visible; later model output cannot paper it over.
-
----
-
-## 9. Long-Running State / Memory / Freshness — Mandatory
-
-Governing rule:
-
-> **Resume execution, but revalidate truth.**
-
-```text
-Firestore/application state = canonical truth
-ADK session/checkpoint       = execution continuity
-transient state              = recomputable
-Cloud Storage artifacts      = file-like outputs
-long-term model memory       = non-authoritative / disabled for v0.1 factual incident reasoning
-```
-
-After resume:
-
-- reload current incident data;
-- rebuild bounded current context;
-- repeat only safe/idempotent work;
-- preserve audit history;
-- never let old session text override canonical facts;
-- re-run freshness before consequential action.
-
-### Freshness barrier
-
-```text
-APPROVED
-  ↓
-current incident/package/source comparison
-  ├─ fresh → action
-  └─ material change → approval stale → re-review
-```
-
-Stale approval may never be replayed by retry/redelivery.
-
-ADK Web is local-only. Do not add A2A infrastructure in v0.1 without an ADR.
-
----
-
-## 10. Runtime Restrictions
-
-No arbitrary shell, unrestricted DB access, arbitrary web evidence, source-fact mutation, pre-review consequential alerting, prescribing, outbreak confirmation, fabricated citations or unbounded loops.
-
-Known fixed routing is code, not prompt text.
-
-Preferred flow:
-
-```text
-ADK node/tool
-  ↓
-application query/use case
-  ↓
-domain calculation or port
-  ↓
-typed result
+ADK node -> raw Firestore + business logic
+Gemini -> direct external action
+route -> scientific calculation
+application -> concrete cloud/model SDK
+React -> cloud/model SDK
 ```
 
 ---
 
-## 11. Evidence / Models
+## 7. Deterministic vs Agentic
 
-Approved evidence corpus must be curated, provenance-recorded and source-ID traceable.
+Deterministic owns:
 
-### EmbeddingGemma
+- parsing/validation/normalization;
+- AST/profile/baseline/window/scoring;
+- structural missingness;
+- fixed routing;
+- join/failure semantics;
+- package validation;
+- action classification;
+- allow-list authorization;
+- freshness;
+- idempotency;
+- acknowledgement state.
 
-Post-core only. Use behind `EvidenceSearchPort` for semantic retrieval over approved sources. Preserve source IDs and evaluate retrieval. No vector DB solely for bonus points.
+Gemini owns only bounded ambiguity:
 
-### MedGemma
+- reasoning over joined findings;
+- evidence intent when not deterministic;
+- source-grounded synthesis;
+- labelled hypotheses;
+- bounded repair from validator errors;
+- stopping with uncertainty.
 
-Gated stretch only. Bounded interpretation of already retrieved evidence. No diagnose/prescribe/outbreak authority/deterministic replacement.
+No model call for ordinary fixed policy.
 
-### Multimodal
+---
 
-Post-core only:
+## 8. ADK Capability Spike
+
+Before production orchestration code:
+
+- run `docs/ADK_CAPABILITY_SPIKE.md`;
+- pin exact ADK version;
+- verify event/backend invocation;
+- verify supported parallel/join path;
+- verify structured output;
+- verify session/resume/eval/trace path;
+- choose documented fallback if workshop API differs.
+
+Do not guess APIs and do not add another orchestration framework to compensate.
+
+---
+
+## 9. Automatic Repair
+
+Package validation is deterministic.
+
+If invalid:
 
 ```text
-image/PDF -> UNVERIFIED AI DRAFT -> human verification -> canonical ingestion
+structured errors → Gemini repair → validator
 ```
 
-### Collaborative/dynamic
+Hard max attempts. Suggested `2`.
 
-Do not add agent teams or dynamic topology for aesthetics. Require measurable value/ADR where specified.
+If budget exhausted: `VALIDATION_FAILED`; no action.
 
 ---
 
-## 12. Human Review / Action
+## 10. External Action
 
-Clarification may pause/resume the same incident.
+Hero uses a real A1 integration through `NotificationPort`.
 
-Final consequential review remains an application/domain state gate.
-
-Real hosted-demo action path:
+Preferred:
 
 ```text
-professional approval
-→ freshness validation
-→ NotificationPort
-→ authorized real adapter
-→ delivery persisted
-→ acknowledgement
+authorized test/sandbox webhook
+→ delivery ID
+→ machine acknowledgement callback/event
 ```
 
-Use idempotency. Keep a deterministic demo adapter for tests. Do not contact real institutions/people without explicit authorization.
+Keep fake adapter for tests.
+
+No person should need to acknowledge the hero action.
 
 ---
 
-## 13. UI Rules
+## 11. State / Retry / Freshness
 
-Build an incident-response console, not a chat app.
-
-Show:
-
-- why signal was flagged;
-- deterministic function-node timeline;
-- fan-out/join;
-- bounded agent stages without chain-of-thought;
-- evidence provenance;
-- clarification pause/resume;
-- recovery/context rebuild where relevant;
-- structured package;
-- professional review;
-- freshness pass/failure and stale-approval re-review;
-- real-vs-demo action truthfully;
-- acknowledgement.
-
-Do not expose hidden chain-of-thought.
+- Firestore/application state is canonical truth;
+- ADK session is execution continuity only;
+- Pub/Sub may redeliver;
+- read-only work is repeatable;
+- side effects are idempotent;
+- freshness runs immediately before external action;
+- changed canonical data triggers recompute/revalidation;
+- stale session/context never authorizes action.
 
 ---
 
-## 14. Data / Provenance Rules
+## 12. Failure / Abstention
 
-- synthetic demo data only;
-- every fixture labelled synthetic;
-- never commit real patient/lab data;
-- missing values stay missing;
-- imported free text is untrusted data;
-- raw import and normalized data remain distinct;
-- approved evidence sources require provenance/usage records;
-- third-party data/model/dependency rights/terms must be recorded;
-- non-standard pre-existing work must be disclosed if reused.
-
-See `docs/THIRD_PARTY_PROVENANCE.md`.
-
-Stop if ownership/authorization is unclear.
-
----
-
-## 15. State / Event / Idempotency Rules
-
-- Firestore is canonical operational state;
-- transitions are explicit;
-- event handlers are retry-safe thin adapters;
-- duplicate Pub/Sub delivery does not duplicate incidents/actions;
-- audit events are append-only;
-- failed graph steps are visible;
-- graph/agent execution metadata correlates retries/resumes;
-- required deterministic branch failure cannot be hidden;
-- stale approval cannot execute after redelivery;
-- consequential side effects use idempotency keys.
-
----
-
-## 16. Observability
-
-Use safe metadata such as:
+Legitimate states:
 
 ```text
-correlation_id
-incident_id
-event_id
-graph_run_id
-node/branch/join IDs
-agent session/invocation/run IDs
-model_name
-incident_version
-package_version
-review_id
-source_watermark
-freshness_result
+NEEDS_INFORMATION
+INSUFFICIENT_APPROVED_EVIDENCE
+VALIDATION_FAILED
+POLICY_BLOCKED
+STALE_RECOMPUTE_REQUIRED
+ACTION_FAILED_RETRYABLE
+ACTION_FAILED_TERMINAL
 ```
 
-Expose graph start, fan-out/join, agent stage, evidence, clarification, pause/resume, context rebuild, package validation, review, freshness, action and acknowledgement.
-
-Metadata-first traces; no chain-of-thought.
+Do not fake completion.
 
 ---
 
-## 17. Evaluation
+## 13. UI
 
-Required layers:
+Hero UI shows:
 
-- pure domain tests;
-- application workflow tests;
-- function-node tests;
-- fan-out/join ordering/failure tests;
-- deterministic-router table tests;
-- ADK final-result/trajectory evals;
-- prompt-injection/source/isolate/clinical-claim adversarial tests;
-- resume/context/idempotency tests;
-- freshness/stale-approval tests;
-- deployed E2E;
-- operational-utility benchmark;
-- EmbeddingGemma/MedGemma evaluation only if integrated.
+- event start;
+- deterministic fan-out/join;
+- bounded Gemini/evidence stages;
+- validation/repair;
+- A1 autonomy-policy result;
+- freshness/idempotency;
+- external delivery;
+- machine acknowledgement;
+- zero-human metrics.
 
-Canonical E2E:
+No clarification card or approval click in canonical hero.
+
+---
+
+## 14. Evaluation
+
+Hero assertions:
 
 ```text
-upload/data arrival
-→ signal
-→ Pub/Sub
-→ graph
-→ deterministic fan-out/join
-→ Gemini triage
-→ evidence
-→ clarification
-→ resume
-→ synthesis
-→ validation
-→ review
-→ freshness
-→ real action
-→ acknowledgement
+0 prompts
+0 interventions
+0 human steps
+0 clarifications
+0 approvals
+1 external effect
+1 machine acknowledgement
 ```
 
-Create public `EVALUATION.md` before submission.
+Also test:
+
+- A2/A3 blocked;
+- material missing fact abstains;
+- non-allow-listed target blocked;
+- prompt injection;
+- fabricated citation/isolate;
+- repair success/exhaustion;
+- branch failure;
+- freshness recompute;
+- duplicate event/retry idempotency;
+- canonical state beats session text;
+- restart/recovery.
+
+Run three consecutive deployed hero E2Es before demo freeze.
 
 ---
 
-## 18. Operational Utility / Submission Evidence
+## 15. BYOF
 
-Use `docs/OPERATIONAL_UTILITY_EVALUATION.md` to measure:
+The personal friction is the builder's own repeated AMR research/coordination workflow described in `docs/BYOF_FRICTION.md`.
 
-- zero user prompts to start canonical investigation;
-- human intervention/active-step count;
-- signal-to-review-ready timing;
-- clarification count;
-- model/function/tool counts;
-- action-to-ack timing where available;
-- comparison with documented scripted reference workflow.
+Do not borrow clinical identity.
 
-Do not invent hospital productivity percentages.
-
-Use `docs/SUBMISSION_EVIDENCE.md` to map every competitive claim to real proof: URL, trace, screenshot, eval result, video segment or external action.
-
-Documentation intent is not execution proof.
+Operational benchmark compares builder reference human steps against zero-human Ngabo hero.
 
 ---
 
-## 19. Cloud / Security / Cost
+## 16. Git / Release Governance
 
-Required:
-
-- web/core on Cloud Run;
-- min instances 0 unless justified;
-- max caps/right-sized resources;
-- budget + alert;
-- secrets injected, not committed;
-- protected Pub/Sub/internal endpoints;
-- least privilege where practical;
-- judge access kept through judging;
-- no public ADK Web.
-
----
-
-## 20. Implementation / Scope Freeze
-
-Follow `docs/IMPLEMENTATION_PLAN.md`.
-
-Until deployed core E2E is green, do not add:
-
-- MedGemma;
-- collaborative specialist topology;
-- dynamic workflow topology;
-- multimodal ingestion;
-- genomics/AMRFinderPlus;
-- vector database;
-- GKE;
-- Redis/Kafka;
-- LangGraph;
-- mobile app;
-- real patient data;
-- production hospital connector.
-
-EmbeddingGemma begins only after core works reliably.
-
----
-
-## 21. Git / Release Discipline
-
-Use SemVer, Conventional Commits and Gitflow-style branches.
-
-Feature:
+Feature work:
 
 ```text
-feature/<short-name> from develop -> PR to develop
+feature/<name> from develop → PR to develop
 ```
 
 Release:
 
 ```text
-release/vX.Y.Z from develop -> main -> tag -> reconcile to develop
+release/vX.Y.Z → main → tag → reconcile develop
 ```
 
-Hotfix from `main`, merged to both `main` and `develop`.
+Use SemVer + Conventional Commits.
 
-Do not direct-commit feature work to `main`.
-
----
-
-## 22. Stop Conditions
-
-Stop and surface when:
-
-- official rules conflict with docs;
-- safety/provenance is unclear;
-- dependency direction would invert Clean Architecture;
-- deterministic logic is being delegated to an LLM without reason;
-- ADK node would bypass application/domain contracts;
-- model output cannot be validated;
-- external action lacks authorization;
-- old context conflicts with current canonical state;
-- stale approval would execute;
-- third-party rights are unclear;
-- bonus work threatens core reliability;
-- Git/release operation violates governance.
+For hackathon release, follow `docs/SUBMISSION_FREEZE.md`: preserve judged main/tag/Cloud Run revisions/video through judging.
 
 ---
 
-## 23. Final Standard
+## 17. Scope Freeze
 
-A judge should be able to see truthfully:
+Until zero-human deployed hero and core evals are green, do not add:
 
-> **AMR data arrived → deterministic Ngabo logic detected a signal → Pub/Sub triggered an ADK graph → deterministic investigation work fanned out and joined → Gemini reasoned only where ambiguity existed → the workflow asked one necessary clarification and resumed the same incident using current canonical truth → traceable evidence was synthesized → deterministic validation protected the package → a professional approved consequential action → Ngabo revalidated freshness → executed one authorized real-world action → acknowledgement plus logs/state proved completion.**
+- MedGemma;
+- multi-agent specialist fleet;
+- dynamic topology;
+- multimodal ingestion;
+- genomics;
+- vector DB;
+- LangGraph;
+- GKE/Redis/Kafka;
+- real patient data;
+- real hospital connector;
+- A2/A3 autonomous actions.
 
-The repository must also show measured operational utility, reproducible setup, third-party/data provenance, and proof locations for every submitted competitive claim.
+EmbeddingGemma begins only after core green.
+
+---
+
+## 18. Stop Conditions
+
+Stop rather than guess if:
+
+- official rules changed;
+- exact ADK API is unknown;
+- hero requires human input;
+- zero-human completion would require inventing clinical data;
+- action is not A1/authorized/allow-listed;
+- model is being asked to own deterministic safety policy;
+- external side effect lacks idempotency;
+- package can bypass validator;
+- dependency direction is inverted;
+- claim lacks real evidence;
+- bonus work threatens hero reliability.
+
+---
+
+## 19. Definition of Done
+
+A milestone is done only when relevant tests are green, architecture boundaries hold, safety policy holds, docs/evidence are updated, and the change does not weaken the zero-human Taskmaster hero.
+
+The final release is not complete until a deployed scenario proves event→action→machine-ack completion with **zero human intervention** and the safety eval proves A2/A3 clinical/official actions remain blocked.
