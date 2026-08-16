@@ -9,9 +9,15 @@
 
 Ngabo must use Google ADK as a real agent runtime rather than a thin wrapper around a single Gemini call.
 
-The ADK runtime is responsible for orchestrating a bounded investigation across tools, preserving agent execution continuity, requesting targeted human input when necessary, and producing a validated structured incident package.
+The v0.1 runtime uses a **graph-first hybrid workflow**: deterministic function/workflow nodes execute known reproducible steps, Gemini agent nodes handle genuinely ambiguous reasoning, independent deterministic work fans out and joins where safe, and fixed routing rules stay deterministic.
+
+The governing rule is:
+
+> **Deterministic when the workflow is known; agentic when the decision is ambiguous; dynamic only when the workflow itself cannot reasonably be known in advance.**
 
 ADK remains an **outer infrastructure concern** under Clean Architecture. Ngabo's scientific/domain rules and authoritative workflow state do not depend on ADK classes.
+
+Read `docs/ORCHESTRATION_PATTERNS.md` and ADR 0005 before implementing the runtime.
 
 ---
 
@@ -20,7 +26,7 @@ ADK remains an **outer infrastructure concern** under Clean Architecture. Ngabo'
 ```text
 Google ADK / Gemini
         ↓
-infrastructure adapter
+infrastructure orchestration adapter
         ↓
 application workflow / ports
         ↓
@@ -30,7 +36,8 @@ domain entities + deterministic services
 Allowed:
 
 ```text
-ADK tool adapter -> application query/use case
+ADK function node -> application query/use case
+ADK agent tool -> application query/use case/port
 ADK orchestrator -> application ports
 application -> domain
 ```
@@ -40,33 +47,168 @@ Forbidden:
 ```text
 domain -> google.adk
 application use case -> Gemini SDK directly
-ADK tool -> Firestore directly
-ADK tool -> Pub/Sub directly
-ADK tool -> notification provider directly
+ADK function/tool node -> Firestore directly
+ADK function/tool node -> Pub/Sub directly
+ADK function/tool node -> notification provider directly
+ADK node -> duplicated ad hoc domain/scientific calculation
 ```
 
 All infrastructure access flows through application-defined ports.
 
 ---
 
-## 3. Orchestrator Scope
+## 3. v0.1 Orchestration Shape
 
-The Ngabo Orchestrator may:
+The core investigation should be implemented as an explicit graph rather than asking a single agent prompt to remember and sequence the entire workflow.
 
-- inspect a persisted incident through bounded tools;
-- choose which approved investigation tool to invoke;
+Target topology:
+
+```text
+surveillance.signal.detected
+          ↓
+create/load incident
+          ↓
+FUNCTION: get_incident_context
+          ↓
+      FAN OUT
+   ┌──────┼──────────┐
+   │      │          │
+   ▼      ▼          ▼
+FUNCTION FUNCTION   FUNCTION
+profile  baseline   missing-field
+compare  summary    assessment
+   │      │          │
+   └──────┼──────────┘
+          ▼
+         JOIN
+          ↓
+AGENT: investigation triage
+          │
+          ├── clarification required? -> pause/resume
+          │
+          └── bounded evidence-search intent
+                         ↓
+                 EvidenceSearchPort
+                         ↓
+                 optional MedGemma*
+                         ↓
+AGENT: evidence-grounded synthesis
+          ↓
+FUNCTION: package validation
+          ↓
+WAITING_FOR_REVIEW
+```
+
+`*` MedGemma remains a gated stretch.
+
+The graph may evolve during implementation if exact ADK APIs require a different mechanical representation, but the functional boundaries and dependency rules above must remain unless an ADR changes them.
+
+---
+
+## 4. Node Selection Rule
+
+### Function/workflow node
+
+Use when the same valid inputs should follow the same reproducible logic.
+
+Examples:
+
+- incident-context loading through application ports;
+- profile comparison;
+- baseline calculation;
+- missing-field extraction;
+- schema/package validation;
+- fixed event/state routing;
+- idempotency checks.
+
+### Agent node
+
+Use when Gemini reasoning materially adds value.
+
+Examples:
+
+- reasoning across multiple structured findings;
+- deciding whether a missing field is materially blocking;
+- choosing a bounded optional evidence topic/capability;
+- generating labelled hypotheses;
+- deciding that evidence is insufficient;
+- source-grounded package synthesis.
+
+### Dynamic workflow
+
+Do not use runtime-generated workflow topology for the core v0.1 investigation. Reserve it for a later requirement where the execution tree itself cannot reasonably be known before runtime.
+
+---
+
+## 5. Routing Rule
+
+A routing decision must not invoke Gemini merely because an agent router is available.
+
+### Deterministic router
+
+Required when rules are explicit/exhaustive, for example:
+
+```text
+event type -> handler
+incident state -> legal transition
+duplicate event -> idempotency path
+validation pass/fail -> next state
+review approved -> notification workflow
+review rejected -> stop/close path
+```
+
+### Agentic router
+
+Allowed for bounded ambiguous choices such as:
+
+- which optional evidence topic is relevant;
+- whether a missing value materially blocks synthesis;
+- whether an optional specialist capability adds value;
+- whether evidence is sufficient for a bounded hypothesis.
+
+Agentic routing remains allow-listed, typed, step-bounded, and evaluated.
+
+---
+
+## 6. Parallel Fan-Out / Join
+
+Once canonical incident context is loaded, independent read-only deterministic work should normally fan out concurrently when the exact ADK implementation supports this cleanly.
+
+Core candidates:
+
+```text
+compare_resistance_profiles()
+get_baseline_summary()
+get_missing_fields()
+```
+
+The join must wait for required branches and produce one typed investigation-context object for the reasoning node.
+
+Evidence retrieval may run in the same fan-out only when the retrieval query can be formed deterministically from canonical context. If query intent requires contextual reasoning, perform it after the triage agent node.
+
+Parallelism must not hide dependencies or shared-state races. Reliability outranks speed.
+
+---
+
+## 7. Orchestrator Scope
+
+The Ngabo reasoning/orchestrator agent may:
+
+- inspect structured results produced by graph/function nodes;
+- choose bounded optional investigation capabilities;
 - compare existing deterministic outputs;
-- retrieve approved evidence;
-- identify missing information;
+- formulate approved evidence-search intent;
+- identify materially missing information;
 - request targeted clarification;
 - resume after clarification;
 - construct labelled hypotheses;
 - prepare a schema-constrained incident package;
 - stop when evidence is insufficient.
 
-The orchestrator may not:
+The agent may not:
 
 - create the surveillance signal;
+- decide whether mandatory deterministic graph nodes should be skipped merely to save work;
 - calculate AST statistics itself;
 - alter canonical isolate facts;
 - prescribe antimicrobial treatment;
@@ -77,11 +219,9 @@ The orchestrator may not:
 
 ---
 
-## 4. Required Tools
+## 8. Required Application-Facing Capabilities
 
-The runtime tool surface should remain small and typed.
-
-Core v0.1 tools:
+Core v0.1 capability contracts remain small and typed:
 
 ```text
 get_incident_context()
@@ -93,13 +233,17 @@ request_clarification()
 prepare_incident_package()
 ```
 
-Optional supporting tools may be added only if they have a clear investigation purpose.
+Important distinction:
 
-Every tool should define:
+- a capability may be represented as a deterministic graph/function node when it is a known workflow step;
+- it may also be exposed as a bounded agent tool when agent-driven optional invocation is justified;
+- do not duplicate its business/scientific implementation in both places.
+
+Every capability defines:
 
 - typed input schema;
 - typed output schema;
-- whether it is read-only or side-effecting;
+- read-only vs side-effecting behavior;
 - authorization expectations;
 - timeout;
 - retry behavior;
@@ -108,36 +252,34 @@ Every tool should define:
 
 ---
 
-## 5. Tool Execution Rule
+## 9. Deterministic Calculation Rule
 
-The model may decide **which tool to call**.
+The model must not decide the authoritative result of a deterministic calculation.
 
-It must not decide the authoritative result of a deterministic calculation.
-
-Example:
+Correct:
 
 ```text
-Agent:
-“Compare the resistance profiles for this incident.”
-        ↓
+FUNCTION NODE / bounded tool:
 compare_resistance_profiles()
         ↓
 deterministic Python implementation
         ↓
 validated similarity result
         ↓
-Agent interprets result
+Gemini interprets result with other findings
 ```
 
-Not:
+Incorrect:
 
 ```text
-Agent reads AST text and estimates similarity itself.
+Gemini reads AST text and estimates similarity itself.
 ```
+
+Do not use an LLM call to apply a fixed if/else rule, join structured results, identify syntactically missing fields, or repeat calculations that domain/application code already owns.
 
 ---
 
-## 6. Agent Execution Identity
+## 10. Agent Execution Identity
 
 Persist enough execution metadata to correlate an Ngabo incident with its ADK execution.
 
@@ -157,17 +299,24 @@ Suggested application-level record:
 }
 ```
 
-Exact ADK field names may differ by the selected library version. The application schema should avoid leaking ADK-specific classes into domain entities.
+Exact ADK field names may differ by the selected library version. The application schema must avoid leaking ADK-specific classes into domain entities.
+
+Where practical also correlate graph/node execution with:
+
+```text
+graph_run_id
+node_name
+branch_id
+join_id
+```
+
+without making those runtime identifiers domain concepts.
 
 ---
 
-## 7. Resumability
+## 11. Resumability
 
 Where the selected ADK version/runtime provides resumable workflows, Ngabo should use them for the investigation portion of the incident.
-
-### Goal
-
-If execution is interrupted after expensive/read-only tool calls, Ngabo should be able to continue the same investigation rather than blindly repeat the entire workflow.
 
 ### Layer responsibilities
 
@@ -186,23 +335,25 @@ Pub/Sub
 
 On resume:
 
-1. load the canonical incident state;
+1. load canonical incident state;
 2. validate that the incident is still in a resumable state;
 3. recover/reuse ADK execution state when available;
-4. ensure any tool that may run again is safe to repeat;
+4. ensure any graph branch/tool that may run again is safe to repeat;
 5. continue toward clarification/package generation;
 6. append an audit event describing resume/retry.
 
+A resumed graph must not bypass a deterministic node whose previous completion/result cannot be verified.
+
 ---
 
-## 8. The Idempotency Trap
+## 12. The Idempotency Trap
 
-Resumability and Pub/Sub redelivery mean a tool or handler can run more than once.
+Resumability, parallel branch retry, and Pub/Sub redelivery mean a node/tool/handler can run more than once.
 
 Therefore:
 
-- read-only tools should be naturally repeatable;
-- state-changing tools must carry an idempotency key;
+- read-only nodes/tools should be naturally repeatable;
+- state-changing operations carry an idempotency key;
 - the agent must not directly execute non-idempotent external effects;
 - final notification remains behind application review + idempotent notification workflow.
 
@@ -222,14 +373,14 @@ Duplicate execution must converge on the same state.
 
 ---
 
-## 9. Targeted Human Input
+## 13. Targeted Human Input
 
 Clarification is the primary ADK human-input use case.
 
-The agent can request clarification only when:
+The triage/reasoning agent can request clarification only when:
 
 - the information is materially relevant to investigation;
-- it cannot be recovered from canonical data/tools;
+- it cannot be recovered from canonical data/function nodes/tools;
 - the question can be stated clearly;
 - the missing value should not be guessed.
 
@@ -249,11 +400,11 @@ Clarification output contract:
 
 The application persists the question and transitions to `WAITING_FOR_CLARIFICATION`.
 
-After the answer is recorded, the same incident resumes.
+After the answer is recorded, the same incident resumes through the graph from a safe checkpoint/application state.
 
 ---
 
-## 10. Final Human Approval Is Not an Agent Confirmation Primitive
+## 14. Final Human Approval Is Not an Agent Confirmation Primitive
 
 The consequential approval boundary remains authoritative application/domain behavior.
 
@@ -269,9 +420,9 @@ Do not couple Ngabo's safety model exclusively to an experimental framework conf
 
 ---
 
-## 11. Structured Output
+## 15. Structured Output and Deterministic Validation
 
-The final package must be returned through a schema-constrained boundary and validated after generation.
+The final package must be returned through a schema-constrained boundary and then validated in a deterministic function/application step.
 
 Required shape:
 
@@ -291,34 +442,44 @@ Required shape:
 }
 ```
 
-Post-generation validators must check at least:
+Post-generation validators check at least:
 
 - every isolate ID exists;
-- every guidance source ID was returned by the approved evidence tool;
+- every guidance source ID was returned by the approved evidence path;
 - prohibited treatment/confirmation language is absent or correctly bounded;
 - observed evidence is backed by source data;
-- derived findings correspond to deterministic tool outputs;
+- derived findings correspond to deterministic outputs;
 - hypotheses remain labelled as hypotheses.
 
 Invalid output does not advance the incident to review.
 
 ---
 
-## 12. Model Selection
+## 16. Model Selection and Model-Call Budget
 
-Primary orchestrator model:
+Primary reasoning/orchestration model:
 
 `gemini-3.6-flash`
 
-Use Flash first for the full workflow. Introduce a more expensive model only if evaluation shows a material improvement for a narrowly scoped step.
+Use Flash first for the workflow. Introduce a more expensive model only if evaluation shows a material improvement for a narrowly scoped step.
 
-Do not add model routing purely for architecture spectacle.
+A model call must have a reason. Do not spend a Gemini turn on behavior that a deterministic graph node can execute reliably.
+
+For the canonical demo scenario, record:
+
+- model-call count;
+- function/tool call count;
+- retries;
+- clarification count;
+- total agent duration.
+
+Treat these as engineering regression metrics, not clinical metrics.
 
 ---
 
-## 13. Evidence Retrieval with EmbeddingGemma
+## 17. Evidence Retrieval with EmbeddingGemma
 
-After the core workflow is stable, `search_approved_guidance()` should support semantic retrieval using **EmbeddingGemma**.
+After the core graph is stable, `search_approved_guidance()` should support semantic retrieval using **EmbeddingGemma**.
 
 Clean Architecture placement:
 
@@ -332,7 +493,7 @@ Suggested flow:
 
 1. load a curated/versioned guidance corpus;
 2. precompute document/chunk embeddings;
-3. embed query text with EmbeddingGemma;
+3. embed bounded query text with EmbeddingGemma;
 4. perform deterministic cosine similarity;
 5. return top approved source IDs/chunks/scores;
 6. Gemini may summarize only returned approved evidence.
@@ -341,9 +502,9 @@ No arbitrary web results enter the approved evidence path in v0.1.
 
 ---
 
-## 14. Optional MedGemma Tool
+## 18. Optional MedGemma Capability
 
-MedGemma is an optional bounded tool only after core behavior is stable.
+MedGemma is an optional bounded capability only after core behavior and EmbeddingGemma are stable.
 
 Potential interface:
 
@@ -355,30 +516,57 @@ interpret_medical_guidance(
 ) -> structured interpretation
 ```
 
-The tool output is supportive interpretation, not authority.
+Prefer treating it as a bounded/stateless specialist capability rather than creating an autonomous subordinate agent unless evaluation proves an agent topology is beneficial.
 
-It must retain source IDs and may not introduce uncited claims.
+Its output is supportive interpretation, not authority. It must retain source IDs and may not introduce uncited claims.
 
 If MedGemma does not improve measured evaluation results or adds too much deployment complexity, omit it from v0.1 and do not claim the bonus.
 
 ---
 
-## 15. Evaluation Requirements
+## 19. Collaborative-Agent Pattern
+
+Ngabo does not need multiple reasoning agents merely because ADK supports them.
+
+A collaborative pattern is allowed later when:
+
+- distinct specialist reasoning domains exist;
+- the coordinator benefits from invoking only a relevant subset;
+- evaluation shows the separation improves quality, traceability, or reliability.
+
+Potential later specialists include epidemiology, genomics, evidence, and medical-evidence interpretation.
+
+For v0.1, one primary Gemini reasoning/synthesis agent plus deterministic graph nodes and bounded specialist capabilities is preferred.
+
+---
+
+## 20. Dynamic Pattern
+
+Runtime-generated dynamic workflow topology is deferred for the core v0.1 flow.
+
+It may become useful for future open-ended research or genomics investigations where the available evidence determines the execution tree at runtime.
+
+Do not introduce dynamic topology to the canonical hackathon path without a concrete requirement and an ADR/amendment.
+
+---
+
+## 21. Evaluation Requirements
 
 ADK behavior must be evaluated as a trajectory, not only by final prose quality.
 
 The suite should evaluate where supported:
 
-- correct tool choice;
-- required tool execution;
+- required graph/function-node execution;
+- safe parallel fan-out/join;
+- deterministic router behavior;
+- correct bounded agentic routing;
 - avoiding forbidden tools/actions;
 - clarification behavior;
 - stop behavior;
 - final package validity;
 - source integrity;
-- failure handling.
-
-### Required datasets
+- failure handling;
+- unnecessary model-call regression.
 
 Store committed synthetic eval cases under a stable location such as:
 
@@ -392,10 +580,13 @@ Include:
 - clarification path;
 - weak/noisy evidence;
 - empty evidence;
+- required parallel branch failure;
+- branch completion in different orders;
 - tool failure;
 - prompt injection;
 - overclaiming;
-- duplicate/redelivery behavior.
+- duplicate/redelivery behavior;
+- interruption/resume.
 
 ### Development loop
 
@@ -406,7 +597,7 @@ implementation change
     ↓
 candidate eval
     ↓
-compare results
+compare outcome + trajectory + model-call budget
     ↓
 accept only if behavior is not regressed
 ```
@@ -415,15 +606,17 @@ Use current official ADK/Agents CLI evaluation tooling where it fits the reposit
 
 ---
 
-## 16. Observability
+## 22. Observability
 
-The agent runtime must emit enough telemetry to reconstruct what happened without exposing hidden chain-of-thought.
+The runtime must emit enough telemetry to reconstruct what happened without exposing hidden chain-of-thought.
 
 Track:
 
-- invocation start/end;
-- model name;
-- tool start/end;
+- graph/invocation start/end;
+- node/branch start/end;
+- fan-out/join completion;
+- deterministic vs agent node type;
+- model name for model nodes;
 - tool result category;
 - errors/retries;
 - pause/resume;
@@ -431,15 +624,30 @@ Track:
 - package validation;
 - token/latency metrics where available.
 
-### Cloud Trace / OpenTelemetry
+Public-safe events may include:
+
+```text
+INVESTIGATION_GRAPH_STARTED
+FUNCTION_NODE_STARTED
+FUNCTION_NODE_COMPLETED
+PARALLEL_FANOUT_STARTED
+PARALLEL_BRANCH_COMPLETED
+PARALLEL_JOIN_COMPLETED
+AGENT_NODE_STARTED
+EVIDENCE_RETRIEVED
+CLARIFICATION_REQUESTED
+CLARIFICATION_RECEIVED
+AGENT_INVESTIGATION_RESUMED
+PACKAGE_VALIDATION_COMPLETED
+```
 
 Prefer the current ADK/Agents CLI tracing path if it integrates cleanly with `ngabo-core`.
 
-Do not enable full prompt/response capture by default merely because the tooling supports it. Preserve a privacy-safe metadata-first configuration.
+Do not enable full prompt/response capture by default merely because tooling supports it. Preserve a privacy-safe metadata-first configuration.
 
 ---
 
-## 17. Loop and Cost Controls
+## 23. Loop and Cost Controls
 
 Each investigation requires bounded execution.
 
@@ -447,6 +655,7 @@ Define configuration for:
 
 ```text
 max_agent_steps
+max_model_calls
 max_tool_calls
 agent_timeout_seconds
 tool_timeout_seconds
@@ -457,7 +666,7 @@ A model loop must terminate into an inspectable failure state rather than burn c
 
 ---
 
-## 18. Failure States
+## 24. Failure States
 
 At minimum distinguish:
 
@@ -468,56 +677,51 @@ AGENT_TOOL_ERROR
 AGENT_INVALID_OUTPUT
 AGENT_EVIDENCE_UNAVAILABLE
 AGENT_RESUME_FAILED
+GRAPH_REQUIRED_BRANCH_FAILED
+GRAPH_JOIN_FAILED
+GRAPH_ROUTING_ERROR
 ```
 
 The application decides whether each is retryable.
 
-Do not produce a final package after a critical unhandled agent failure.
+A required deterministic branch failure must not be papered over by later Gemini synthesis.
+
+Do not produce a final package after a critical unhandled failure.
 
 ---
 
-## 19. Demo-Proof Events
-
-Expose public-safe timeline events such as:
-
-```text
-AGENT_INVESTIGATION_STARTED
-AGENT_TOOL_STARTED
-AGENT_TOOL_COMPLETED
-EVIDENCE_RETRIEVED
-CLARIFICATION_REQUESTED
-CLARIFICATION_RECEIVED
-AGENT_INVESTIGATION_RESUMED
-INCIDENT_PACKAGE_VALIDATED
-```
-
-These events are not model chain-of-thought. They are observable workflow facts.
-
----
-
-## 20. Definition of Done
+## 25. Definition of Done
 
 The ADK runtime is v0.1-ready when:
 
-- [ ] a Pub/Sub signal automatically starts the agent;
-- [ ] agent tools are typed and bounded;
+- [ ] a Pub/Sub signal automatically starts the investigation graph;
+- [ ] canonical incident context loads through application contracts;
+- [ ] profile comparison, baseline summary, and missing-field assessment are deterministic nodes;
+- [ ] independent deterministic nodes fan out and join safely;
+- [ ] fixed routing decisions do not invoke Gemini;
+- [ ] Gemini is reserved for genuinely ambiguous reasoning/synthesis;
+- [ ] agent tools/capabilities remain typed and bounded;
 - [ ] deterministic calculations remain outside the LLM;
 - [ ] execution identifiers are persisted;
 - [ ] interruption/retry behavior is safe;
 - [ ] clarification pauses and resumes the same incident;
-- [ ] output is schema validated;
+- [ ] output is schema validated by deterministic code;
 - [ ] source IDs are validated;
-- [ ] agent loops/timeouts are bounded;
+- [ ] model loops/timeouts are bounded;
 - [ ] ADK eval scenarios pass at the agreed threshold;
-- [ ] trace/log metadata makes execution inspectable;
-- [ ] no consequential external action bypasses the human review gate.
+- [ ] trace/log metadata makes fan-out, join, agent reasoning stages, and resume inspectable;
+- [ ] the canonical scenario has a recorded model/tool-call trajectory;
+- [ ] no consequential external action bypasses the human review gate;
+- [ ] no unnecessary multi-agent or dynamic topology is introduced.
 
 ---
 
-## 21. References
+## 26. References
 
+- `docs/ORCHESTRATION_PATTERNS.md`
+- `docs/adr/0005-adk-graph-first-orchestration.md`
 - Hackathon Resources: https://allthingsagentichackathon.devpost.com/resources
 - Google ADK docs: https://google.github.io/adk-docs/
 - Google Agents CLI: https://google.github.io/agents-cli/
 
-Always implement against the exact installed ADK version rather than assuming an API from this design document.
+Always implement against the exact installed ADK version rather than assuming an API or workshop terminology from this design document.
