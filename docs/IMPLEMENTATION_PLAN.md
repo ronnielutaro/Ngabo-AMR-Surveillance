@@ -1,6 +1,6 @@
 # Ngabo — Implementation Plan
 
-**Version:** 0.3  
+**Version:** 0.4  
 **Created:** 2026-08-16  
 **Official hackathon deadline:** 2026-08-31, 5:00 PM Pacific Time
 
@@ -8,7 +8,7 @@
 
 > **Do not spend the final 48 hours implementing core architecture.**
 
-Feature-complete several days early; reserve the end for evaluation, deployment proof, UI polish, article, demo, and submission.
+Feature-complete several days early; reserve the end for evaluation, deployment proof, UI polish, public build content, bonus integrations, demo, and submission.
 
 All implementation must preserve:
 
@@ -16,9 +16,9 @@ All implementation must preserve:
 - the **monorepo** structure;
 - deterministic scientific logic;
 - bounded agentic autonomy;
-- Gitflow / SemVer / Conventional Commits governance.
-
-See `docs/CLEAN_ARCHITECTURE.md` before coding.
+- Gitflow / SemVer / Conventional Commits governance;
+- the hackathon alignment requirements in `docs/HACKATHON_ALIGNMENT.md`;
+- the ADK runtime contract in `docs/ADK_RUNTIME.md`.
 
 ## 2. Critical Path
 
@@ -35,28 +35,30 @@ deterministic surveillance detector
    ↓
 application workflows + infrastructure adapters
    ↓
-ADK/Gemini adapter + agent tools
+ADK/Gemini runtime + bounded tools
    ↓
-agent investigation
+resumable agent investigation
    ↓
-clarification
+targeted clarification + resume
    ↓
 incident package
    ↓
 human approval
    ↓
-notification + acknowledgement
+real outbound action + acknowledgement
    ↓
 Next.js incident console
    ↓
-Cloud deployment
+Cloud deployment + observability
    ↓
-evaluation
+ADK/scientific/E2E evaluation
    ↓
-demo + article + Devpost
+EmbeddingGemma retrieval integration
+   ↓
+demo + article + social + Devpost
 ```
 
-## Aug 16 — Freeze Design & Handoff Contract
+## Aug 16 — Freeze Design, Architecture & Hackathon Contract
 
 - [x] Lean Canvas
 - [x] Devpost pitch
@@ -72,14 +74,17 @@ demo + article + Devpost
 - [x] Clean Architecture + monorepo decision
 - [x] `docs/CLEAN_ARCHITECTURE.md`
 - [x] ADR 0003 — Clean Architecture in a monorepo
+- [x] `docs/HACKATHON_ALIGNMENT.md`
+- [x] `docs/ADK_RUNTIME.md`
+- [x] ADR 0004 — hackathon runtime + bonus-model strategy
 - [x] `CLAUDE.md` implementation contract
 - [x] `AGENTS.md` coding-agent rules
 - [x] GitHub repository + `develop` branch
 - [x] README/document map
 - [x] LICENSE + SECURITY.md
-- [x] Copy implementation design docs into repository
+- [x] implementation design docs in repository
 
-**Exit:** Claude Code can begin Milestone 1 without guessing the product, UI, safety model, agent boundary, release workflow, repository shape, or architecture dependency direction.
+**Exit:** Claude Code can begin Milestone 1 without guessing product behavior, UI, safety model, agent boundary, runtime strategy, hackathon obligations, release workflow, repository shape, or dependency direction.
 
 ## Aug 17 — Clean Architecture Monorepo Scaffold + Domain Core
 
@@ -129,6 +134,7 @@ services/core/ngabo/
 - [ ] IncidentEvent
 - [ ] Clarification
 - [ ] Notification state
+- [ ] agent-execution reference value/object at application boundary
 - [ ] incident state machine
 - [ ] state-transition tests
 
@@ -136,14 +142,14 @@ services/core/ngabo/
 
 - [ ] domain imports no FastAPI/GCP/ADK/Gemini SDKs
 - [ ] application imports no concrete cloud/model SDKs
-- [ ] framework adapters remain empty/thin scaffolds until needed
+- [ ] framework adapters remain thin
 - [ ] domain tests run without network/cloud/model access
 
 Optional implementation aid:
 
-- [ ] use official Google ADK/Agents CLI tooling if useful, but **do not let generated scaffolding replace the established monorepo/Clean Architecture structure**.
+- [ ] run `uvx google-agents-cli setup` if useful; use the official ADK coding-agent skills without allowing generated scaffolding to replace Ngabo's established monorepo/Clean Architecture structure.
 
-**Exit:** monorepo builds; Clean Architecture package boundaries exist; domain/state-policy tests are green.
+**Exit:** monorepo builds; Clean Architecture boundaries exist; domain/state-policy tests are green.
 
 ## Aug 18 — Synthetic Data + Deterministic Ingestion
 
@@ -151,8 +157,9 @@ Optional implementation aid:
 - [ ] baseline dataset
 - [ ] seeded suspicious cluster
 - [ ] malformed/noisy dataset
+- [ ] prompt-injection-as-data fixture
 - [ ] canonical input/domain mappings
-- [ ] parser/normalizer as deterministic inner logic where appropriate
+- [ ] deterministic parser/normalizer
 - [ ] file-storage port
 - [ ] import repository port
 - [ ] import use case
@@ -161,7 +168,7 @@ Optional implementation aid:
 - [ ] duplicate handling
 - [ ] file hashing
 
-**Architecture check:** FastAPI route translates input and invokes a use case; it does not own parsing/scientific policy.
+**Architecture check:** FastAPI translates input and invokes a use case; it does not own parsing/scientific policy.
 
 **Exit:** CSV → canonical isolates + validation report through the real application boundary.
 
@@ -172,29 +179,36 @@ Optional implementation aid:
 - [ ] temporal concentration
 - [ ] ward concentration
 - [ ] baseline comparison
-- [ ] signal score
+- [ ] prototype signal score
 - [ ] trigger explanation
 - [ ] surveillance use case
 - [ ] scenario tests
 
 **Architecture check:** pure surveillance calculations run without FastAPI, Firestore, Pub/Sub, ADK, Gemini, or network access.
 
-**Exit:** seeded signal detected deterministically.
+**Exit:** seeded investigation candidate detected deterministically.
 
-## Aug 20–21 — Application Agent Contract + ADK/Gemini Infrastructure
+## Aug 20–21 — ADK/Gemini Runtime + Agent Tools
+
+Read `docs/ADK_RUNTIME.md` before implementation.
 
 ### Inner contracts
 
-- [ ] define agent-investigation application port
-- [ ] define evidence-search port
-- [ ] define incident-context queries/use cases
-- [ ] define structured incident-package schema/contract
+- [ ] agent-investigation application port
+- [ ] evidence-search port
+- [ ] incident-context queries/use cases
+- [ ] structured incident-package schema
+- [ ] agent execution metadata application contract
 
-### ADK/Gemini adapter
+### ADK/Gemini infrastructure
 
-- [ ] implement Google ADK under `infrastructure/ai/adk`
-- [ ] configure Gemini 3.6 Flash under infrastructure/model provider
-- [ ] local ADK playground/eval workflow
+- [ ] Google ADK under `infrastructure/ai/adk`
+- [ ] Gemini 3.6 Flash adapter/configuration
+- [ ] local ADK playground/run workflow
+- [ ] persist/correlate session/invocation/run IDs
+- [ ] investigate ADK resumability API for the exact installed version
+- [ ] implement resumable investigation if stable
+- [ ] bounded max steps/tool calls/timeouts/retries
 
 ### Tools
 
@@ -202,23 +216,29 @@ Optional implementation aid:
 - [ ] profile comparison
 - [ ] baseline summary
 - [ ] missing-fields assessment
-- [ ] approved-guidance retrieval
+- [ ] approved-guidance retrieval (curated fallback initially)
 - [ ] clarification request
 - [ ] package preparation boundary
-- [ ] tool logging
-- [ ] max steps/timeouts
+- [ ] tool logging/tracing
 - [ ] citation validation
 - [ ] prohibited-claim validation
 
-**Architecture check:** ADK tool wrappers call application/domain contracts. They do not contain raw Firestore access plus business/scientific logic.
+### ADK eval foundation
 
-**Exit:** pre-created signal → valid evidence-backed incident package locally.
+- [ ] committed eval dataset location
+- [ ] happy-path case
+- [ ] clarification case
+- [ ] no-evidence case
+- [ ] tool-failure case
+- [ ] prompt-injection case
 
-## Aug 22 — Persistence + Event Adapters
+**Architecture check:** ADK tool wrappers invoke application/domain contracts. No raw Firestore + business logic inside tools.
 
-### Ports already defined inward
+**Exit:** pre-created signal → bounded ADK investigation → schema-valid evidence-backed incident package locally.
 
-Implement concrete infrastructure adapters:
+## Aug 22 — Persistent Event Workflow + Resume Safety
+
+### Infrastructure adapters
 
 - [ ] Firestore repositories
 - [ ] GCS raw-file store
@@ -235,31 +255,48 @@ Implement concrete infrastructure adapters:
 
 - [ ] incident persistence
 - [ ] append-only event timeline
+- [ ] persist agent session/invocation/run references
 - [ ] resumable incident state
+- [ ] restart/retry path
 - [ ] idempotent redelivery behavior
+- [ ] resume/retry audit events
 
-**Architecture check:** event handlers translate events to application commands; Firestore mechanics do not leak into domain/application policy.
+**Architecture check:** Pub/Sub handlers translate events to application commands; framework state is not the business source of truth.
 
-**Exit:** restart/retry cannot duplicate incident or side effect.
+**Exit:** interruption/restart/redelivery cannot duplicate incident or side effect; investigation can recover safely.
 
-## Aug 23 — Human Gate + Action
+## Aug 23 — Human Input, Safety Gate + Real Action
+
+### Clarification
 
 - [ ] clarification use case + endpoint
-- [ ] pause/resume workflow
+- [ ] ADK-targeted human-input integration where stable
+- [ ] `WAITING_FOR_CLARIFICATION`
+- [ ] resume same incident after answer
+
+### Human review
+
 - [ ] review use case
 - [ ] approve
 - [ ] reject
 - [ ] request more info
-- [ ] notification port
-- [ ] demo notification infrastructure adapter
-- [ ] real email/webhook adapter if stable
-- [ ] acknowledgement use case
+- [ ] keep final authority in application/domain state machine
 
-**Exit:** backend end-to-end workflow complete through Clean Architecture boundaries.
+### Action
+
+- [ ] notification port
+- [ ] deterministic demo notification adapter
+- [ ] **real authorized outbound notification adapter**
+- [ ] persist delivery attempt/result
+- [ ] idempotent retry
+- [ ] acknowledgement use case
+- [ ] demo-visible external result
+
+**Exit:** backend end-to-end workflow is complete and a real approved external action can be demonstrated.
 
 ## Aug 24–25 — Next.js Incident Console
 
-Implement against `docs/UI_UX_SPEC.md` and the frontend Clean Architecture section of `docs/CLEAN_ARCHITECTURE.md`.
+Implement against `docs/UI_UX_SPEC.md` and `docs/CLEAN_ARCHITECTURE.md`.
 
 ### Frontend structure
 
@@ -281,80 +318,150 @@ Implement against `docs/UI_UX_SPEC.md` and the frontend Clean Architecture secti
 - [ ] deterministic “why flagged” card
 - [ ] resistance-profile comparison
 - [ ] live agent/tool investigation timeline
+- [ ] pause/resume/retry state visibility
 - [ ] clarification card
 - [ ] evidence-backed package
 - [ ] source links/details
 - [ ] human review panel
 - [ ] response tracking
+- [ ] real-vs-demo notification channel label
 - [ ] loading/error/empty states
 - [ ] demo reset/seeded scenario controls
 - [ ] accessibility pass
 
-**Architecture check:** React components do not call Firestore, Pub/Sub, Gemini, or cloud SDKs directly; API/SSE clients remain infrastructure concerns.
+**Architecture check:** React components do not call Firestore, Pub/Sub, Gemini, ADK, or cloud SDKs directly.
 
-**Exit:** non-developer understands the autonomous flow from UI alone; it does not look like a generic chatbot.
+**Exit:** a non-developer can understand autonomous execution, safety boundaries, and action from the UI alone.
 
-## Aug 26 — GCP Deployment + Composition
+## Aug 26 — GCP Deployment + Observability + Cost/Security Controls
 
-- [ ] billing alert
+### Infrastructure
+
 - [ ] Cloud Storage
 - [ ] Firestore
 - [ ] Pub/Sub
 - [ ] `ngabo-core` Cloud Run
 - [ ] `ngabo-web` Cloud Run
-- [ ] secret handling
-- [ ] Cloud Logging
-- [ ] observability
+- [ ] production composition root
+
+### Cost controls
+
+- [ ] Cloud Run minimum instances = `0` unless documented exception
+- [ ] explicit max-instance caps
+- [ ] right-sized CPU/RAM
+- [ ] Google Cloud budget
+- [ ] email budget alert
+- [ ] lightweight artifact retention/cleanup plan
+
+### Security
+
+- [ ] Secret Manager / injected secrets
+- [ ] no committed credentials
+- [ ] protect internal event endpoints
+- [ ] validate Pub/Sub request origin/auth where applicable
+- [ ] protect/rate-limit expensive public endpoints
+- [ ] least-privilege service accounts where practical
+
+### Observability
+
+- [ ] Cloud Logging structured fields
+- [ ] ADK invocation/tool telemetry
+- [ ] Cloud Trace/OpenTelemetry path if stable
+- [ ] metadata-first/no-sensitive-content trace configuration
 - [ ] deployed URLs
-- [ ] capture Cloud Run proof
-- [ ] verify production composition root wires concrete adapters to inward-defined ports
+- [ ] capture Cloud Run + logs/traces proof
 
-**Exit:** full scenario works on Google Cloud with two independently deployable monorepo applications.
+**Exit:** full scenario works on Google Cloud and provides visible operational proof without uncontrolled cost exposure.
 
-## Aug 27 — Evaluation
+## Aug 27 — Evaluation + EmbeddingGemma
+
+### Scientific/application evaluation
 
 - [ ] pure domain test suite
 - [ ] application-use-case tests with fakes
 - [ ] infrastructure adapter/contract tests
 - [ ] interface/API/event tests
 - [ ] scenario benchmark
-- [ ] ADK evals
-- [ ] prompt injection test
+
+### ADK evaluation
+
+- [ ] trajectory/tool-choice evaluations where supported
+- [ ] clarification behavior
+- [ ] empty-evidence behavior
+- [ ] tool failure
 - [ ] fabricated-source test
 - [ ] hallucinated-isolate test
 - [ ] prohibited clinical-claim tests
+- [ ] prompt injection test
 - [ ] duplicate-event test
 - [ ] notification retry test
-- [ ] end-to-end integration test
+- [ ] resume/recovery test
+- [ ] baseline vs candidate eval comparison for material agent changes
+
+### End-to-end
+
+- [ ] full deployed integration test
 - [ ] architecture dependency audit
 - [ ] `EVALUATION.md`
 - [ ] metrics captured
 
-**Exit:** demo is reproducible, architecture boundaries are intact, and limitations documented.
+### Planned bonus model — EmbeddingGemma
 
-## Aug 28 — Technical Story
+Only after the core deployed E2E path is green:
+
+- [ ] precompute curated guidance embeddings
+- [ ] implement `EmbeddingGemmaEvidenceAdapter`
+- [ ] lightweight cosine similarity retrieval
+- [ ] return approved source IDs/chunks/scores
+- [ ] retrieval tests/evaluation
+- [ ] demonstrate/document actual integration
+
+**Exit:** demo is reproducible, architecture boundaries remain intact, ADK behavior is evaluated, and EmbeddingGemma is only claimed if it genuinely works.
+
+## Aug 28 — Technical Story + Bonus Readiness
 
 - [ ] final architecture diagram includes Clean Architecture + runtime/cloud views
+- [ ] diagram shows Gemini, ADK, Firestore, Pub/Sub, GCS, Cloud Run, observability, human gate, real action
+- [ ] include EmbeddingGemma only if implemented
 - [ ] product screenshots
-- [ ] LinkedIn Article draft
-- [ ] explicitly state article was created for purposes of entering the hackathon
+- [ ] LinkedIn Article final draft
+- [ ] article explicitly states it was created for purposes of entering the hackathon
 - [ ] domain/technical critique if feasible
 - [ ] README spin-up instructions polished
+- [ ] `EVALUATION.md` polished
 
-## Aug 29–30 — Demo + Devpost
+### Gated stretch decision
+
+If and only if core + EmbeddingGemma + deployment + evals are stable:
+
+- [ ] evaluate whether MedGemma adds measurable value as a bounded evidence-interpretation tool
+- [ ] if useful, integrate + test + document
+- [ ] otherwise omit it and preserve demo stability
+
+Do not count a bonus for an unproven integration.
+
+## Aug 29–30 — Demo + Devpost + Public Content
 
 ### Demo
 
-- [ ] under 4 minutes
-- [ ] problem in first ~30 seconds
+- [ ] <=4 minutes
+- [ ] problem/value proposition immediately clear
 - [ ] unedited live workflow
+- [ ] event-triggered investigation — no manual “investigate” prompt
+- [ ] visible tool/evidence execution
+- [ ] clarification pause + resume
+- [ ] human approval
+- [ ] real outbound action
+- [ ] acknowledgement/state update
 - [ ] visible Google Cloud execution
+- [ ] observability/evaluation proof
 - [ ] architecture explanation
 - [ ] safety boundary
 - [ ] public YouTube/Vimeo video
 
 ### Devpost
 
+- [ ] select **The Taskmaster**
 - [ ] summary/features
 - [ ] technology/data sources
 - [ ] findings/learnings
@@ -363,8 +470,16 @@ Implement against `docs/UI_UX_SPEC.md` and the frontend Clean Architecture secti
 - [ ] architecture diagram
 - [ ] reproducible spin-up instructions
 - [ ] LinkedIn Article URL
-- [ ] social post with `#AllThingsAgenticHackathon`
+- [ ] social post URL
+- [ ] accurately list each successfully integrated additional Google AI model
 - [ ] final claims audit
+
+### Public bonus content
+
+- [ ] publish qualifying LinkedIn Article
+- [ ] required hackathon-purpose language included
+- [ ] publish LinkedIn/social post
+- [ ] exact hashtag `#AllThingsAgenticHackathon`
 
 **Internal target:** submission-ready by end of Aug 30.
 
@@ -374,65 +489,92 @@ Only:
 
 - critical fixes;
 - link verification;
-- final test;
+- final deployed test;
+- rules re-check;
 - submission.
 
-No major new features or architectural rewrites.
+No major features, model additions, or architectural rewrites.
 
 ## 3. Stretch Order
 
-Only after core is green:
+Only after every core submission requirement is green:
 
-1. real email/webhook;
-2. parallel ADK investigation;
-3. richer baseline visualization;
-4. additional Google AI model if genuinely useful;
-5. AMRFinderPlus genomics prototype.
+1. MedGemma bounded evidence interpretation **if evaluation supports it**;
+2. Gemini multimodal AST/PDF extraction into a **human-verified draft**;
+3. parallel specialist investigation if the complexity genuinely warrants it;
+4. richer baseline visualization;
+5. AMRFinderPlus/genomics prototype.
 
-> **Genomics is last, not first.**
+> **Bonus points never outrank a reliable core demo. Genomics remains last, not first.**
 
 ## 4. Demo Freeze Rule
 
 After three consecutive successful deployed end-to-end runs:
 
-1. tag/record a demo candidate according to release policy;
+1. record/tag a demo candidate according to release policy;
 2. stop architecture refactors;
-3. fix only bugs and presentation problems.
+3. do not add stretch models/features;
+4. fix only critical bugs and presentation problems.
 
-## 5. Current Rule Checklist
+## 5. Current Hackathon Checklist
 
-- [ ] Gemini 3.5+
-- [ ] qualifying Google Agent Framework
-- [ ] Google Cloud infrastructure
+### Mandatory
+
+- [ ] Gemini 3.5+ actually used
+- [ ] Google ADK actually orchestrates the agent
+- [ ] Google Cloud infrastructure actually used
+- [ ] Cloud Run deployed services
+- [ ] Firestore persistent state
+- [ ] Pub/Sub event-driven trigger
+- [ ] Cloud Storage artifacts/evidence
 - [ ] hosted project
 - [x] repository
 - [x] Clean Architecture documented
 - [x] monorepo documented
 - [x] Gitflow/SemVer/Conventional Commits documented
-- [ ] final README spin-up instructions
+- [x] hackathon alignment contract documented
+- [x] ADK runtime contract documented
+- [ ] README spin-up instructions
 - [ ] architecture diagram
-- [ ] <=4 minute public demo
-- [ ] visible Google Cloud backend execution
-- [ ] one category selected
-- [ ] project/code built within submission period as required
+- [ ] <=4-minute public demo
+- [ ] visible GCP backend proof
+- [ ] Taskmaster selected
+- [ ] project/code built within contest period
 - [ ] authorized third-party integrations
 
-Optional:
+### Score/advantage targets
 
-- [ ] public build content
-- [ ] social post with `#AllThingsAgenticHackathon`
-- [ ] additional Google AI model only if useful
+- [ ] resumable/recoverable ADK investigation
+- [ ] human clarification pause/resume
+- [ ] ADK evaluation results
+- [ ] logs/traces proving execution
+- [ ] real authorized outbound action
+- [ ] repeated deployed E2E success
 
-Rules: https://allthingsagentichackathon.devpost.com/rules
+### Bonus targets
+
+- [ ] public build content (+up to 0.2)
+- [ ] qualifying social post (+up to 0.2)
+- [ ] EmbeddingGemma successful integration (+0.2 if accepted/verified)
+- [ ] MedGemma only if successful and useful (+0.2 if accepted/verified)
+
+Rules: https://allthingsagentichackathon.devpost.com/rules  
+Resources: https://allthingsagentichackathon.devpost.com/resources
 
 ## 6. Winning Loop
 
 ```text
 build cleanly
   ↓
-test at each architecture layer
+test each architecture layer
+  ↓
+evaluate agent trajectory + output
   ↓
 deploy
+  ↓
+observe
+  ↓
+prove real action
   ↓
 measure
   ↓
@@ -443,4 +585,4 @@ demo
 submit
 ```
 
-Ngabo should win on **working autonomy + Clean Architecture discipline + credible health-domain framing + a clean demo**, not feature count.
+Ngabo should compete on **high-value autonomous execution + architectural discipline + evaluated agent behavior + credible AMR framing + undeniable proof of action**, not feature count.
