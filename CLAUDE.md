@@ -4,6 +4,7 @@ This file is the root implementation contract for Claude Code working on Ngabo.
 
 **Project:** Ngabo — Autonomous AMR Surveillance & Incident Response  
 **Competition:** All Things Agentic Hackathon 2026 — Taskmaster  
+**Architecture:** Clean Architecture in a monorepo  
 **Primary stack:** Next.js + TypeScript; Python + FastAPI; Google ADK; Gemini 3.6 Flash; Firestore; Cloud Storage; Pub/Sub; Cloud Run  
 **Current release target:** `v0.1.0`  
 **MVP deadline:** 2026-08-31, 5:00 PM Pacific Time
@@ -12,37 +13,38 @@ This file is the root implementation contract for Claude Code working on Ngabo.
 
 ## 1. Read Before Editing Code
 
-Before implementing or changing architecture, read these files in order:
+Before implementation or architecture changes, read in this order:
 
 1. `ROADMAP.md`
 2. `CONTRIBUTING.md`
 3. `docs/PRD.md`
 4. `docs/TECH_STACK.md`
-5. `docs/SYSTEM_DESIGN.md`
-6. `docs/AGENT_ARCHITECTURE.md`
-7. `docs/DATA_SAFETY_EVALUATION.md`
-8. `docs/UI_UX_SPEC.md`
-9. `docs/IMPLEMENTATION_PLAN.md`
-10. `docs/adr/0001-hackathon-mvp-architecture.md`
+5. `docs/CLEAN_ARCHITECTURE.md`
+6. `docs/SYSTEM_DESIGN.md`
+7. `docs/AGENT_ARCHITECTURE.md`
+8. `docs/DATA_SAFETY_EVALUATION.md`
+9. `docs/UI_UX_SPEC.md`
+10. `docs/IMPLEMENTATION_PLAN.md`
+11. `docs/adr/0001-hackathon-mvp-architecture.md`
+12. `docs/adr/0002-release-governance.md`
+13. `docs/adr/0003-clean-architecture-monorepo.md`
 
 Also read:
 
 - `AGENTS.md` for coding-agent execution rules;
-- `CHANGELOG.md` before release-oriented work.
+- `CHANGELOG.md` before release work;
+- product/evidence docs under `docs/product/` when present.
 
-Product/evidence context:
-
-- `docs/product/LEAN_CANVAS.md` when present
-- `docs/product/DEVPOST_PITCH.md` when present
-
-If two documents conflict, use this precedence:
+If documents conflict, use this precedence:
 
 ```text
 Safety / data constraints
         ↓
-CLAUDE.md architectural invariants
+CLAUDE.md invariants
         ↓
 PRD
+        ↓
+Clean Architecture contract
         ↓
 System Design / Agent Architecture
         ↓
@@ -55,9 +57,9 @@ ROADMAP release-stage constraints
 Implementation Plan
 ```
 
-Git/release mechanics are governed by `CONTRIBUTING.md` and the release sections of this file.
+Git/release mechanics are governed by `CONTRIBUTING.md` plus the rules below.
 
-Do not resolve material conflicts silently. Document them and propose an ADR where appropriate.
+Do not resolve material conflicts silently. Surface them and create an ADR when appropriate.
 
 ---
 
@@ -65,9 +67,9 @@ Do not resolve material conflicts silently. Document them and propose an ADR whe
 
 Ngabo is an **open-source, event-driven AMR surveillance and incident-response system**.
 
-Do not make “prototype” part of Ngabo's permanent product identity. Communicate maturity separately through the current release stage.
+Do not make “prototype” part of the permanent product identity. Communicate maturity separately.
 
-For example:
+Example:
 
 > **Product:** Ngabo — AMR Surveillance & Incident Response  
 > **Current status:** `v0.1.0` hackathon MVP in development.
@@ -96,15 +98,140 @@ notification / acknowledgement
 audit trail
 ```
 
-Ngabo is **not a chatbot product**.
-
-The web application is an incident-response console that makes this workflow visible.
-
-See `ROADMAP.md` for the intended evolution from hackathon MVP through technical/research prototypes, shadow-mode pilot, validation, production candidate, and `1.0.0`.
+Ngabo is **not a chatbot product**. The web application is an incident-response console that makes the autonomous workflow visible and auditable.
 
 ---
 
-## 3. Non-Negotiable Architectural Invariants
+## 3. Architectural Style — Non-Negotiable
+
+Ngabo uses **Clean Architecture inside a monorepo**.
+
+This is a frozen architecture decision recorded in ADR 0003.
+
+### Dependency rule
+
+```text
+Frameworks / Infrastructure
+          ↓
+Interfaces / Adapters
+          ↓
+Application / Use Cases / Ports
+          ↓
+Domain / Entities / Value Objects / Domain Services
+```
+
+**Source-code dependencies point inward. Inner layers must not depend on outer framework/vendor implementations.**
+
+### Backend package target
+
+```text
+services/core/ngabo/
+├── domain/
+│   ├── entities/
+│   ├── value_objects/
+│   ├── enums/
+│   ├── events/
+│   ├── exceptions/
+│   └── services/surveillance/
+├── application/
+│   ├── use_cases/
+│   ├── workflows/
+│   ├── commands/
+│   ├── queries/
+│   ├── dto/
+│   ├── ports/
+│   └── agent_contracts/
+├── interfaces/
+│   ├── api/
+│   └── events/
+├── infrastructure/
+│   ├── persistence/firestore/
+│   ├── storage/gcs/
+│   ├── messaging/pubsub/
+│   ├── ai/gemini/
+│   ├── ai/adk/
+│   ├── evidence/
+│   └── notifications/
+└── bootstrap/
+```
+
+### Layer rules
+
+**Domain** contains pure AMR/surveillance concepts and policy. It must not import FastAPI, Google Cloud SDKs, ADK, Gemini, notification providers, or transport models.
+
+**Application** contains use cases/workflows/ports and may depend on domain. It must not instantiate Firestore, Pub/Sub, GCS, Gemini, ADK, or HTTP framework clients.
+
+**Interfaces** adapt HTTP/events to application commands/use cases. Routes and event handlers must not own scientific/domain logic.
+
+**Infrastructure** implements ports for Firestore, GCS, Pub/Sub, Gemini, ADK, evidence, notifications, telemetry, etc.
+
+**Bootstrap** is the composition root where concrete implementations are wired.
+
+Prefer explicit constructor dependency injection. Do not hide dependencies in global service locators.
+
+### Architecture smells that must be rejected
+
+```text
+domain -> FastAPI
+domain -> Firestore
+application -> google.cloud.firestore
+application -> Gemini SDK
+FastAPI route -> signal-scoring logic
+Pub/Sub handler -> AMR business rules
+ADK tool wrapper -> raw database + ad hoc business logic
+React component -> Firestore/PubSub/Gemini
+```
+
+When a vendor capability is needed from an inner layer, define a port inward and implement it outward.
+
+---
+
+## 4. Monorepo — Non-Negotiable
+
+Ngabo uses **one Git repository** for the product.
+
+Target top-level structure:
+
+```text
+ngabo/
+├── apps/
+│   └── web/                  # Next.js deployable
+├── services/
+│   └── core/                 # FastAPI/ADK deployable
+├── data/
+│   ├── synthetic/
+│   ├── schemas/
+│   └── guidance/
+├── docs/
+│   ├── adr/
+│   ├── product/
+│   └── release/
+├── infra/
+├── .github/
+├── CLAUDE.md
+├── AGENTS.md
+├── ROADMAP.md
+├── CONTRIBUTING.md
+├── CHANGELOG.md
+├── README.md
+├── LICENSE
+└── SECURITY.md
+```
+
+**Monorepo does not mean monolith.**
+
+Primary runtime deployables remain:
+
+```text
+Cloud Run: ngabo-web
+Cloud Run: ngabo-core
+```
+
+Do not split frontend/backend into separate repositories, or create new runtime services that change system boundaries, without an ADR.
+
+---
+
+## 5. Non-Negotiable Scientific / Safety Invariants
 
 ### A. Scientific calculations are deterministic
 
@@ -114,7 +241,7 @@ The LLM must not own:
 - schema validation;
 - organism/antibiotic normalization;
 - date-window calculations;
-- resistance-profile similarity calculations;
+- resistance-profile similarity;
 - baseline calculations;
 - signal scoring;
 - state-transition validation;
@@ -124,13 +251,13 @@ If a calculation can be reproduced in ordinary code, implement it in ordinary co
 
 ### B. The agent receives a signal; it does not invent one
 
-Do not implement:
+Never implement:
 
 ```text
 CSV -> LLM -> “this is an outbreak”
 ```
 
-Correct boundary:
+Required boundary:
 
 ```text
 CSV -> deterministic detector -> investigation candidate -> agent
@@ -138,66 +265,41 @@ CSV -> deterministic detector -> investigation candidate -> agent
 
 ### C. Source facts are immutable
 
-The agent may never rewrite canonical isolate/laboratory facts.
-
-Human clarification is persisted separately with provenance.
+The agent may never rewrite canonical isolate/laboratory facts. Human clarification is persisted separately with provenance.
 
 ### D. Firestore is operational source of truth
 
-Do not depend on model conversation memory as the canonical workflow state.
+Model conversation state is not the canonical workflow state.
 
-Persist incident state, tool execution references, clarification, package versions, review decisions, notification state, and audit events.
+### E. Side effects are idempotent
 
-### E. All side effects are idempotent
+Pub/Sub is at-least-once delivery. No duplicate incidents, notifications, or acknowledgements.
 
-Pub/Sub is at-least-once delivery.
+### F. Human review is a real gate
 
-No duplicate:
-
-- incidents;
-- package transitions;
-- notifications;
-- acknowledgements.
-
-Every side effect needs an idempotency strategy.
-
-### F. Human review is a real workflow gate
-
-The agent must not send clinically consequential escalation before review approval.
-
-The UI must provide:
-
-- Approve;
-- Reject;
-- Request more information.
-
-Do not rename approval to “Confirm outbreak.”
+No consequential escalation is sent before professional review approval.
 
 ### G. Evidence is traceable
 
-External guidance claims must use source IDs/URLs returned by approved evidence tools.
+External guidance claims use source IDs/URLs returned by approved evidence tools. Never fabricate citations.
 
-Never fabricate citations.
-
-### H. No autonomous clinical prescribing
+### H. No autonomous prescribing
 
 Never implement autonomous treatment/antibiotic recommendations.
 
-### I. Synthetic data only for public v0.1
+### I. Synthetic public v0.1 data only
 
-Do not add real patient records to fixtures, screenshots, logs, or repository history.
-
-Future stages may introduce governed real-world data only as described in `ROADMAP.md` and under appropriate authorization/security.
+Do not commit real patient records to fixtures, screenshots, logs, or Git history.
 
 ### J. No hidden chain-of-thought UI
 
-The UI may show tool actions, workflow status, source-backed findings, and concise rationale. It must not expose private model reasoning tokens.
+Show observable workflow actions, tool results, concise source-backed rationale, and state—not private model reasoning tokens.
 
 ---
 
-## 4. Required Agent Tool Boundary
+## 6. Agent Architecture Under Clean Architecture
 
-The v0.1 agent should operate through narrowly scoped typed tools such as:
+The runtime agent operates through narrowly scoped typed tools such as:
 
 - `get_incident_context()`
 - `compare_resistance_profiles()`
@@ -207,15 +309,29 @@ The v0.1 agent should operate through narrowly scoped typed tools such as:
 - `request_clarification()`
 - `prepare_incident_package()`
 
-Do not create a generic unrestricted database tool or shell tool for the runtime agent.
+Google ADK and Gemini are **outer infrastructure**.
 
-The coding agent may use the terminal while developing; the **Ngabo runtime agent** should not receive arbitrary code execution merely for convenience.
+Recommended runtime boundary:
+
+```text
+ADK/Gemini adapter
+        ↓
+application agent contract / use case
+        ↓
+domain calculation or inward-defined port
+        ↓
+infrastructure adapter when required
+```
+
+Do not create an unrestricted runtime database tool or shell tool.
+
+An ADK wrapper must not become an alternate business layer containing raw Firestore access plus scientific calculations plus side effects.
 
 ---
 
-## 5. Runtime Agent Truth Hierarchy
+## 7. Runtime Agent Truth Hierarchy
 
-Generated outputs must respect:
+Generated outputs respect:
 
 1. canonical source data;
 2. deterministic tool output;
@@ -227,9 +343,9 @@ Never invent missing facts.
 
 ---
 
-## 6. Incident Package Contract
+## 8. Incident Package Contract
 
-Final package must be schema validated and maintain separate fields for:
+Final output is schema validated and keeps separate categories:
 
 ```json
 {
@@ -251,7 +367,7 @@ Do not collapse all categories into one prose blob.
 
 ---
 
-## 7. UI Contract
+## 9. UI Contract
 
 Read `docs/UI_UX_SPEC.md` before frontend work.
 
@@ -280,9 +396,23 @@ Incident detail
 
 The only chat-like interaction should be targeted clarification.
 
+### Frontend Clean Architecture
+
+Target philosophy:
+
+```text
+presentation -> application -> domain
+infrastructure -> API/SSE adapters
+app/ -> Next.js route/composition wiring
+```
+
+UI components do not call Firestore, Pub/Sub, Gemini, or other backend/cloud SDKs directly.
+
+Do not over-engineer trivial presentational components merely for architectural ceremony.
+
 ---
 
-## 8. Tech Stack — Do Not Substitute Without ADR
+## 10. Tech Stack — Do Not Substitute Without ADR
 
 ### Frontend
 
@@ -303,7 +433,7 @@ The only chat-like interaction should be targeted clarification.
 
 - Google ADK (Python)
 - Gemini API
-- stable model: `gemini-3.6-flash`
+- `gemini-3.6-flash`
 
 ### Data / infrastructure
 
@@ -320,9 +450,7 @@ The only chat-like interaction should be targeted clarification.
 - ADK evaluation tooling
 - Playwright
 
-Do not introduce alternate core frameworks because they are familiar.
-
-Specifically do not add without a documented requirement:
+Do not add without a documented requirement/ADR:
 
 - LangGraph;
 - Kubernetes/GKE;
@@ -336,116 +464,54 @@ Specifically do not add without a documented requirement:
 
 ---
 
-## 9. Google ADK / Agents CLI Guidance
+## 11. Google ADK / Agent Scaffolding
 
-If available in the development environment, official Google ADK/Agents CLI tooling may be used to assist scaffolding, evaluation, deployment, and observability.
+Official Google ADK/Agents CLI tooling may assist scaffolding, evaluation, deployment, and observability if available.
 
-Important:
+Do not let generated scaffolds redefine Ngabo's monorepo or Clean Architecture boundaries.
 
-- do not let a scaffold overwrite Ngabo's established monorepo/product architecture;
-- use generated templates as implementation aids, not product requirements;
-- preserve the architectural invariants in this file.
+Generated templates are implementation aids, not product architecture.
 
 ---
 
-## 10. Repository Target Structure
-
-```text
-ngabo/
-├── apps/
-│   └── web/
-├── services/
-│   └── core/
-│       ├── ngabo/
-│       │   ├── api/
-│       │   ├── application/
-│       │   ├── domain/
-│       │   ├── infrastructure/
-│       │   ├── agents/
-│       │   ├── surveillance/
-│       │   ├── evidence/
-│       │   └── notifications/
-│       └── tests/
-├── data/
-│   ├── synthetic/
-│   ├── schemas/
-│   └── guidance/
-├── docs/
-│   ├── adr/
-│   └── product/
-├── infra/
-├── .github/
-├── CLAUDE.md
-├── AGENTS.md
-├── ROADMAP.md
-├── CONTRIBUTING.md
-├── CHANGELOG.md
-├── README.md
-├── LICENSE
-└── SECURITY.md
-```
-
-Do not reorganize top-level structure casually once implementation begins.
-
----
-
-## 11. Git & Release Governance — Non-Negotiable
-
-Read `CONTRIBUTING.md` before creating branches, commits, pull requests, tags, or releases.
+## 12. Git & Release Governance — Non-Negotiable
 
 Ngabo uses:
 
-- **Semantic Versioning 2.0.0**;
-- **Conventional Commits 1.0.0**;
-- **Gitflow-style branching** adapted to `main` + `develop`;
+- Semantic Versioning 2.0.0;
+- Conventional Commits 1.0.0;
+- Gitflow-style branching using `main` + `develop`;
 - `CHANGELOG.md`;
 - release tags `vX.Y.Z`.
 
 ### Branches
 
-Long-lived:
-
 ```text
-main
- develop
+main                    released / release-ready history
+develop                 next-release integration
+feature/<short-name>    feature work from develop
+release/vX.Y.Z          release hardening from develop
+hotfix/vX.Y.Z           urgent fixes from main
 ```
 
-Supporting:
-
-```text
-feature/<short-name>
-release/vX.Y.Z
-hotfix/vX.Y.Z
-```
-
-Once Gitflow initialization is complete:
-
-- feature work branches from `develop`;
-- features merge into `develop` through PRs;
-- release branches originate from `develop`;
-- releases merge to `main`, are tagged, then reconcile back to `develop`;
-- hotfixes originate from `main` and merge to both `main` and `develop`.
-
-Do not commit feature work directly to `main`.
+Feature work must not go directly to `main`.
 
 ### Conventional Commits
-
-Every commit must use:
 
 ```text
 <type>[optional scope]: <description>
 ```
 
-Preferred types:
+Recommended types:
 
 ```text
 feat fix docs test refactor perf build ci chore revert
 ```
 
-Preferred scopes:
+Recommended scopes:
 
 ```text
-web core surveillance agent evidence events data eval infra docs release
+web core surveillance agent evidence events data eval infra docs release architecture
 ```
 
 Examples:
@@ -453,53 +519,36 @@ Examples:
 ```text
 feat(surveillance): add phenotype similarity detector
 fix(events): prevent duplicate incident creation
-test(eval): add prompt injection scenario
-docs(roadmap): define validation stage
+docs(architecture): define clean architecture boundaries
 ```
 
-Breaking change example:
-
-```text
-feat(events)!: revise surveillance signal schema
-```
-
-Do not create vague commit messages such as `update`, `fix stuff`, `wip`, or `changes` for repository history intended to be merged.
-
-### Semantic Versioning During 0.x
-
-Ngabo remains in SemVer initial development until the explicit `1.0.0` production-readiness decision.
-
-Project policy:
+### SemVer during 0.x
 
 - fix → normally PATCH;
-- feature/release milestone → normally MINOR;
-- breaking change → mark explicitly and normally increment MINOR during `0.x`;
-- do **not** automatically promote to `1.0.0` because a breaking commit exists.
+- backward-compatible feature/release milestone → normally MINOR;
+- breaking change → explicitly marked and normally MINOR while pre-1.0;
+- never auto-promote to `1.0.0`.
 
-`1.0.0` is governed by the exit criteria in `ROADMAP.md`.
-
-### Changelog
+`1.0.0` is governed by `ROADMAP.md` exit criteria.
 
 Update `CHANGELOG.md` for meaningful user/operator-visible behavior.
 
-Use `Unreleased` during development and move entries under the released version during release preparation.
-
 ---
 
-## 12. Implementation Order
+## 13. Implementation Order
 
 Follow `docs/IMPLEMENTATION_PLAN.md`.
 
 High-level milestones:
 
-1. repository/workspace scaffold;
+1. monorepo/workspace scaffold with Clean Architecture package boundaries;
 2. domain entities + state machine;
 3. synthetic dataset + canonical schema;
 4. deterministic parser/normalizer;
 5. deterministic surveillance engine;
-6. Firestore/Pub/Sub persistence/event contracts;
-7. ADK tools;
-8. Ngabo investigation workflow;
+6. application ports + Firestore/PubSub/GCS adapters;
+7. ADK/Gemini infrastructure adapter + agent tools;
+8. investigation workflow;
 9. clarification/resume;
 10. incident package validation;
 11. human review;
@@ -512,46 +561,50 @@ Do not start genomics before the core v0.1 flow is green.
 
 ---
 
-## 13. Definition of Done Per Milestone
+## 14. Definition of Done Per Milestone
 
 Before marking a milestone complete:
 
-- tests for changed deterministic behavior pass;
-- schemas are explicit;
+- changed deterministic behavior has tests;
+- schemas/contracts are explicit;
 - errors are not silently swallowed;
-- no architectural invariant was violated;
-- docs are updated if contracts changed;
-- relevant lint/type checks pass;
-- branch follows Gitflow purpose/naming;
+- Clean Architecture dependency rule is preserved;
+- monorepo/deployable boundaries are preserved;
+- domain/application code remains independent of outer vendor SDKs;
+- docs/ADR updated if public contracts changed;
+- lint/type/tests pass for changed surface;
+- branch follows Gitflow;
 - commits follow Conventional Commits;
-- changelog/release impact is considered;
-- code is committed in a coherent state.
-
-Do not declare success merely because the happy-path UI renders.
+- changelog/release impact considered;
+- code is coherent, not merely visually working.
 
 ---
 
-## 14. Test Requirements
+## 15. Test Requirements by Layer
 
-At minimum cover:
+### Domain
 
-### Deterministic
+Pure unit tests, no cloud/network/model/web framework.
 
-- parser;
-- normalizer;
-- AST mappings;
-- similarity calculation;
-- temporal windows;
-- baseline logic;
-- signal scoring;
-- state transitions;
-- idempotency.
+### Application
+
+Use cases/workflows with fakes/in-memory port implementations.
+
+### Infrastructure
+
+Adapter contract/integration tests.
+
+### Interfaces
+
+HTTP/event translation tests.
 
 ### Agent safety
 
+Cover:
+
 - missing field -> clarification;
 - no evidence -> no fabricated source;
-- prompt injection in CSV -> treated as data;
+- prompt injection in CSV -> data, not instructions;
 - hallucinated isolate ID -> rejected;
 - autonomous prescribing language -> rejected;
 - autonomous outbreak confirmation -> rejected;
@@ -560,21 +613,16 @@ At minimum cover:
 ### End-to-end
 
 ```text
-upload
- -> detect
- -> investigate
- -> clarify
- -> package
- -> review
- -> notify
- -> acknowledge
+upload -> detect -> investigate -> clarify -> package -> review -> notify -> acknowledge
 ```
+
+A passing E2E flow does not replace inner-layer tests.
 
 ---
 
-## 15. Failure Handling
+## 16. Failure Handling
 
-A failed step must leave a persisted, inspectable state.
+A failed step leaves persisted, inspectable state.
 
 Never catch an exception and proceed as if successful.
 
@@ -586,15 +634,13 @@ Examples:
 - notification failure -> retryable notification state;
 - duplicate event -> no duplicate side effect.
 
+Inner layers should use domain/application error types; outer interfaces translate them to transport-specific errors.
+
 ---
 
-## 16. Scope Control
+## 17. Scope Control
 
-When tempted to add a feature, ask:
-
-> “Does this strengthen the current release's stated objective in `ROADMAP.md`?”
-
-For `v0.1.0`, ask specifically:
+For `v0.1.0`, ask:
 
 > “Does this strengthen: suspicious AMR signal -> evidence-backed, human-reviewable incident package -> coordinated action?”
 
@@ -613,27 +659,20 @@ Explicitly deferred until core completion:
 
 ---
 
-## 17. Architecture Changes
+## 18. Architecture Changes
 
-If implementation reveals that a frozen decision is wrong:
+Material deviations from the frozen architecture require an ADR **before implementation**.
 
-1. do not silently substitute technology;
-2. create a new file under `docs/adr/`;
-3. state context, decision, alternatives, consequences;
-4. update relevant source-of-truth docs;
-5. only then implement the change.
+Examples requiring ADR:
 
-Small refactors that preserve public contracts do not require an ADR.
+- splitting the monorepo;
+- adding a new independently deployed service;
+- replacing Clean Architecture with another architectural style;
+- moving domain logic into framework-specific code;
+- allowing domain/application to depend directly on vendor SDKs;
+- changing core technology decisions.
 
----
-
-## 18. Hackathon Constraints
-
-Keep the public v0.1 project consistent with current official hackathon requirements and the fact-checked project documentation.
-
-Do not implement shortcuts that make the demo fake or non-reproducible.
-
-The hackathon is the first release cycle, not the final product boundary.
+Small refactors that preserve contracts and dependency direction do not require an ADR.
 
 ---
 
@@ -642,40 +681,26 @@ The hackathon is the first release cycle, not the final product boundary.
 - inspect before editing;
 - make focused changes;
 - do not rewrite unrelated files;
-- preserve user-authored documentation unless a contract change requires an update;
-- prefer typed interfaces over loose dictionaries at boundaries;
-- prefer boring, testable code over clever abstractions;
+- preserve authored documentation unless a contract change requires an update;
+- prefer typed interfaces/ports over loose dictionaries at boundaries;
+- prefer boring testable code over clever abstractions;
 - avoid premature microservices;
 - avoid premature generic frameworks;
-- report discovered contradictions rather than guessing;
-- obey Gitflow, SemVer, Conventional Commits, and changelog rules;
+- do not create abstractions without a real dependency/use-case boundary;
+- report contradictions instead of guessing;
+- obey Clean Architecture, monorepo, Gitflow, SemVer, Conventional Commits, and changelog rules;
 - do not silently version-bump or create release tags.
 
 When asked to implement a milestone, stay inside that milestone unless a prerequisite must be fixed.
 
 ---
 
-## 20. Release Actions Require Deliberate Intent
+## 20. Final Product Standard
 
-Coding agents may prepare release metadata when asked, but must not independently decide that Ngabo has earned a new maturity stage.
+A judge should be able to see:
 
-In particular, do not autonomously declare:
+> **new AMR data arrived -> deterministic Ngabo logic detected a signal -> the agent investigated autonomously through bounded tools -> asked for one necessary clarification -> assembled evidence -> a professional approved the package -> Ngabo routed the action -> the audit trail recorded everything.**
 
-- research validation complete;
-- pilot readiness;
-- production readiness;
-- `1.0.0` readiness.
+The code should also make it obvious that the AMR domain/application core is not coupled to FastAPI, Firestore, Pub/Sub, ADK, Gemini, or the Next.js UI.
 
-Those milestones require evidence and explicit project-owner/stakeholder decisions under `ROADMAP.md`.
-
----
-
-## 21. Final Product Standard
-
-For v0.1, a judge should be able to see:
-
-> **new AMR data arrived -> Ngabo detected a signal -> the agent investigated autonomously -> asked for one necessary clarification -> assembled evidence -> a professional approved the package -> Ngabo routed the action -> the audit trail recorded everything.**
-
-Longer-term releases must progressively earn the stronger technical, scientific, security, governance, and deployment claims documented in `ROADMAP.md`.
-
-If the code cannot demonstrate a claim truthfully, do not make the claim.
+If we cannot demonstrate both the product behavior and the architectural discipline truthfully, the MVP is not complete.
