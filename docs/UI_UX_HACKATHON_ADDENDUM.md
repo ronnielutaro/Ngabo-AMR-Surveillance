@@ -1,14 +1,17 @@
 # Ngabo — UI/UX Hackathon Addendum
 
 **Status:** Required extension to `docs/UI_UX_SPEC.md` for v0.1  
-**Version:** 0.3  
-**Date:** 2026-08-16
+**Version:** 0.4  
+**Date:** 2026-08-17
 
 ---
 
 ## 1. Hero Demo Principle
 
-The judge must visually understand that Ngabo completes the canonical Taskmaster workflow **without human intervention**.
+The judge must visually understand two things immediately:
+
+1. Ngabo completes the canonical Taskmaster workflow **without human intervention**; and
+2. Ngabo's **Twist is Proof-Carrying Autonomy** — the system does not trust fluent LLM output on faith.
 
 Hero flow:
 
@@ -25,13 +28,15 @@ Gemini bounded triage
   ↓
 approved evidence retrieval
   ↓
-Gemini synthesis
+Gemini proof-carrying synthesis
   ↓
-deterministic validation / automatic repair if needed
+deterministic claim/evidence verification
+  ├─ invalid → bounded automatic repair → verify again
+  └─ exhausted → autonomous abstention
   ↓
 autonomy policy: A1 SAFE EXTERNAL COORDINATION
   ↓
-freshness + idempotency
+freshness + ActionIntent/idempotency
   ↓
 real external action
   ↓
@@ -51,7 +56,32 @@ Do not place a required clarification or approval click inside the canonical fil
 
 ---
 
-## 2. Canonical Timeline Events
+## 2. The Twist Must Be Visible
+
+The UI must make **Proof-Carrying Autonomy** understandable without exposing private chain-of-thought.
+
+Recommended judge-facing explanation:
+
+> **Gemini can interpret and hypothesize, but Ngabo does not trust free-form model prose. Every action-relevant claim must point back to canonical records, deterministic calculations, or approved evidence and pass machine verification before it can enter the autonomous action path.**
+
+A compact visual should show:
+
+```text
+Model claim
+  ↓
+Record refs      ✓
+Finding refs     ✓
+Evidence refs    ✓
+Claim type       HYPOTHESIS
+Uncertainty      Present
+Verification     PASSED
+```
+
+Avoid marketing language suggesting mathematical proof of medical truth.
+
+---
+
+## 3. Canonical Timeline Events
 
 Support public-safe events such as:
 
@@ -65,15 +95,18 @@ PARALLEL_BRANCH_COMPLETED
 PARALLEL_JOIN_COMPLETED
 AGENT_NODE_STARTED
 EVIDENCE_SEARCH_COMPLETED
-PACKAGE_VALIDATION_STARTED
-PACKAGE_VALIDATION_FAILED
-PACKAGE_REPAIR_STARTED
-PACKAGE_REPAIR_COMPLETED
-PACKAGE_VALIDATION_COMPLETED
+REASONING_PACKAGE_GENERATED
+CLAIM_VERIFICATION_STARTED
+CLAIM_VERIFICATION_FAILED
+CLAIM_VERIFICATION_PASSED
+REASONING_REPAIR_STARTED
+REASONING_REPAIR_COMPLETED
+REASONING_REPAIR_EXHAUSTED
 AUTONOMY_POLICY_EVALUATED
 FRESHNESS_CHECK_STARTED
 FRESHNESS_CHECK_PASSED
 FRESHNESS_CHECK_FAILED
+ACTION_INTENT_PREPARED
 IDEMPOTENCY_RESERVED
 NOTIFICATION_SENT
 NOTIFICATION_ACKNOWLEDGED
@@ -95,9 +128,9 @@ Do not expose private chain-of-thought.
 
 ---
 
-## 3. Fan-Out / Join Visualization
+## 4. Fan-Out / Join Visualization
 
-Make the deterministic parallel work obvious:
+Make deterministic parallel work obvious:
 
 ```text
 Parallel investigation
@@ -118,21 +151,83 @@ Rules:
 
 ---
 
-## 4. Bounded Agent Visibility
+## 5. Bounded Agent Visibility
 
 Allowed labels:
 
 - `Assessing joined findings`;
 - `Selecting approved evidence topic`;
-- `Synthesizing source-grounded incident package`;
-- `Repairing package from validator feedback`;
+- `Synthesizing proof-carrying incident claims`;
+- `Repairing claims from deterministic verifier feedback`;
 - `Insufficient approved evidence — abstaining`.
 
 Show observable stages/results, not hidden reasoning traces.
 
 ---
 
-## 5. Autonomy Policy Card — Required
+## 6. Proof-Carrying Claims Card — Required
+
+The incident package view must distinguish claim classes and show support references.
+
+Example:
+
+```text
+Claim type       HYPOTHESIS
+Statement        Closely matching resistance phenotypes may indicate a shared epidemiologic process.
+Records          ISO-031 · ISO-034 · ISO-039
+Finding          profile-comparison-17
+Evidence         GUIDANCE-004
+Uncertainty      Genomic relatedness unavailable
+Verification     PASSED
+```
+
+For `OBSERVED_FACT`, show canonical-record support.
+
+For `DERIVED_FINDING`, show deterministic finding ID/version.
+
+For `EVIDENCE_STATEMENT`, show retrieved approved source/chunk/reference.
+
+For `ACTION_JUSTIFICATION`, visibly distinguish **justification** from **authorization**.
+
+---
+
+## 7. Claim Verification UI
+
+Hero pass state:
+
+```text
+Proof verification
+Claims checked        7
+Unknown record refs   0
+Unknown finding refs  0
+Unknown source refs   0
+Unsupported claims    0
+Forbidden claims      0
+Result                PASSED
+```
+
+Failure example:
+
+```text
+Proof verification failed
+Claim claim-03 references unknown finding baseline-999
+Action path blocked
+Automatic repair attempt 1/2
+```
+
+If repair succeeds, show re-verification. If exhausted:
+
+```text
+Workflow abstained
+Reason: proof-carrying claims could not satisfy deterministic verification
+External action: not sent
+```
+
+Never expose raw private CoT as “proof.”
+
+---
+
+## 8. Autonomy Policy Card — Required
 
 Before external action, show a compact deterministic policy result.
 
@@ -140,28 +235,29 @@ Hero example:
 
 ```text
 Autonomy policy
-Action class        A1 — Safe external coordination
-Destination         Authorized test webhook
-Package validation  Passed
-Evidence integrity  Passed
-Freshness           Passed
-Idempotency         Reserved
-Decision            AUTO-EXECUTE
+Action class          A1 — Safe external coordination
+Destination           Authorized test webhook
+Proof verification    Passed
+Evidence integrity    Passed
+Freshness             Passed
+ActionIntent           Prepared
+Idempotency           Reserved
+Decision              AUTO-EXECUTE
 ```
 
 Blocked example:
 
 ```text
-Action class        A3 — Clinical/official decision
-Decision            BLOCKED FROM AUTONOMOUS EXECUTION
-Reason              Outside v0.1 autonomous action envelope
+Action class          A3 — Clinical/official decision
+Decision              BLOCKED FROM AUTONOMOUS EXECUTION
+Reason                Outside v0.1 autonomous action envelope
 ```
 
 Never suggest Gemini granted itself permission to act.
 
 ---
 
-## 6. Zero-Human Hero Data Contract
+## 9. Zero-Human Hero Data Contract
 
 The hero fixture contains all material facts required for A1 completion.
 
@@ -179,30 +275,29 @@ Optional/unknown data may remain visibly `UNKNOWN` when policy permits continuat
 
 ---
 
-## 7. Automatic Repair UI
+## 10. Bounded Repair UI
 
-If synthesis fails deterministic validation, timeline may show:
+If proof/package verification fails:
 
 ```text
-Package validation failed
+Claim verification failed
 2 structured issues returned
 Automatic repair attempt 1/2
-Package validation passed
+Claim verification passed
 ```
 
 Do not expose raw private reasoning.
 
-If repair budget is exhausted:
+Repair metadata belongs in technical view:
 
-```text
-Workflow abstained
-Reason: package could not satisfy deterministic validation
-External action: not sent
-```
+- attempt number;
+- stable error codes;
+- whether new approved evidence retrieval was explicitly routed;
+- final verification status.
 
 ---
 
-## 8. Freshness UI
+## 11. Freshness UI
 
 Freshness remains mandatory even without human approval.
 
@@ -210,6 +305,7 @@ Hero:
 
 ```text
 Current incident state verified
+Source watermark unchanged
 Freshness check passed
 ```
 
@@ -217,26 +313,27 @@ Changed-state scenario:
 
 ```text
 New canonical data arrived before action
-Package marked stale
-Recomputing investigation before external action
+Previous package/proof status marked stale
+Recomputing + re-verifying before external action
 ```
 
 No external action may be shown as sent until current-state revalidation passes.
 
 ---
 
-## 9. Real External Action + Machine Acknowledgement
+## 12. Real External Action + Machine Acknowledgement
 
 The hosted/filmed path should truthfully display:
 
 ```text
-Channel        Authorized test webhook
-Mode           Real integration
-Action class    A1
-Delivery ID     ...
-Status          Sent
-Acknowledgement ...
-Completed at    ...
+Channel          Authorized test webhook
+Mode             Real integration
+Action class      A1
+ActionIntent      ...
+Delivery ID       ...
+Status            Sent
+Acknowledgement   ...
+Completed at      ...
 ```
 
 Local automated tests use a separate clearly labelled simulation adapter.
@@ -245,16 +342,18 @@ The acknowledgement must be machine-driven for the hero flow; no person should c
 
 ---
 
-## 10. BYOF / Operational Utility Proof
+## 13. BYOF / Operational Utility Proof
 
 A compact card can show generated benchmark facts:
 
 ```text
 Builder reference workflow   X active human steps
-Ngabo hero                   0 human steps after event
-Prompts to start             0
-Median event→action          X s
-Median action→ack            X ms
+Ngabo hero                    0 human steps after event
+Prompts to start              0
+Median event→action           X s
+Median action→ack             X ms
+Claims machine-verified       X
+Repair attempts               X
 ```
 
 Only show values generated in `EVALUATION.md`.
@@ -263,7 +362,7 @@ See `docs/BYOF_FRICTION.md` and `docs/OPERATIONAL_UTILITY_EVALUATION.md`.
 
 ---
 
-## 11. Technical Proof Drawer
+## 14. Technical Proof Drawer
 
 May expose safe metadata:
 
@@ -273,22 +372,27 @@ May expose safe metadata:
 - agent run/session/invocation ID;
 - model name;
 - package/incident version;
+- claim count/type counts;
+- claim verification status/error codes;
+- source/finding/record reference counts;
+- repair attempt count;
 - action class;
 - freshness result;
-- idempotency key reference;
+- ActionIntent/idempotency reference;
 - delivery/ack IDs;
-- retry/repair counts.
+- retry counts.
 
-This supports architecture judging but must not overwhelm the operational UI.
+This supports architecture judging but must not overwhelm operational UI.
 
 ---
 
-## 12. Failure / Abstention UX
+## 15. Failure / Abstention UX
 
 Autonomous safety requires visible non-success states:
 
 - `NEEDS_INFORMATION`;
 - `INSUFFICIENT_APPROVED_EVIDENCE`;
+- `CLAIM_VERIFICATION_FAILED`;
 - `VALIDATION_FAILED`;
 - `POLICY_BLOCKED`;
 - `STALE_RECOMPUTE_REQUIRED`;
@@ -299,16 +403,17 @@ Never turn a safe abstention into a green success state for demo aesthetics.
 
 ---
 
-## 13. Resume / Recovery Proof
+## 16. Resume / Recovery Proof
 
 Pause/resume remains a secondary engineering feature.
 
-If exercised in evaluation/technical proof:
+If exercised:
 
 ```text
 Investigation interrupted
 Recovery in progress
 Context rebuilt from canonical state
+Proof references revalidated if state changed
 Investigation resumed
 ```
 
@@ -316,7 +421,7 @@ The hero demo should prioritize uninterrupted zero-human completion unless a res
 
 ---
 
-## 14. Evidence Provenance
+## 17. Evidence Provenance
 
 Evidence details show:
 
@@ -331,24 +436,25 @@ If EmbeddingGemma is active, label it truthfully. Similarity score is not medica
 
 ---
 
-## 15. Four-Minute Demo UX Budget
+## 18. Four-Minute Demo UX Budget
 
 Target:
 
 1. **0:00–0:25** — personal BYOF friction + value proposition;
 2. **0:25–0:45** — synthetic signal/data arrives;
-3. **0:45–1:45** — automatic graph + fan-out/join + Gemini/evidence;
-4. **1:45–2:20** — package validation + autonomy policy + freshness;
-5. **2:20–2:45** — real external action + machine ack;
-6. **2:45–3:10** — zero-human operational benchmark;
-7. **3:10–3:40** — architecture diagram + Cloud Run/log proof;
-8. **3:40–4:00** — evaluation/limitations/closing.
+3. **0:45–1:30** — automatic graph + fan-out/join + Gemini/evidence;
+4. **1:30–2:00** — **The Twist: Proof-Carrying Autonomy** — show typed claims + deterministic verification;
+5. **2:00–2:20** — autonomy policy + freshness + ActionIntent/idempotency;
+6. **2:20–2:45** — real external action + machine ack;
+7. **2:45–3:10** — zero-human operational benchmark;
+8. **3:10–3:40** — architecture diagram + Cloud Run/log proof;
+9. **3:40–4:00** — evaluation/limitations/closing.
 
-Exact timing may change, but hero execution must get most of the screen time.
+Exact timing may change, but hero execution must get most screen time.
 
 ---
 
-## 16. Multimodal Stretch
+## 19. Multimodal Stretch
 
 Only after core freeze:
 
@@ -365,20 +471,23 @@ The detector must never consume unverified extraction.
 
 ---
 
-## 17. Acceptance Criteria
+## 20. Acceptance Criteria
 
 - [ ] hero path begins automatically from an event;
 - [ ] no chat prompt starts it;
 - [ ] no clarification occurs in hero flow;
 - [ ] no approval click occurs in hero flow;
 - [ ] fan-out/join is legible;
-- [ ] deterministic vs agentic work is distinguishable;
-- [ ] validation/repair behavior is visible when exercised;
+- [ ] deterministic vs agentic work distinguishable;
+- [ ] Proof-Carrying Autonomy visible and understandable;
+- [ ] claim types + record/finding/source references visible;
+- [ ] deterministic proof verification visible;
+- [ ] repair/abstention behavior visible when exercised;
 - [ ] autonomy policy proves A1 authorization deterministically;
-- [ ] freshness/idempotency are visible before action;
+- [ ] freshness + ActionIntent/idempotency visible before action;
 - [ ] real external action leaves Ngabo;
 - [ ] machine acknowledgement closes loop;
 - [ ] zero-human benchmark uses measured values only;
 - [ ] blocked/unsafe scenarios visibly abstain;
-- [ ] no optional model/feature is implied unless implemented;
+- [ ] no optional model/feature implied unless implemented;
 - [ ] complete story remains understandable within four minutes.

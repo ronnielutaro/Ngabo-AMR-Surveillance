@@ -31,14 +31,15 @@ Gemini 3.6 Flash bounded triage
         ↓
 approved evidence retrieval
         ↓
-Gemini evidence-grounded synthesis
+Gemini proof-carrying synthesis
         ↓
-deterministic package validation
-   └─ bounded automatic repair if needed
+deterministic claim/evidence verification
+   ├─ invalid → bounded automatic repair → verify again
+   └─ repair exhausted → autonomous abstention
         ↓
-deterministic autonomy policy
+deterministic A1 autonomy policy
         ↓
-freshness + idempotency
+freshness + ActionIntent/idempotency
         ↓
 real authorized safe external action
         ↓
@@ -55,6 +56,28 @@ clarifications       0
 approval clicks      0
 ```
 
+## The Twist — Proof-Carrying Autonomy
+
+Ngabo's competition twist is **Proof-Carrying Autonomy**:
+
+> **Ngabo completes the AMR investigation-to-coordination workflow without human intervention, but it does not trust its own LLM. Every action-relevant model claim must carry machine-checkable references to canonical data, deterministic findings, and/or approved evidence before it can influence autonomous action.**
+
+The governing implementation rule is:
+
+> **LLM proposes; deterministic machinery verifies whatever can be verified before the claim may influence autonomous action.**
+
+Material model claims are typed, including:
+
+- `OBSERVED_FACT` — must reference canonical records;
+- `DERIVED_FINDING` — must reference deterministic result IDs;
+- `EVIDENCE_STATEMENT` — must reference retrieved approved evidence;
+- `HYPOTHESIS` — must stay labelled as a hypothesis and preserve uncertainty;
+- `ACTION_JUSTIFICATION` — may explain an A1 candidate but cannot authorize it.
+
+Unknown records/findings/sources, unsupported factual assertions, claim-type escalation, and prohibited diagnosis/prescribing/outbreak-confirmation claims fail deterministic verification. Private chain-of-thought is not treated as evidence, persisted as truth, or displayed.
+
+See [`docs/PROOF_CARRYING_REASONING.md`](./docs/PROOF_CARRYING_REASONING.md) and ADR 0009.
+
 ## Safe Zero-Human Autonomy
 
 Ngabo does not achieve autonomy by allowing unrestricted clinical decisions.
@@ -66,7 +89,7 @@ A0 INTERNAL_STATE
 → autonomous
 
 A1 SAFE_EXTERNAL_COORDINATION
-→ autonomous after validation/policy/freshness/idempotency gates
+→ autonomous after claim verification + policy + freshness + idempotency gates
 
 A2 REAL_OPERATIONAL_ESCALATION
 → outside autonomous public-v0.1 envelope unless separately authorized
@@ -77,7 +100,7 @@ A3 CLINICAL_OR_OFFICIAL_PUBLIC_HEALTH_DECISION
 
 The hackathon hero action is A1: a real authorized test/sandbox/internal coordination action clearly labelled as an **investigation candidate**, not a diagnosis, treatment recommendation or confirmed outbreak.
 
-If data/evidence/policy is insufficient, Ngabo autonomously abstains rather than fabricating completion.
+If data, evidence, proof verification, or policy is insufficient, Ngabo autonomously abstains rather than fabricating completion.
 
 See [`docs/TASKMASTER_ZERO_HUMAN_AUTONOMY.md`](./docs/TASKMASTER_ZERO_HUMAN_AUTONOMY.md).
 
@@ -135,7 +158,7 @@ Governing rule:
 
 > **Deterministic when the workflow is known; agentic when the decision is ambiguous; dynamic only when the workflow itself cannot reasonably be known in advance.**
 
-Core investigation:
+Core investigation/action path:
 
 ```text
 incident context
@@ -151,28 +174,36 @@ Gemini triage
       ↓
 approved evidence
       ↓
-Gemini synthesis
+Gemini proof-carrying synthesis
       ↓
-deterministic validation
+deterministic claim/evidence verifier
+      ↓
+bounded repair or abstention
+      ↓
+deterministic A1 policy
+      ↓
+freshness + ActionIntent/idempotency
+      ↓
+external action + machine acknowledgement
 ```
 
-Fixed routing, scientific calculations, action authorization, freshness and idempotency do not belong to Gemini.
+Fixed routing, scientific calculations, proof validation, action authorization, freshness and idempotency do not belong to Gemini.
 
 See [`docs/ORCHESTRATION_PATTERNS.md`](./docs/ORCHESTRATION_PATTERNS.md).
 
-## Automatic Validation & Repair
+## Proof-Carrying Validation & Repair
 
-Model-generated incident packages must pass deterministic validation.
+Model-generated packages must pass deterministic proof verification. A fluent statement is not trusted simply because it sounds plausible.
 
-If a package is invalid:
+If verification fails:
 
 ```text
-validator errors
-→ bounded Gemini repair
-→ validator
+structured verification errors
+→ bounded Gemini repair using existing facts/findings/evidence
+→ deterministic verifier
 ```
 
-The model cannot waive validator failures. Exhausted repair budget produces a safe stop.
+The model cannot waive verifier failures or mutate canonical truth. Exhausted repair budget produces a safe abstention.
 
 ## Long-Running Truth
 
@@ -215,14 +246,20 @@ Before submission Ngabo will publish `EVALUATION.md` containing real results for
 - deterministic surveillance/scientific tests;
 - graph/fan-out/join tests;
 - zero-human hero E2E;
+- proof-carrying claim/reference verification;
+- fabricated record/finding/source adversarial tests;
+- hypothesis→fact and forbidden-claim escalation tests;
+- `unsafe_claim_escape_rate` on the committed software adversarial suite;
 - action-class safety tests;
-- automatic package repair;
+- bounded automatic repair;
 - prompt injection/source integrity;
 - freshness/idempotency;
 - restart/recovery;
 - BYOF operational utility benchmark;
 - real external A1 action + machine acknowledgement;
 - optional EmbeddingGemma/MedGemma only if implemented.
+
+`unsafe_claim_escape_rate == 0` is a **software-suite target**, not a clinical-safety or universal hallucination-elimination claim.
 
 The canonical deployed hero must pass at least three consecutive times before demo freeze.
 
@@ -236,6 +273,7 @@ It must be reconciled to the actual deployed `v0.1.0` release before submission.
 
 - [`docs/HACKATHON_ALIGNMENT.md`](./docs/HACKATHON_ALIGNMENT.md) — competition contract
 - [`docs/TASKMASTER_ZERO_HUMAN_AUTONOMY.md`](./docs/TASKMASTER_ZERO_HUMAN_AUTONOMY.md) — safe literal zero-human hero
+- [`docs/PROOF_CARRYING_REASONING.md`](./docs/PROOF_CARRYING_REASONING.md) — proof-carrying autonomy / hallucination boundary
 - [`docs/BYOF_FRICTION.md`](./docs/BYOF_FRICTION.md) — personal-friction story
 - [`docs/HACKATHON_RISK_REGISTER.md`](./docs/HACKATHON_RISK_REGISTER.md) — competition risk controls
 - [`docs/SUBMISSION_EVIDENCE.md`](./docs/SUBMISSION_EVIDENCE.md) — claim-to-proof matrix
