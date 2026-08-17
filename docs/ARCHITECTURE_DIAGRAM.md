@@ -1,9 +1,9 @@
 # Ngabo — Judge-Facing Architecture Diagram
 
 **Status:** Required submission artifact; target architecture until deployment freeze  
-**Date:** 2026-08-16
+**Date:** 2026-08-17
 
-This diagram is intentionally optimized for the hackathon judge: it shows autonomous execution, Google technology usage, Clean Architecture boundaries, state ownership, safety policy, action and acknowledgement without exposing implementation noise.
+This diagram is intentionally optimized for the hackathon judge: it shows autonomous execution, Google technology usage, Clean Architecture boundaries, state ownership, proof-carrying model claims, deterministic verification, safety policy, action and acknowledgement without exposing implementation noise.
 
 > Before submission, update labels/optional model nodes to match the **actually deployed** `v0.1.0` release and export a high-resolution image if Devpost rendering requires one.
 
@@ -38,6 +38,7 @@ flowchart TB
       subgraph APP[Application / Use Cases / Ports]
         FLOW[Incident workflow]
         CTX[Incident context query]
+        VERIFY[Proof-carrying claim verifier]
         ACTION[Autonomous action policy]
         FRESH[Pre-action freshness check]
         IDEM[Idempotency / delivery policy]
@@ -47,7 +48,7 @@ flowchart TB
         PROFILE[Resistance-profile comparison]
         BASE[Baseline summary]
         MISS[Missing-field assessment]
-        VALID[Package + claim validation]
+        CLAIMPOLICY[Claim-type + evidence-reference policy]
         STATE[Incident state policy]
       end
 
@@ -62,14 +63,16 @@ flowchart TB
       JOIN --> TRIAGE[Gemini bounded triage]
       GEM --> TRIAGE
       TRIAGE --> EVID
-      EVID --> SYNTH[Gemini evidence-grounded synthesis]
+      EVID --> SYNTH[Gemini proof-carrying synthesis]
       GEM --> SYNTH
-      SYNTH --> VALID
-      VALID -->|valid| ACTION
-      VALID -->|invalid| REPAIR[Bounded automatic repair]
+      SYNTH --> VERIFY
+      CLAIMPOLICY --> VERIFY
+      VERIFY -->|valid| ACTION
+      VERIFY -->|invalid| REPAIR[Bounded automatic repair]
       REPAIR --> SYNTH
+      VERIFY -->|repair exhausted| ABSTAIN[Autonomous abstention / validation failed]
       ACTION -->|A1 safe autonomous coordination| FRESH
-      ACTION -->|A2/A3 blocked| ABSTAIN[Autonomous abstention / policy blocked]
+      ACTION -->|A2/A3 blocked| ABSTAIN
       FRESH --> IDEM
       IDEM --> NOTIFY
     end
@@ -81,9 +84,11 @@ flowchart TB
     NOTIFY --> EXT[Authorized external test/sandbox endpoint]
     EXT -->|machine acknowledgement callback/event| CORE
 
+    VERIFY -. rejects .-> HALLUCINATION[Unknown records · fabricated findings/sources · claim-type escalation]
     ACTION -. policy boundary .-> SAFETY[No prescribing · no diagnosis · no autonomous outbreak confirmation]
 
     style SAFETY stroke-dasharray: 5 5
+    style HALLUCINATION stroke-dasharray: 5 5
 ```
 
 ## Hero Taskmaster Path
@@ -97,7 +102,9 @@ signal
 → deterministic fan-out/join
 → Gemini bounded reasoning
 → approved evidence
-→ validated package
+→ proof-carrying structured claims
+→ deterministic claim/evidence verification
+→ bounded repair or abstention if invalid
 → A1 autonomous action policy
 → freshness
 → idempotency
@@ -114,11 +121,19 @@ clarifications:       0
 approval clicks:      0
 ```
 
+## Proof-Carrying Reasoning Boundary
+
+Gemini may interpret, hypothesize and synthesize, but action-relevant claims must reference canonical records, deterministic findings and/or approved evidence. Unknown references, forbidden claim types, unsupported factual assertions and stale package evidence fail deterministic verification.
+
+Private/hidden chain-of-thought is not evidence and is not displayed or persisted as incident truth.
+
+See `docs/PROOF_CARRYING_REASONING.md` and ADR 0009.
+
 ## Safety Boundary
 
 The diagram deliberately separates **autonomous coordination** from **clinical/official public-health authority**.
 
-A1 safe coordination actions can execute autonomously only after deterministic validation/policy/freshness/idempotency gates. A2/A3 action classes are blocked from the zero-human v0.1 lane.
+A1 safe coordination actions can execute autonomously only after deterministic claim verification, action-policy, freshness and idempotency gates. A2/A3 action classes are blocked from the zero-human v0.1 lane.
 
 ## Google Technology Proof
 
@@ -137,6 +152,7 @@ The final version must truthfully show only technologies that actually execute i
 ## Final Export Checklist
 
 - [ ] diagram matches deployed source code;
+- [ ] proof-carrying claim verifier is implemented if shown;
 - [ ] optional models removed if not implemented;
 - [ ] Cloud Run service names match deployment;
 - [ ] action/ack endpoint shown accurately;

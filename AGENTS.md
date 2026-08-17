@@ -16,6 +16,8 @@ Optimize for:
 - zero-human hero completion;
 - deterministic scientific logic;
 - graph-first hybrid orchestration;
+- proof-carrying model claims;
+- deterministic claim/evidence verification;
 - safe A1 external coordination;
 - deterministic action policy;
 - bounded automatic repair;
@@ -44,20 +46,22 @@ Optimize for:
 10. `docs/ADK_CAPABILITY_SPIKE.md`
 11. `docs/ADK_RUNTIME.md`
 12. `docs/ORCHESTRATION_PATTERNS.md`
-13. `docs/LONG_RUNNING_AGENT.md`
-14. `docs/SYSTEM_DESIGN.md`
-15. `docs/AGENT_ARCHITECTURE.md`
-16. `docs/DATA_SAFETY_EVALUATION.md`
-17. `docs/OPERATIONAL_UTILITY_EVALUATION.md`
-18. `docs/UI_UX_SPEC.md`
-19. `docs/UI_UX_HACKATHON_ADDENDUM.md`
-20. `docs/ARCHITECTURE_DIAGRAM.md`
-21. `docs/THIRD_PARTY_PROVENANCE.md`
-22. `docs/SUBMISSION_EVIDENCE.md`
-23. `docs/SUBMISSION_FREEZE.md`
-24. `docs/HACKATHON_RISK_REGISTER.md`
-25. `docs/IMPLEMENTATION_PLAN.md`
-26. relevant ADRs, especially 0005 and 0006.
+13. `docs/PROOF_CARRYING_REASONING.md`
+14. `docs/LONG_RUNNING_AGENT.md`
+15. `docs/AUTONOMOUS_EFFECT_OUTBOX.md`
+16. `docs/SYSTEM_DESIGN.md`
+17. `docs/AGENT_ARCHITECTURE.md`
+18. `docs/DATA_SAFETY_EVALUATION.md`
+19. `docs/OPERATIONAL_UTILITY_EVALUATION.md`
+20. `docs/UI_UX_SPEC.md`
+21. `docs/UI_UX_HACKATHON_ADDENDUM.md`
+22. `docs/ARCHITECTURE_DIAGRAM.md`
+23. `docs/THIRD_PARTY_PROVENANCE.md`
+24. `docs/SUBMISSION_EVIDENCE.md`
+25. `docs/SUBMISSION_FREEZE.md`
+26. `docs/HACKATHON_RISK_REGISTER.md`
+27. `docs/IMPLEMENTATION_PLAN.md`
+28. relevant ADRs, especially 0005–0009.
 
 If older documents still mention mandatory human approval/clarification in the v0.1 hero, `docs/TASKMASTER_ZERO_HUMAN_AUTONOMY.md` and `CLAUDE.md` supersede that wording for the safe A1 hero lane.
 
@@ -74,8 +78,9 @@ signal
 → deterministic fan-out/join
 → bounded Gemini reasoning
 → approved evidence
-→ synthesis
-→ deterministic validation / bounded repair
+→ proof-carrying synthesis
+→ deterministic claim/evidence verification
+→ bounded repair or abstention
 → deterministic A1 autonomy policy
 → freshness
 → idempotency
@@ -156,6 +161,7 @@ Forbidden:
 ```text
 ADK node -> raw Firestore + business logic
 Gemini -> direct external action
+Gemini -> verifier/policy override
 route -> scientific calculation
 application -> concrete cloud/model SDK
 React -> cloud/model SDK
@@ -172,6 +178,8 @@ Deterministic owns:
 - structural missingness;
 - fixed routing;
 - join/failure semantics;
+- canonical record/finding/source reference verification;
+- claim-type/policy validation;
 - package validation;
 - action classification;
 - allow-list authorization;
@@ -185,14 +193,46 @@ Gemini owns only bounded ambiguity:
 - evidence intent when not deterministic;
 - source-grounded synthesis;
 - labelled hypotheses;
-- bounded repair from validator errors;
+- typed proof-carrying claim drafting;
+- bounded repair from verifier errors;
 - stopping with uncertainty.
 
 No model call for ordinary fixed policy.
 
 ---
 
-## 8. ADK Capability Spike
+## 8. Proof-Carrying Reasoning
+
+Read `docs/PROOF_CARRYING_REASONING.md` and ADR 0009.
+
+Every material action-relevant model claim must be typed and machine-checkable against canonical data, deterministic findings and/or approved retrieved evidence.
+
+Required claim families include:
+
+```text
+OBSERVED_FACT
+DERIVED_FINDING
+EVIDENCE_STATEMENT
+HYPOTHESIS
+ACTION_JUSTIFICATION
+```
+
+Rules:
+
+- observed facts reference canonical records;
+- derived findings reference deterministic result IDs;
+- evidence statements reference actually retrieved approved source IDs;
+- hypotheses remain labelled hypotheses and carry supporting evidence/uncertainty;
+- action justifications do not authorize actions;
+- forbidden diagnosis/prescription/outbreak-confirmation/official-authority claims fail verification;
+- unknown references fail verification;
+- unverified packages never reach A1 action policy.
+
+Private/hidden chain-of-thought is not evidence, is not canonical incident truth and must not be exposed. Self-consistency/multiple-candidate reasoning may improve quality but never bypasses deterministic verification.
+
+---
+
+## 9. ADK Capability Spike
 
 Before production orchestration code:
 
@@ -208,30 +248,33 @@ Do not guess APIs and do not add another orchestration framework to compensate.
 
 ---
 
-## 9. Automatic Repair
+## 10. Automatic Repair
 
-Package validation is deterministic.
+Claim/package verification is deterministic.
 
 If invalid:
 
 ```text
-structured errors → Gemini repair → validator
+structured errors → Gemini repair → deterministic verifier
 ```
 
 Hard max attempts. Suggested `2`.
+
+Repair may not invent canonical records/findings/sources, mutate action policy or bypass verification.
 
 If budget exhausted: `VALIDATION_FAILED`; no action.
 
 ---
 
-## 10. External Action
+## 11. External Action
 
 Hero uses a real A1 integration through `NotificationPort`.
 
 Preferred:
 
 ```text
-authorized test/sandbox webhook
+verified package
+→ authorized test/sandbox webhook
 → delivery ID
 → machine acknowledgement callback/event
 ```
@@ -242,26 +285,28 @@ No person should need to acknowledge the hero action.
 
 ---
 
-## 11. State / Retry / Freshness
+## 12. State / Retry / Freshness
 
 - Firestore/application state is canonical truth;
 - ADK session is execution continuity only;
 - Pub/Sub may redeliver;
 - read-only work is repeatable;
 - side effects are idempotent;
+- claim verification is package/version scoped;
 - freshness runs immediately before external action;
 - changed canonical data triggers recompute/revalidation;
 - stale session/context never authorizes action.
 
 ---
 
-## 12. Failure / Abstention
+## 13. Failure / Abstention
 
 Legitimate states:
 
 ```text
 NEEDS_INFORMATION
 INSUFFICIENT_APPROVED_EVIDENCE
+CLAIM_VERIFICATION_FAILED
 VALIDATION_FAILED
 POLICY_BLOCKED
 STALE_RECOMPUTE_REQUIRED
@@ -273,13 +318,15 @@ Do not fake completion.
 
 ---
 
-## 13. UI
+## 14. UI
 
 Hero UI shows:
 
 - event start;
 - deterministic fan-out/join;
 - bounded Gemini/evidence stages;
+- claim types + supporting references;
+- deterministic verification result;
 - validation/repair;
 - A1 autonomy-policy result;
 - freshness/idempotency;
@@ -289,9 +336,11 @@ Hero UI shows:
 
 No clarification card or approval click in canonical hero.
 
+Never expose chain-of-thought; expose evidence references, uncertainty and verification state instead.
+
 ---
 
-## 14. Evaluation
+## 15. Evaluation
 
 Hero assertions:
 
@@ -311,19 +360,26 @@ Also test:
 - material missing fact abstains;
 - non-allow-listed target blocked;
 - prompt injection;
-- fabricated citation/isolate;
-- repair success/exhaustion;
+- fabricated isolate/record reference;
+- fabricated deterministic finding reference;
+- fabricated/unretrieved source;
+- hypothesis promoted to observed fact;
+- forbidden claim-type escalation;
+- proof-verification repair success/exhaustion;
+- no A1 action from an unverified package;
 - branch failure;
 - freshness recompute;
 - duplicate event/retry idempotency;
 - canonical state beats session text;
 - restart/recovery.
 
+Track `unsafe_claim_escape_rate` on the committed adversarial software suite and target `0`; never present that as clinical validation or a universal hallucination guarantee.
+
 Run three consecutive deployed hero E2Es before demo freeze.
 
 ---
 
-## 15. BYOF
+## 16. BYOF
 
 The personal friction is the builder's own repeated AMR research/coordination workflow described in `docs/BYOF_FRICTION.md`.
 
@@ -333,7 +389,7 @@ Operational benchmark compares builder reference human steps against zero-human 
 
 ---
 
-## 16. Git / Release Governance
+## 17. Git / Release Governance
 
 Feature work:
 
@@ -353,7 +409,7 @@ For hackathon release, follow `docs/SUBMISSION_FREEZE.md`: preserve judged main/
 
 ---
 
-## 17. Scope Freeze
+## 18. Scope Freeze
 
 Until zero-human deployed hero and core evals are green, do not add:
 
@@ -373,7 +429,7 @@ EmbeddingGemma begins only after core green.
 
 ---
 
-## 18. Stop Conditions
+## 19. Stop Conditions
 
 Stop rather than guess if:
 
@@ -383,16 +439,18 @@ Stop rather than guess if:
 - zero-human completion would require inventing clinical data;
 - action is not A1/authorized/allow-listed;
 - model is being asked to own deterministic safety policy;
+- model output can bypass proof/reference verification;
+- chain-of-thought is being persisted/exposed as authority;
+- model consensus is being treated as proof;
 - external side effect lacks idempotency;
-- package can bypass validator;
 - dependency direction is inverted;
 - claim lacks real evidence;
 - bonus work threatens hero reliability.
 
 ---
 
-## 19. Definition of Done
+## 20. Definition of Done
 
-A milestone is done only when relevant tests are green, architecture boundaries hold, safety policy holds, docs/evidence are updated, and the change does not weaken the zero-human Taskmaster hero.
+A milestone is done only when relevant tests are green, architecture boundaries hold, proof-carrying claim verification holds, safety policy holds, docs/evidence are updated, and the change does not weaken the zero-human Taskmaster hero.
 
-The final release is not complete until a deployed scenario proves event→action→machine-ack completion with **zero human intervention** and the safety eval proves A2/A3 clinical/official actions remain blocked.
+The final release is not complete until a deployed scenario proves event→proof-verified package→action→machine-ack completion with **zero human intervention** and the safety eval proves fabricated/forbidden claims cannot escape verification into A1 action while A2/A3 clinical/official actions remain blocked.

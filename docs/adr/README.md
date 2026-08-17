@@ -12,6 +12,7 @@ Current ADRs:
 - `0006-long-running-agent-state-and-freshness.md` — long-running state, context/memory boundaries, pre-action freshness, and recovery
 - `0007-zero-human-safe-coordination.md` — zero-human Taskmaster hero via bounded A1 safe coordination rather than autonomous clinical/official action
 - `0008-autonomous-action-outbox.md` — transactional action-intent/outbox and idempotent external-effect execution
+- `0009-proof-carrying-reasoning.md` — machine-verifiable evidence/reference contracts for model-generated claims before autonomous action
 
 ## Supersession Note
 
@@ -19,10 +20,11 @@ ADR 0007 supersedes older v0.1 wording that required human clarification or appr
 
 Human-governed consequential patterns remain valid for future A2/A3 real-world workflows and secondary evaluation scenarios.
 
-For the current hero, read ADRs 0007–0008 together with:
+For the current hero, read ADRs 0007–0009 together with:
 
 - `docs/TASKMASTER_ZERO_HUMAN_AUTONOMY.md`
 - `docs/AUTONOMOUS_EFFECT_OUTBOX.md`
+- `docs/PROOF_CARRYING_REASONING.md`
 - `docs/HACKATHON_ALIGNMENT.md`
 - `docs/LONG_RUNNING_AGENT.md`
 
@@ -37,6 +39,7 @@ Create an ADR when a change materially affects:
 - long-running execution or memory/context policy;
 - autonomous/human safety boundary;
 - action authorization/effect semantics;
+- model-claim verification / evidence authority;
 - major infrastructure selection;
 - release/versioning governance.
 
