@@ -1,7 +1,7 @@
 # Ngabo — System Design
 
-**Version:** 0.5  
-**Date:** 2026-08-16  
+**Version:** 0.6  
+**Date:** 2026-08-17  
 **Status:** Hackathon MVP system design  
 **Architecture:** Clean Architecture in a monorepo
 
@@ -15,11 +15,13 @@ Build the smallest production-minded architecture that demonstrates:
 - deterministic scientific detection;
 - Google ADK graph/workflow execution;
 - bounded Gemini reasoning;
+- **Proof-Carrying Autonomy**: action-relevant model claims carry machine-checkable references;
+- deterministic claim/evidence verification before autonomous action;
 - zero-human completion of the canonical Taskmaster coordination workflow;
 - safe autonomous action through a constrained A1 action envelope;
 - real external action + machine acknowledgement;
-- durable state, idempotency, freshness and observability;
-- clear separation between AI orchestration and scientific/business truth.
+- durable state, freshness, transactional ActionIntent/outbox, idempotency and observability;
+- clear separation between AI reasoning and scientific/business truth.
 
 ---
 
@@ -55,10 +57,13 @@ Gemini triage
         ↓
 approved evidence retrieval
         ↓
-Gemini synthesis
+Gemini proof-carrying synthesis
         ↓
-deterministic package validation
-  └─ bounded automatic repair if needed
+deterministic claim/evidence verifier
+  ├─ invalid → structured errors → bounded repair → verify again
+  └─ exhausted → autonomous abstention
+        ↓
+package/schema validation
         ↓
 deterministic A0/A1/A2/A3 policy
         ↓
@@ -66,7 +71,7 @@ A1 safe coordination eligible
         ↓
 freshness revalidation
         ↓
-idempotency reservation
+transactional ActionIntent + idempotency
         ↓
 NotificationPort
         ↓
@@ -91,7 +96,8 @@ Cloud Run service providing:
 - import/demo controls;
 - incident/autonomy timeline;
 - graph/fan-out/join proof;
-- package/evidence view;
+- evidence + proof-carrying claim view;
+- deterministic claim-verification status;
 - autonomy-policy/freshness state;
 - external action/ack status;
 - technical/evaluation proof drawer.
@@ -103,6 +109,7 @@ Cloud Run service providing:
 - API/event interfaces;
 - application workflows;
 - deterministic surveillance core;
+- deterministic claim/policy verification core;
 - Google ADK infrastructure;
 - evidence/action adapters;
 - persistence/event integration.
@@ -123,22 +130,20 @@ Application / Use Cases / Ports
 Domain
 ```
 
-### Domain/application
-
-Own:
+### Domain/application own
 
 - canonical entities/value objects;
 - deterministic surveillance;
 - incident state policy;
+- claim taxonomy/reference rules;
+- deterministic claim verification contracts/services;
 - package validation rules/contracts;
 - A0/A1/A2/A3 action policy;
 - material-change/freshness policy;
-- idempotency policy;
+- ActionIntent/idempotency policy;
 - workflows and ports.
 
-### Infrastructure
-
-Own:
+### Infrastructure owns
 
 - FastAPI;
 - Firestore;
@@ -148,6 +153,8 @@ Own:
 - EmbeddingGemma/MedGemma adapters if implemented;
 - external notification/action provider;
 - Cloud logging/tracing.
+
+Gemini/ADK must not own claim validity, action authority, canonical truth, or external side effects.
 
 ---
 
@@ -172,13 +179,16 @@ Suggested canonical records:
 - imports;
 - isolates/AST results;
 - surveillance signals;
+- deterministic findings + algorithm/config versions;
 - incidents;
 - packages/versions;
-- evidence references;
+- typed reasoning claims;
+- claim-verification reports/error codes;
+- evidence references/manifests;
 - graph/agent execution references;
 - autonomy decisions;
 - source watermarks;
-- action/delivery records;
+- ActionIntents/delivery records;
 - acknowledgements;
 - audit events;
 - processed-event/idempotency records.
@@ -196,13 +206,69 @@ Persist:
 - phenotype similarity;
 - baseline comparison;
 - trigger explanation;
-- algorithm/config version.
+- algorithm/config version;
+- stable deterministic finding IDs that model claims can reference.
 
 Signal means **investigation candidate**, not confirmed outbreak.
 
 ---
 
-## 7. ADK Workflow Boundary
+## 7. Proof-Carrying Reasoning Boundary
+
+Gemini may interpret/hypothesize/synthesize, but action-relevant output must be structured claims equivalent to:
+
+```text
+claim_id
+claim_type
+statement
+supporting_record_ids[]
+supporting_finding_ids[]
+supporting_source_ids[]
+contradicting_claim_ids[]
+uncertainties[]
+requested_action_class
+confidence_label
+```
+
+Supported claim types:
+
+```text
+OBSERVED_FACT
+DERIVED_FINDING
+EVIDENCE_STATEMENT
+HYPOTHESIS
+ACTION_JUSTIFICATION
+```
+
+`ACTION_JUSTIFICATION` does not authorize an action.
+
+Forbidden v0.1 autonomous claim types include diagnosis, prescription, outbreak confirmation, mandatory containment authority, and official public-health declaration.
+
+See `docs/PROOF_CARRYING_REASONING.md`.
+
+---
+
+## 8. Deterministic Claim Verification
+
+After Gemini synthesis, application/domain logic verifies:
+
+- referenced canonical records exist/current;
+- referenced deterministic findings exist/current and belong to the incident/run;
+- referenced evidence was actually retrieved and approved;
+- observed facts do not rely solely on model inference;
+- derived claims map to deterministic outputs;
+- hypotheses stay labelled as hypotheses;
+- unsupported/forbidden claim types/wording are rejected;
+- required uncertainty/limitations are present where policy requires them;
+- package/source/finding versions are not stale.
+
+Unknown references fail deterministically.
+
+Verifier output is a structured `ClaimVerificationReport` with stable error codes suitable for routing/evaluation.
+
+---
+
+## 9. ADK Workflow Boundary
 
 ADK lives in infrastructure and orchestrates inward application contracts.
 
@@ -220,18 +286,20 @@ Core stages:
 3. join;
 4. Gemini triage;
 5. evidence;
-6. Gemini synthesis;
-7. deterministic validation/repair;
-8. autonomy policy;
-9. freshness/idempotency;
-10. external action;
-11. machine acknowledgement.
+6. Gemini proof-carrying synthesis;
+7. deterministic claim/evidence verification;
+8. bounded repair/abstention;
+9. package/schema validation;
+10. autonomy policy;
+11. freshness + ActionIntent/idempotency;
+12. external action;
+13. machine acknowledgement.
 
-Exact framework implementation must follow `docs/ADK_CAPABILITY_SPIKE.md`.
+Exact framework implementation follows `docs/ADK_CAPABILITY_SPIKE.md`.
 
 ---
 
-## 8. Action Safety Architecture
+## 10. Action Safety Architecture
 
 ```text
 A0 internal state              → autonomous
@@ -244,19 +312,20 @@ Policy engine is deterministic application/domain logic.
 
 A1 requires:
 
-- valid package;
+- valid current package;
+- claim verification passed;
 - evidence/source integrity;
 - no material blocker;
 - allow-listed authorized destination;
 - safe claim boundary;
 - freshness;
-- idempotency.
+- durable ActionIntent + idempotency.
 
 Gemini has no direct notification capability.
 
 ---
 
-## 9. Missing Information
+## 11. Missing Information
 
 Hero fixture contains all material fields.
 
@@ -271,20 +340,25 @@ No mandatory human clarification is part of v0.1 hero.
 
 ---
 
-## 10. Automatic Package Repair
+## 12. Bounded Proof/Package Repair
 
 ```text
-Gemini package
-→ deterministic validator
-   ├─ pass → autonomy policy
-   └─ fail → structured errors → Gemini repair → validator
+Gemini proof-carrying package
+→ deterministic verifier
+   ├─ pass → package/action policy
+   └─ fail → structured errors → Gemini repair → verifier
 ```
 
-Hard repair budget. No valid package → no action.
+Controls:
+
+- hard repair budget (target `2`);
+- repair cannot mutate canonical facts/deterministic findings/action policy;
+- new evidence only through explicit approved retrieval path;
+- no valid verified package → no action.
 
 ---
 
-## 11. Evidence
+## 13. Evidence
 
 Core can use deterministic/tag retrieval first.
 
@@ -297,19 +371,19 @@ EvidenceSearchPort
 → source IDs/chunks/scores
 ```
 
-MedGemma remains bounded/gated.
+Every evidence statement must reference actually retrieved approved evidence. A URL generated by the model is never authority.
 
-No arbitrary web page automatically becomes approved authority.
+MedGemma remains bounded/gated.
 
 ---
 
-## 12. Freshness
+## 14. Freshness
 
 Immediately before every A1 action:
 
-- compare current incident/package/source version;
+- compare current incident/package/source versions/watermark;
 - detect material change;
-- if changed, recompute/revalidate affected stages;
+- if changed, recompute/reverify/revalidate affected stages;
 - rerun autonomy policy;
 - act only on current state.
 
@@ -317,7 +391,23 @@ Freshness is autonomous safety, not merely review protection.
 
 ---
 
-## 13. External Action / Ack
+## 15. ActionIntent / Outbox / Idempotency
+
+Before every autonomous external effect, persist a durable immutable `ActionIntent` bound to:
+
+- incident/package/source versions;
+- action class/policy version;
+- target;
+- payload hash;
+- stable idempotency key.
+
+Dispatcher/receiver semantics follow `docs/AUTONOMOUS_EFFECT_OUTBOX.md`.
+
+Claim accurately as **exactly-once Ngabo intent plus idempotent external execution**, not universal exactly-once network delivery.
+
+---
+
+## 16. External Action / Ack
 
 Preferred hero integration:
 
@@ -336,7 +426,7 @@ Keep fake adapter for tests.
 
 ---
 
-## 14. Failure / Retry
+## 17. Failure / Retry
 
 Handle:
 
@@ -344,9 +434,11 @@ Handle:
 - required graph branch failure;
 - model timeout/error;
 - evidence failure;
-- package repair exhaustion;
+- malformed/unsupported proof references;
+- proof/repair exhaustion;
 - stale data;
 - external send failure;
+- ambiguous crash window around external side effect;
 - acknowledgement timeout/replay;
 - process restart.
 
@@ -354,7 +446,7 @@ State-changing operations idempotent; failures visible.
 
 ---
 
-## 15. Observability
+## 18. Observability
 
 Correlate:
 
@@ -366,19 +458,24 @@ graph_run_id
 node/branch/join IDs
 agent session/invocation/run IDs
 package_version
+claim_count
+claim type counts
+claim verification status/error codes
+reasoning repair count
 action_class
 autonomy decision
 freshness result
+action_intent_id
 idempotency reference
 delivery/ack IDs
-retry/repair counts
+retry counts
 ```
 
 No private chain-of-thought.
 
 ---
 
-## 16. Security / Cost
+## 19. Security / Cost
 
 - synthetic public data only;
 - secrets via injected config/Secret Manager;
@@ -393,22 +490,31 @@ No private chain-of-thought.
 
 ---
 
-## 17. Hero E2E Acceptance
+## 20. Hero E2E Acceptance
 
 ```text
-manual prompts       = 0
-human interventions  = 0
-human steps          = 0
-clarifications       = 0
-approval clicks      = 0
-external effects     = 1
-machine acknowledgements = 1
+manual prompts             = 0
+human interventions        = 0
+human steps                = 0
+clarifications             = 0
+approval clicks            = 0
+claim verification         = passed
+logical ActionIntents      = 1
+external effects           = 1
+machine acknowledgements   = 1
 ```
 
-Also prove A2/A3 actions are blocked and unsafe/missing-data scenarios abstain.
+Also prove:
+
+- fabricated record/finding/source references are rejected;
+- hypothesis/forbidden-claim escalation is blocked;
+- failed claim verification never reaches A1 action;
+- A2/A3 actions are blocked;
+- unsafe/missing-data scenarios abstain;
+- freshness/idempotency protect external action.
 
 ---
 
-## 18. Diagram
+## 21. Diagram
 
 See `docs/ARCHITECTURE_DIAGRAM.md` for the judge-facing visual. Update it to match final deployment before submission.

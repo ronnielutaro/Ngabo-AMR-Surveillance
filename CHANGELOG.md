@@ -22,22 +22,24 @@ The project uses Semantic Versioning and Conventional Commits.
 - `docs/HACKATHON_RISK_REGISTER.md` mapping competition, safety, API, proof and submission risks to closure evidence.
 - `docs/PROOF_CARRYING_REASONING.md` defining typed model claims, deterministic evidence/reference verification, bounded automatic repair and abstention before autonomous action.
 - ADR 0009 adopting proof-carrying reasoning as the model-to-action safety boundary.
+- Explicit competition framing of **The Twist: Proof-Carrying Autonomy** across README, hackathon alignment, UI/demo, evidence and implementation contracts.
 
 ### Changed
 
 - The canonical v0.1 Taskmaster hero now completes from surveillance event to real external coordination action and machine acknowledgement with **zero human intervention**.
-- Hero requirements are now `0` prompts, `0` human interventions, `0` active human steps, `0` clarifications and `0` approval clicks after the event trigger.
+- Hero requirements are `0` prompts, `0` human interventions, `0` active human steps, `0` clarifications and `0` approval clicks after the event trigger.
 - Ngabo no longer relies on human approval to make the hackathon hero safe. Instead the autonomous action envelope is deterministically constrained: A1 safe external coordination may auto-execute; A2 real operational escalation is outside the public-v0.1 auto lane by default; A3 clinical/official public-health decisions are never autonomous in v0.1.
-- Missing material data now causes autonomous abstention rather than mandatory clarification or fabricated completion.
-- Model-output defects use deterministic validation plus a bounded automatic repair loop; exhausted repair budgets stop safely.
-- Model-generated factual/evidentiary/action-relevant claims must now carry canonical record, deterministic finding and/or approved evidence references and pass deterministic verification before entering the A1 action path.
+- Missing material data causes autonomous abstention rather than mandatory clarification or fabricated completion.
+- Model-output defects use deterministic verification plus a bounded automatic repair loop; exhausted repair budgets stop safely.
+- Model-generated factual/evidentiary/action-relevant claims must carry canonical record, deterministic finding and/or approved evidence references and pass deterministic verification before entering the A1 action path.
 - Chain-of-thought/model confidence is explicitly non-authoritative; reasoning quality techniques never bypass machine verification.
-- Pre-action freshness now protects every autonomous A1 external action, not only previously human-approved actions.
-- The hero external integration now requires a **machine acknowledgement** so the Taskmaster loop closes without a person clicking acknowledge.
-- The BYOF benchmark now explicitly compares the builder's manual AMR research/coordination workflow against the zero-human Ngabo hero.
-- The canonical demo storyboard no longer spends the hero path on clarification/resume/human approval; those remain secondary evaluation/engineering scenarios.
-- ADK implementation now requires a pinned-version capability spike with a documented fallback ladder if workshop terminology differs from the supported Python APIs.
-- README, PRD, System Design, Agent Architecture, orchestration, long-running, UI/UX, safety/evaluation, submission evidence, implementation plan, `CLAUDE.md`, and `AGENTS.md` were synchronized around the safe zero-human design.
+- Pre-action freshness protects every autonomous A1 external action.
+- Autonomous side effects use a transactional `ActionIntent`/outbox with stable idempotency semantics and machine acknowledgement.
+- The BYOF benchmark explicitly compares the builder's manual AMR research/coordination workflow against the zero-human Ngabo hero.
+- The canonical demo storyboard prioritizes zero-human execution and Proof-Carrying Autonomy rather than clarification/resume/human approval.
+- ADK implementation requires a pinned-version capability spike with a documented fallback ladder if workshop terminology differs from supported Python APIs.
+- README, Hackathon Alignment, ADK Runtime, System Design, Implementation Plan, UI/UX Hackathon Addendum, Submission Evidence and Risk Register were synchronized to the Proof-Carrying Autonomy pipeline.
+- The risk register now explicitly covers competition-Twist visibility, fabricated/stale proof references, hypothesis/forbidden-claim escalation, cross-document drift, premature proof-carrying claims, and misrepresentation of software safety metrics.
 
 ## [0.1.0] — Planned
 
@@ -55,7 +57,7 @@ synthetic AMR data
 → deterministic claim/evidence verification
 → bounded automatic repair or safe abstention
 → deterministic A1 autonomy policy
-→ freshness + idempotency
+→ freshness + transactional ActionIntent/idempotency
 → real authorized external coordination action
 → machine acknowledgement
 → complete audit/observability trail

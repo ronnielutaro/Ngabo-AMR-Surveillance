@@ -1,7 +1,8 @@
 # Ngabo — Implementation Plan
 
-**Version:** 0.7  
+**Version:** 0.8  
 **Created:** 2026-08-16  
+**Updated:** 2026-08-17  
 **Official hackathon deadline:** 2026-08-31, 5:00 PM Pacific Time
 
 ---
@@ -15,7 +16,8 @@ The canonical hero must complete:
 ```text
 surveillance event
 → autonomous investigation
-→ validated package
+→ proof-carrying synthesis
+→ deterministic claim verification
 → safe A1 external action
 → machine acknowledgement
 ```
@@ -36,9 +38,11 @@ All implementation preserves:
 - deterministic scientific logic;
 - graph-first hybrid orchestration;
 - zero-human A1 safe action policy;
-- bounded agentic reasoning;
-- freshness/idempotency;
-- safe abstention;
+- **Proof-Carrying Autonomy**;
+- bounded Gemini reasoning;
+- deterministic claim/evidence verification;
+- bounded repair and safe abstention;
+- freshness + ActionIntent/outbox/idempotency;
 - Gitflow/SemVer/Conventional Commits;
 - submission evidence and freeze discipline.
 
@@ -46,11 +50,14 @@ Required read set includes:
 
 - `docs/HACKATHON_ALIGNMENT.md`
 - `docs/TASKMASTER_ZERO_HUMAN_AUTONOMY.md`
+- `docs/PROOF_CARRYING_REASONING.md`
 - `docs/BYOF_FRICTION.md`
 - `docs/ADK_CAPABILITY_SPIKE.md`
 - `docs/HACKATHON_RISK_REGISTER.md`
 - `docs/ORCHESTRATION_PATTERNS.md`
+- `docs/ADK_RUNTIME.md`
 - `docs/LONG_RUNNING_AGENT.md`
+- `docs/AUTONOMOUS_EFFECT_OUTBOX.md`
 - `docs/DATA_SAFETY_EVALUATION.md`
 - `docs/OPERATIONAL_UTILITY_EVALUATION.md`
 - `docs/SUBMISSION_EVIDENCE.md`
@@ -65,6 +72,8 @@ Clean Architecture scaffold
    ↓
 domain/state/action-policy core
    ↓
+proof-carrying claim taxonomy + verifier contracts
+   ↓
 synthetic data + complete hero fixture
    ↓
 deterministic ingestion
@@ -77,13 +86,17 @@ deterministic investigation capabilities
    ↓
 ADK workflow: context → parallel fan-out → join
    ↓
-Gemini triage + evidence + synthesis
+Gemini triage + approved evidence
    ↓
-deterministic package validator + bounded auto repair
+Gemini proof-carrying synthesis
+   ↓
+deterministic claim/evidence verifier
+   ↓
+bounded automatic repair / abstention
    ↓
 A0/A1/A2/A3 autonomous action policy
    ↓
-freshness + idempotency
+freshness + transactional ActionIntent/outbox/idempotency
    ↓
 real A1 external integration
    ↓
@@ -91,7 +104,7 @@ machine acknowledgement
    ↓
 zero-human deployed E2E
    ↓
-Next.js autonomy/graph proof UI
+Next.js autonomy/graph/proof UI
    ↓
 GCP deployment + observability
    ↓
@@ -104,9 +117,9 @@ diagram + article + video + submission freeze
 
 ---
 
-## Aug 16 — Freeze Competition Architecture
+## Aug 16–17 — Freeze Competition Architecture
 
-Completed design controls should include:
+Completed design controls:
 
 - [x] product/PRD/tech/system/agent/UI specifications;
 - [x] Clean Architecture + monorepo ADR;
@@ -114,19 +127,22 @@ Completed design controls should include:
 - [x] graph-first orchestration;
 - [x] long-running state/freshness contract;
 - [x] zero-human Taskmaster autonomy contract;
+- [x] transactional autonomous-effect/outbox contract;
 - [x] BYOF friction contract;
 - [x] operational-utility benchmark contract;
 - [x] provenance/submission evidence contracts;
 - [x] ADK capability-spike contract;
 - [x] submission-freeze contract;
 - [x] hackathon risk register;
-- [x] judge-facing target architecture diagram.
+- [x] judge-facing target architecture diagram;
+- [x] Proof-Carrying Reasoning contract + ADR 0009;
+- [x] competition “Twist” explicitly defined as **Proof-Carrying Autonomy**.
 
-**Exit:** implementation can start without guessing Taskmaster autonomy or safety boundaries.
+**Exit:** implementation can start without guessing Taskmaster autonomy, safety, or model-trust boundaries.
 
 ---
 
-## Aug 17 — Monorepo Scaffold + Domain Core + Action Policy
+## Aug 17 — Monorepo Scaffold + Domain Core + Proof Contracts
 
 ### Repository
 
@@ -152,21 +168,27 @@ services/core/ngabo/
 
 ### Domain/application model
 
-- [ ] ImportBatch;
-- [ ] Isolate;
-- [ ] ASTResult;
-- [ ] SurveillanceSignal;
-- [ ] Incident;
-- [ ] IncidentEvent;
+- [ ] `ImportBatch`;
+- [ ] `Isolate`;
+- [ ] `ASTResult`;
+- [ ] `SurveillanceSignal`;
+- [ ] `Incident`;
+- [ ] `IncidentEvent`;
 - [ ] package/version metadata;
 - [ ] action classes `A0/A1/A2/A3`;
 - [ ] `AutonomyDecision` value object;
 - [ ] incident state machine;
+- [ ] proof-carrying `ClaimType` enum/value object;
+- [ ] `ReasoningClaim` DTO/value object;
+- [ ] `EvidenceReference` / deterministic-finding reference contracts;
+- [ ] `ClaimVerificationReport` + stable error codes;
+- [ ] `VerifyReasoningClaims` application use-case contract;
 - [ ] state-transition tests;
 - [ ] action-class policy tests;
+- [ ] claim-policy unit tests independent of Gemini/ADK;
 - [ ] A2/A3 cannot auto-execute.
 
-**Exit:** domain/application build without FastAPI/GCP/ADK/Gemini and action policy is deterministic.
+**Exit:** domain/application build without FastAPI/GCP/ADK/Gemini; action policy and proof-verification contracts are deterministic and framework-free.
 
 ---
 
@@ -180,7 +202,9 @@ Create fixtures:
 - [ ] material-missing-data abstention fixture;
 - [ ] prompt-injection-as-data fixture;
 - [ ] stale-before-action fixture;
-- [ ] A2/A3 policy-block fixtures.
+- [ ] A2/A3 policy-block fixtures;
+- [ ] fabricated record/finding/source adversarial fixtures;
+- [ ] hypothesis→fact escalation fixture.
 
 Implement:
 
@@ -208,11 +232,12 @@ Implement:
 - [ ] baseline comparison;
 - [ ] prototype signal score;
 - [ ] trigger explanation;
+- [ ] deterministic finding IDs + calculation/config version;
 - [ ] surveillance use case;
 - [ ] scenario tests;
 - [ ] signal event contract.
 
-**Exit:** hero dataset creates expected suspicious investigation candidate deterministically.
+**Exit:** hero dataset creates expected suspicious investigation candidate deterministically, with referenceable finding IDs suitable for proof-carrying claims.
 
 ---
 
@@ -225,8 +250,9 @@ Before production graph code, complete `docs/ADK_CAPABILITY_SPIKE.md`.
 - [ ] verify backend invocation without chat;
 - [ ] verify sequential/parallel supported path;
 - [ ] verify join/failure semantics;
-- [ ] verify structured Gemini output;
+- [ ] verify structured Gemini output compatible with proof-carrying DTOs;
 - [ ] verify callback/session/eval/trace capabilities;
+- [ ] prove deterministic verifier can sit outside model authority;
 - [ ] choose documented fallback if workshop graph API differs;
 - [ ] record result;
 - [ ] commit lockfile.
@@ -244,8 +270,11 @@ Before production graph code, complete `docs/ADK_CAPABILITY_SPIKE.md`.
 - [ ] baseline-summary query;
 - [ ] missing-fields query;
 - [ ] evidence-search port;
+- [ ] approved-evidence manifest contract;
 - [ ] incident-package schema;
-- [ ] package validator;
+- [ ] proof-carrying claim schema;
+- [ ] claim verifier use case;
+- [ ] package verifier/validator;
 - [ ] autonomy-policy use case;
 - [ ] freshness use case;
 - [ ] agent execution metadata contract.
@@ -258,7 +287,9 @@ Before production graph code, complete `docs/ADK_CAPABILITY_SPIKE.md`.
 - [ ] join;
 - [ ] Gemini 3.6 Flash triage;
 - [ ] approved evidence retrieval;
-- [ ] Gemini synthesis;
+- [ ] Gemini proof-carrying synthesis;
+- [ ] typed structured output parser;
+- [ ] deterministic claim/evidence verification stage;
 - [ ] bounded model/tool/time budgets;
 - [ ] structured telemetry IDs.
 
@@ -267,31 +298,37 @@ Before production graph code, complete `docs/ADK_CAPABILITY_SPIKE.md`.
 - [ ] no clarification tool in required hero route;
 - [ ] material missingness causes autonomous abstention;
 - [ ] fixed routing does not call Gemini;
+- [ ] proof verification failure cannot be waived by Gemini;
 - [ ] hero complete fixture proceeds automatically.
 
-**Exit:** pre-created hero signal → valid evidence-backed package without user input.
+**Exit:** pre-created hero signal → proof-carrying, machine-verifiable evidence-backed package without user input.
 
 ---
 
-## Aug 22 — Deterministic Validation + Automatic Repair + Event Persistence
+## Aug 22 — Proof Verification + Bounded Repair + Event Persistence
 
-### Package validation
+### Deterministic claim/evidence verifier
 
 Reject:
 
-- unknown isolate/source IDs;
-- unsupported observed/derived claims;
-- prohibited prescribing/diagnosis/outbreak confirmation;
-- malformed/missing required schema;
-- unsafe action wording.
+- [ ] unknown canonical record/isolate ID;
+- [ ] unknown/wrong-run deterministic finding ID;
+- [ ] unknown/unretrieved/unapproved evidence source ID;
+- [ ] stale package/finding reference;
+- [ ] unsupported `OBSERVED_FACT`;
+- [ ] unsupported `DERIVED_FINDING`;
+- [ ] hypothesis mislabeled as fact;
+- [ ] prohibited `DIAGNOSIS` / `PRESCRIPTION` / `OUTBREAK_CONFIRMATION` / official-authority claim;
+- [ ] A1 authorization attempted through model output;
+- [ ] missing required uncertainty/limitation when policy requires it.
 
 ### Bounded repair
 
-- [ ] structured validator errors;
-- [ ] Gemini repair attempt;
+- [ ] stable structured verifier errors;
+- [ ] Gemini repair using only existing permitted facts/findings/evidence unless graph explicitly retrieves new approved evidence;
 - [ ] hard max attempts (target `2`);
-- [ ] exhausted budget → `VALIDATION_FAILED`;
-- [ ] invalid package can never reach action policy.
+- [ ] exhausted budget → `VALIDATION_FAILED` / abstention;
+- [ ] invalid/unverified package can never reach action policy.
 
 ### Persistence/events
 
@@ -301,9 +338,10 @@ Reject:
 - [ ] processed-event/idempotency persistence;
 - [ ] append-only timeline;
 - [ ] graph/session/run correlation;
+- [ ] package/claim verification status persisted as canonical workflow facts;
 - [ ] restart/redelivery tests.
 
-**Exit:** event processing is durable/idempotent and model errors can self-repair or stop safely.
+**Exit:** event processing is durable/idempotent and model hallucination/reference errors can repair or stop safely without human review.
 
 ---
 
@@ -312,6 +350,7 @@ Reject:
 ### Policy engine
 
 - [ ] deterministic A0/A1/A2/A3 classification;
+- [ ] verified-package prerequisite;
 - [ ] allow-listed target policy;
 - [ ] authorization config;
 - [ ] A2/A3 hard block;
@@ -321,15 +360,20 @@ Reject:
 
 - [ ] incident/package/source watermark;
 - [ ] pre-action deterministic revalidation;
-- [ ] material change → recompute/revalidate;
+- [ ] material change invalidates prior verification where relevant;
+- [ ] material change → recompute/reverify/revalidate;
 - [ ] no stale external action.
 
-### Idempotency
+### ActionIntent / outbox / idempotency
 
-- [ ] action idempotency key/reservation;
+- [ ] transactional immutable `ActionIntent`;
+- [ ] stable logical idempotency key;
+- [ ] payload/version binding;
+- [ ] dispatcher lease/CAS semantics;
 - [ ] delivery attempt/result persistence;
-- [ ] retry behavior;
-- [ ] duplicate event cannot duplicate action.
+- [ ] receiver/provider dedupe where supported;
+- [ ] stale unsent intent cancellation;
+- [ ] duplicate event cannot duplicate logical action.
 
 ### Real external integration
 
@@ -349,7 +393,7 @@ NotificationPort
 - [ ] acknowledgement updates incident;
 - [ ] hero E2E requires no person.
 
-**Exit:** backend hero flow completes event→ack with zero human intervention.
+**Exit:** backend hero completes event→proof-verified action→ack with zero human intervention.
 
 ---
 
@@ -365,7 +409,10 @@ Required views:
 - [ ] graph timeline;
 - [ ] fan-out/branch/join visibility;
 - [ ] bounded Gemini/evidence stages;
-- [ ] package validation/repair state;
+- [ ] **Proof-Carrying Autonomy card**;
+- [ ] typed claim list with record/finding/source references;
+- [ ] verification passed/failed state;
+- [ ] repair attempt metadata without private CoT;
 - [ ] autonomy-policy card;
 - [ ] A1 vs blocked A2/A3 state;
 - [ ] freshness/idempotency state;
@@ -378,7 +425,7 @@ Required views:
 
 Do not make chat or human approval the hero interaction model.
 
-**Exit:** judge can understand the zero-human workflow from UI alone.
+**Exit:** judge can understand zero-human workflow and proof-carrying model-safety boundary from UI alone.
 
 ---
 
@@ -396,7 +443,7 @@ Do not make chat or human approval the hero interaction model.
 - [ ] max instance caps;
 - [ ] budget + email alert;
 - [ ] structured Cloud Logging;
-- [ ] graph/node/model/action/freshness/ack telemetry;
+- [ ] graph/node/model/claim-verification/action/freshness/ack telemetry;
 - [ ] supported Trace/OpenTelemetry path if stable;
 - [ ] metadata-first content policy.
 
@@ -422,6 +469,23 @@ external_effect_count = 1
 acknowledgement_count = 1
 ```
 
+### Proof-Carrying Autonomy eval
+
+- [ ] unknown record/isolate reference rejected;
+- [ ] unknown finding reference rejected;
+- [ ] wrong-run/stale finding reference rejected;
+- [ ] unknown/unretrieved source rejected;
+- [ ] fabricated source/title/URL rejected;
+- [ ] unsupported observed fact rejected;
+- [ ] hypothesis→fact escalation rejected;
+- [ ] forbidden clinical/official claim types rejected;
+- [ ] failed proof verification blocks A1;
+- [ ] repair success measured;
+- [ ] repair budget exhaustion stops safely;
+- [ ] `unsafe_claim_escape_rate == 0` on committed adversarial software suite.
+
+Do not interpret that software test target as clinical validation.
+
 ### Safety/architecture eval
 
 - [ ] deterministic node tests;
@@ -429,14 +493,12 @@ acknowledgement_count = 1
 - [ ] required branch failure;
 - [ ] zero model calls for fixed routing;
 - [ ] prompt injection;
-- [ ] fabricated source/isolate;
-- [ ] package auto-repair;
-- [ ] repair budget exhaustion;
 - [ ] material missingness abstention;
 - [ ] A2/A3 blocks;
 - [ ] non-allow-listed target block;
 - [ ] freshness recompute;
 - [ ] duplicate/redelivery idempotency;
+- [ ] crash around external action uses same logical intent/key;
 - [ ] session/canonical truth conflict;
 - [ ] restart/recovery.
 
@@ -445,6 +507,7 @@ acknowledgement_count = 1
 - [ ] freeze reference builder workflow;
 - [ ] measure human active steps;
 - [ ] capture event→package/action/ack timings;
+- [ ] capture claim verification/repair metrics;
 - [ ] model/node/repair/retry counts;
 - [ ] write public `EVALUATION.md`.
 
@@ -468,7 +531,8 @@ Only if core hero/evals are green:
 - [ ] record exact ADK/Gemini/GCP versions;
 - [ ] complete provenance register;
 - [ ] prepare operational benchmark card;
-- [ ] draft final Devpost BYOF story;
+- [ ] make **The Twist: Proof-Carrying Autonomy** explicit in Devpost copy;
+- [ ] prepare one 20–30s judge explanation of proof-carrying claims;
 - [ ] draft LinkedIn article with required hackathon-purpose statement;
 - [ ] verify bonus evidence requirements.
 
@@ -480,11 +544,13 @@ Use `docs/HACKATHON_RISK_REGISTER.md`.
 
 - [ ] rehearse <=4 min;
 - [ ] continuous unedited hero segment has no human input;
+- [ ] proof-carrying claim references + deterministic verification visible;
 - [ ] external action visible outside Ngabo;
 - [ ] machine acknowledgement returns visibly;
 - [ ] Cloud Run/log proof legible;
 - [ ] architecture diagram readable;
 - [ ] BYOF friction clear in first 30 sec;
+- [ ] Twist clear within first 60 sec;
 - [ ] no unimplemented feature/model shown;
 - [ ] no clinical overclaiming;
 - [ ] fix all Critical/High risks that can be closed before freeze.
@@ -528,17 +594,19 @@ develop
 - [ ] architecture diagram included;
 - [ ] Google Cloud proof in video;
 - [ ] BYOF narrative explicit;
+- [ ] **The Twist: Proof-Carrying Autonomy** explicit;
 - [ ] zero-human claim matches actual E2E evidence;
+- [ ] proof-carrying claim only made if verifier/evals exist;
 - [ ] bonuses claimed only with proof;
 - [ ] submit before deadline buffer;
-- [ ] verify Devpost submission from clean browser;
+- [ ] verify submission from clean browser;
 - [ ] preserve `main`/tag/deployed revisions/video through judging.
 
 ---
 
 ## 3. Scope Freeze
 
-Until zero-human deployed hero + evaluation are green, do **not** add:
+Until zero-human deployed hero + proof/safety evaluation are green, do **not** add:
 
 - MedGemma;
 - collaborative specialist-agent topology;
@@ -562,6 +630,4 @@ EmbeddingGemma is the first optional integration after the core passes.
 
 The hackathon build is complete only when a judge can truthfully observe:
 
-> **AMR data changed → deterministic Ngabo logic detected a signal → Pub/Sub started the Google ADK workflow → deterministic investigation stages ran in parallel and joined → Gemini reasoned only where needed → approved evidence was assembled → the package passed deterministic validation (and repaired itself if needed) → Ngabo's deterministic safety policy classified the action as safe A1 → freshness/idempotency passed → Ngabo executed a real authorized external action → a machine acknowledgement returned → the workflow completed with zero human intervention.**
-
-And the repository proves that A2/A3 clinical/official actions cannot be autonomously executed merely because the hero path is fully autonomous.
+> **AMR data changed → deterministic Ngabo logic detected a signal → Pub/Sub started the Google ADK workflow → deterministic investigation stages ran in parallel and joined → Gemini reasoned only where ambiguity existed → approved evidence was assembled → Gemini emitted proof-carrying structured claims → deterministic code verified every action-relevant record/finding/source reference and claim type → invalid claims repaired within budget or abstained → deterministic policy authorized only safe A1 action → freshness passed → Ngabo committed one durable ActionIntent → a real authorized external effect executed idempotently → a machine acknowledgement returned → the workflow completed with zero human intervention.**
