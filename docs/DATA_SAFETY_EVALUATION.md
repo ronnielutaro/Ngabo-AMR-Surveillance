@@ -1,7 +1,7 @@
 # Ngabo — Data, Safety & Evaluation Design
 
-**Version:** 0.4  
-**Date:** 2026-08-16
+**Version:** 0.5  
+**Date:** 2026-08-17
 
 ---
 
@@ -15,6 +15,7 @@ Keep Ngabo v0.1:
 - honest about uncertainty;
 - safe for a synthetic-data demonstration;
 - fully autonomous on the canonical Taskmaster hero path;
+- resistant to model hallucination/reference fabrication through proof-carrying claims;
 - resilient under asynchronous/retry execution;
 - measurable through deterministic, agent, operational and end-to-end evaluation.
 
@@ -25,6 +26,7 @@ Required companion contracts:
 - `docs/HACKATHON_ALIGNMENT.md`
 - `docs/TASKMASTER_ZERO_HUMAN_AUTONOMY.md`
 - `docs/ORCHESTRATION_PATTERNS.md`
+- `docs/PROOF_CARRYING_REASONING.md`
 - `docs/LONG_RUNNING_AGENT.md`
 - `docs/OPERATIONAL_UTILITY_EVALUATION.md`
 
@@ -85,6 +87,7 @@ Hero purpose:
 complete material data
 → suspicious deterministic signal
 → zero-human investigation
+→ proof-carrying synthesis + machine verification
 → safe A1 action
 → machine acknowledgement
 ```
@@ -124,6 +127,14 @@ Expected bounded no-evidence result/abstention when evidence is required.
 ### Prompt injection as data
 
 Free text contains instruction-like content; must remain data.
+
+### Fabricated proof references
+
+Model fixture attempts unknown/stale record, deterministic-finding or source IDs; expected deterministic verification failure.
+
+### Claim-type escalation
+
+Model fixture attempts to promote a hypothesis to fact or emit diagnosis/prescription/outbreak-confirmation semantics; expected deterministic block.
 
 ### A2/A3 action request
 
@@ -180,13 +191,41 @@ Allowed:
 Forbidden autonomous claims:
 
 - `confirmed outbreak`;
-- patient-to-patient transmission claim;
+- patient-to-patient transmission claim stated as fact without appropriate evidence;
 - diagnosis;
 - prescribe/start/stop antimicrobial;
 - unsupported resistance-gene claim;
 - official public-health declaration.
 
-## 8. Safety Through Action Envelope
+## 8. Proof-Carrying Reasoning Boundary
+
+Read `docs/PROOF_CARRYING_REASONING.md` and ADR 0009.
+
+Every material action-relevant model claim must be typed and reference machine-checkable support.
+
+Minimum classes:
+
+```text
+OBSERVED_FACT
+DERIVED_FINDING
+EVIDENCE_STATEMENT
+HYPOTHESIS
+ACTION_JUSTIFICATION
+```
+
+Requirements:
+
+- observed facts map to canonical source records;
+- derived findings map to deterministic Ngabo outputs;
+- evidence statements map to actually retrieved approved sources;
+- hypotheses remain explicitly labelled and include supporting references/uncertainty;
+- action justifications cannot authorize an action;
+- unknown/stale references fail verification;
+- forbidden diagnosis/prescription/outbreak-confirmation/official-authority semantics fail verification.
+
+Hidden/private chain-of-thought is not evidence, is not persisted as canonical truth and is not displayed. Model agreement/self-consistency may be used as a quality technique but never bypasses deterministic verification.
+
+## 9. Safety Through Action Envelope
 
 The Taskmaster hero has zero human intervention because Ngabo autonomously executes only **safe coordination actions**.
 
@@ -210,7 +249,7 @@ Gemini cannot promote A2/A3 into A1.
 
 See `docs/TASKMASTER_ZERO_HUMAN_AUTONOMY.md`.
 
-## 9. A1 Safety Gates
+## 10. A1 Safety Gates
 
 Before A1 external action:
 
@@ -218,6 +257,7 @@ Before A1 external action:
 - signal/required graph outputs valid;
 - no material blocker;
 - evidence/source integrity valid;
+- proof-carrying claim verification passed;
 - package valid;
 - prohibited-claim validator passes;
 - destination allow-listed;
@@ -227,7 +267,7 @@ Before A1 external action:
 
 Failure means autonomous abstention, not human bypass or model override.
 
-## 10. Missing Data Rule
+## 11. Missing Data Rule
 
 Ngabo does not hallucinate missing facts to preserve zero-human completion.
 
@@ -241,7 +281,7 @@ Optional/non-material fields may remain explicitly unknown when policy allows co
 
 Automatically retrieve only from authorized canonical sources with defensible linkage.
 
-## 11. Prompt Injection Boundary
+## 12. Prompt Injection Boundary
 
 Uploaded lab data is untrusted.
 
@@ -255,7 +295,7 @@ Mitigations:
 - arbitrary URL browsing is not evidence authority;
 - adversarial injection fixtures required.
 
-## 12. Evidence Integrity
+## 13. Evidence Integrity
 
 Approved evidence records include:
 
@@ -269,9 +309,9 @@ Approved evidence records include:
 
 Generated packages may cite only retrieved/approved source IDs.
 
-Unknown/fabricated source IDs fail deterministic validation.
+Unknown/fabricated source IDs fail deterministic verification.
 
-## 13. EmbeddingGemma Safety
+## 14. EmbeddingGemma Safety
 
 If integrated:
 
@@ -281,7 +321,7 @@ If integrated:
 - no arbitrary public web corpus is mixed silently;
 - retrieval quality must be evaluated before claiming bonus.
 
-## 14. MedGemma Safety
+## 15. MedGemma Safety
 
 If integrated after core:
 
@@ -289,9 +329,10 @@ If integrated after core:
 - may not diagnose/prescribe/confirm outbreak;
 - may not replace deterministic surveillance;
 - may not create uncited authority;
+- its material output still follows proof-carrying claim verification where used in the action path;
 - keep only if comparative eval shows clear benefit.
 
-## 15. Multimodal Safety
+## 16. Multimodal Safety
 
 Optional stretch:
 
@@ -306,7 +347,7 @@ This optional input path can have human verification because it is not the canon
 
 Unverified extraction never reaches detector.
 
-## 16. Privacy / Telemetry
+## 17. Privacy / Telemetry
 
 - synthetic public data only;
 - metadata-first logs/traces;
@@ -318,43 +359,50 @@ Unverified extraction never reaches detector.
 
 ---
 
-# Part C — Autonomous Repair & Abstention
+# Part C — Autonomous Verification, Repair & Abstention
 
-## 17. Package Validator
+## 18. Claim / Package Verifier
 
-Post-generation deterministic validation must reject:
+Post-generation deterministic verification must reject:
 
-- unknown isolate IDs;
-- unknown source IDs;
+- unknown isolate/canonical record IDs;
+- unknown or stale deterministic finding IDs;
+- unknown/unretrieved/unapproved source IDs;
 - unsupported observed/derived claims;
+- hypothesis→fact escalation;
 - prohibited diagnosis/prescribing/outbreak confirmation;
-- missing required schema fields;
+- missing required schema fields/uncertainties;
 - action payload not compatible with safe label requirements.
 
-## 18. Bounded Repair
+The verifier returns stable structured error codes for routing, repair and evaluation.
 
-On validation failure:
+## 19. Bounded Repair
+
+On verification failure:
 
 ```text
-validator errors
+structured verifier errors
 → Gemini repair
-→ validator
+→ deterministic verifier
 ```
 
 Rules:
 
 - max attempts configured (suggested `2`);
-- model cannot override validator;
-- validation budget exhaustion → `VALIDATION_FAILED`;
-- no invalid package reaches action policy.
+- model cannot override verifier;
+- repair cannot invent canonical records/findings/sources;
+- repair cannot mutate action policy;
+- verification budget exhaustion → `VALIDATION_FAILED`;
+- no invalid/unverified package reaches action policy.
 
-## 19. Safe Abstention
+## 20. Safe Abstention
 
 Expected legitimate outcomes:
 
 ```text
 NEEDS_INFORMATION
 INSUFFICIENT_APPROVED_EVIDENCE
+CLAIM_VERIFICATION_FAILED
 VALIDATION_FAILED
 POLICY_BLOCKED
 STALE_RECOMPUTE_REQUIRED
@@ -362,13 +410,13 @@ ACTION_FAILED_RETRYABLE
 ACTION_FAILED_TERMINAL
 ```
 
-Autonomous completion is not required when safety facts are unavailable.
+Autonomous completion is not required when safety facts/proof are unavailable.
 
 ---
 
 # Part D — Evaluation Layers
 
-## 20. Layer 1 — Domain / Deterministic
+## 21. Layer 1 — Domain / Deterministic
 
 Test:
 
@@ -377,17 +425,20 @@ Test:
 - resistance similarity;
 - baseline/windows/scoring;
 - state transitions;
+- claim-type policy;
+- record/finding/source referential integrity;
 - action classification;
 - material-change/freshness policy;
 - prohibited-claim validation;
 - idempotency policy.
 
-## 21. Layer 2 — Application Workflow
+## 22. Layer 2 — Application Workflow
 
 With fakes/in-memory ports:
 
 - incident start;
 - zero-human hero progression;
+- proof-carrying claim verification;
 - package validation/repair orchestration;
 - A1 policy gate;
 - A2/A3 blocking;
@@ -396,7 +447,7 @@ With fakes/in-memory ports:
 - retry/redelivery behavior;
 - machine acknowledgement closure.
 
-## 22. Layer 3 — Graph / Function Nodes
+## 23. Layer 3 — Graph / Function Nodes
 
 Test:
 
@@ -404,28 +455,29 @@ Test:
 - profile/baseline/missingness nodes;
 - parallel completion-order independence;
 - typed join;
+- claim-verification node;
 - required branch failure;
-- no Gemini call for fixed routing/calculation;
+- no Gemini call for fixed routing/calculation/verification;
 - branch retries are safe.
 
-## 23. Layer 4 — ADK / Agent Evaluation
+## 24. Layer 4 — ADK / Agent Evaluation
 
 Evaluate observable result and trajectory:
 
 - bounded triage;
 - evidence query selection where agentic;
 - no-evidence handling;
-- source-grounded synthesis;
+- source-grounded proof-carrying synthesis;
 - structured output;
 - repair behavior;
 - tool/model budgets;
 - prompt injection resistance;
-- fabricated source/isolate rejection;
-- prohibited clinical claim avoidance.
+- fabricated source/record/finding references rejected downstream;
+- prohibited clinical claim avoidance/escalation rejection.
 
 Do not evaluate private chain-of-thought.
 
-## 24. Layer 5 — Infrastructure / Contract
+## 25. Layer 5 — Infrastructure / Contract
 
 - Firestore;
 - Pub/Sub;
@@ -436,7 +488,7 @@ Do not evaluate private chain-of-thought.
 - acknowledgement callback/event;
 - Cloud logging/tracing.
 
-## 25. Layer 6 — Deployed E2E Hero
+## 26. Layer 6 — Deployed E2E Hero
 
 ```text
 signal
@@ -444,8 +496,8 @@ signal
 → ADK graph
 → fan-out/join
 → Gemini/evidence
-→ synthesis
-→ validate/repair
+→ proof-carrying synthesis
+→ deterministic claim verification / repair
 → A1 policy
 → freshness
 → idempotency
@@ -469,7 +521,18 @@ Run successfully at least three consecutive times before demo freeze.
 
 ---
 
-## 26. Critical Safety Evaluations
+## 27. Critical Safety Evaluations
+
+### Proof/reference integrity
+
+- unknown canonical record/isolate ID → reject;
+- unknown deterministic finding ID → reject;
+- unknown/unretrieved source ID → reject;
+- stale finding/package reference → reject/recompute;
+- hypothesis mislabeled as observed fact → reject;
+- diagnosis/prescription/outbreak-confirmation claim type → reject;
+- A2/A3 authorization requested by Gemini → deterministic block;
+- no A1 action from an unverified package.
 
 ### Action policy
 
@@ -488,6 +551,7 @@ Run successfully at least three consecutive times before demo freeze.
 ### Repair
 
 - recoverable invalid output → repaired within budget;
+- repair cannot invent source/finding/record support;
 - repeatedly invalid output → safe stop;
 - invalid output never externally acts.
 
@@ -506,11 +570,36 @@ Run successfully at least three consecutive times before demo freeze.
 ### Context truth
 
 - old ADK/session text conflicts with Firestore → canonical Firestore/application state wins;
-- compacted context cannot redefine isolate/AST facts.
+- compacted context cannot redefine isolate/AST facts or proof references.
 
 ---
 
-## 27. Operational Utility
+## 28. Proof-Carrying Reasoning Metrics
+
+Track where meaningful:
+
+```text
+unsupported_claim_rate
+invalid_reference_rate
+fabricated_source_rate
+fabricated_record_rate
+claim_verification_pass_rate
+repair_success_rate
+repair_attempt_count
+unsafe_claim_escape_rate
+```
+
+Target for the committed software adversarial suite:
+
+```text
+unsafe_claim_escape_rate == 0
+```
+
+This target is a software-evaluation criterion, **not** a claim of clinical safety, regulatory validation or universal hallucination elimination.
+
+---
+
+## 29. Operational Utility
 
 Use `docs/OPERATIONAL_UTILITY_EVALUATION.md` and `docs/BYOF_FRICTION.md`.
 
@@ -520,12 +609,13 @@ Report:
 - zero-human hero counters;
 - event→package/action/ack timings;
 - model/deterministic call counts;
-- retries/repair attempts;
+- claim verification failures/repair attempts;
+- retries;
 - limitations.
 
 ---
 
-## 28. `EVALUATION.md` Submission Artifact
+## 30. `EVALUATION.md` Submission Artifact
 
 Before submission publish real measured results including:
 
@@ -533,6 +623,7 @@ Before submission publish real measured results including:
 - detector configuration/results;
 - graph tests;
 - ADK trajectory methodology;
+- proof-carrying claim/reference integrity tests;
 - safety/adversarial tests;
 - action-policy tests;
 - autonomous repair tests;
@@ -547,13 +638,16 @@ Before submission publish real measured results including:
 
 ---
 
-## 29. Definition of Done
+## 31. Definition of Done
 
 - [ ] hero dataset supports zero-human A1 completion;
 - [ ] zero-human E2E succeeds three consecutive deployed runs;
+- [ ] proof-carrying claim schema is implemented;
+- [ ] deterministic record/finding/source verification is independently tested;
+- [ ] `unsafe_claim_escape_rate == 0` on committed software adversarial suite;
 - [ ] A2/A3 are deterministically blocked;
 - [ ] missing material information causes abstention, not fabrication;
-- [ ] validator + bounded repair are implemented/tested;
+- [ ] verifier + bounded repair are implemented/tested;
 - [ ] freshness/idempotency protect autonomous action;
 - [ ] real external A1 action + machine acknowledgement work;
 - [ ] prompt injection/source integrity tests pass;

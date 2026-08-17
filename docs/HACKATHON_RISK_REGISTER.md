@@ -1,7 +1,7 @@
 # Ngabo — Hackathon Risk Register
 
 **Status:** Required competition/release control  
-**Date:** 2026-08-16
+**Date:** 2026-08-17
 
 This register tracks risks that could reduce judging score, create submission ineligibility, weaken the Taskmaster story, or create a safety/architecture contradiction.
 
@@ -11,7 +11,7 @@ This register tracks risks that could reduce judging score, create submission in
 | R02 | Removing humans causes unsafe clinical/public-health autonomy | Critical | Deterministic A0–A3 action classes; only A1 allow-listed safe coordination auto-executes; A2/A3 blocked | Policy tests + source + diagram |
 | R03 | BYOF feels generic/borrowed rather than personal | High | Ground friction in builder's own repeated AMR research/coordination workflow; measure exact reference workflow | `BYOF_FRICTION.md` + Devpost/video + benchmark |
 | R04 | Hero data requires clarification | High | Complete material hero fixture; missing-data policy abstains rather than asks/fabricates | Fixture tests + `clarification_count=0` |
-| R05 | Gemini produces invalid package and needs human repair | High | Deterministic validator + bounded automatic repair loop + safe abort | Repair evals |
+| R05 | Gemini produces invalid package and needs human repair | High | Proof-carrying typed claims + deterministic verifier + bounded automatic repair loop + safe abort | Claim-verification + repair evals |
 | R06 | Evidence lookup fails and requires human search | High | Approved retrieval chain + bounded query reformulation + autonomous abstention | Evidence evals |
 | R07 | External action is too consequential to automate | Critical | Use real authorized test/sandbox/internal A1 endpoint; no patient/treatment/outbreak action | Action-class tests + demo target config |
 | R08 | External action requires human acknowledgement | Medium | Machine acknowledgement callback/event | E2E proof |
@@ -37,6 +37,8 @@ This register tracks risks that could reduce judging score, create submission in
 | R28 | Autonomous completion hides uncertainty/failure | High | explicit safe abstention states; no fake success | failure scenario evals |
 | R29 | Action-policy decision is delegated to Gemini | Critical | deterministic policy engine owns action class/authorization | unit tests |
 | R30 | Hero action is dismissed as simulation | High | real outbound authorized integration outside Ngabo plus real machine acknowledgement; UI distinguishes simulation tests from real demo integration | delivery ID/log/callback proof |
+| R31 | Fluent model hallucination survives into autonomous action | Critical | Proof-carrying structured claims; canonical record/finding/source references; deterministic claim verifier; bounded repair; invalid/exhausted packages abstain; action policy runs only on verified packages | `PROOF_CARRYING_REASONING.md` + fabricated-reference/claim-escalation tests + `unsafe_claim_escape_rate` |
+| R32 | Chain-of-thought is mistaken for evidence or exposed as product truth | High | Hidden CoT is non-authoritative/non-persisted/non-displayed; expose claim type, evidence references, uncertainty and verification result instead | UI/log review + tests |
 
 ## Review Cadence
 

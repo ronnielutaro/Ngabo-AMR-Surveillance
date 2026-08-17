@@ -20,6 +20,8 @@ The project uses Semantic Versioning and Conventional Commits.
 - `docs/SUBMISSION_FREEZE.md` defining immutable judged release/deployment/video evidence.
 - `docs/ARCHITECTURE_DIAGRAM.md` with a judge-facing target architecture visual.
 - `docs/HACKATHON_RISK_REGISTER.md` mapping competition, safety, API, proof and submission risks to closure evidence.
+- `docs/PROOF_CARRYING_REASONING.md` defining typed model claims, deterministic evidence/reference verification, bounded automatic repair and abstention before autonomous action.
+- ADR 0009 adopting proof-carrying reasoning as the model-to-action safety boundary.
 
 ### Changed
 
@@ -28,6 +30,8 @@ The project uses Semantic Versioning and Conventional Commits.
 - Ngabo no longer relies on human approval to make the hackathon hero safe. Instead the autonomous action envelope is deterministically constrained: A1 safe external coordination may auto-execute; A2 real operational escalation is outside the public-v0.1 auto lane by default; A3 clinical/official public-health decisions are never autonomous in v0.1.
 - Missing material data now causes autonomous abstention rather than mandatory clarification or fabricated completion.
 - Model-output defects use deterministic validation plus a bounded automatic repair loop; exhausted repair budgets stop safely.
+- Model-generated factual/evidentiary/action-relevant claims must now carry canonical record, deterministic finding and/or approved evidence references and pass deterministic verification before entering the A1 action path.
+- Chain-of-thought/model confidence is explicitly non-authoritative; reasoning quality techniques never bypass machine verification.
 - Pre-action freshness now protects every autonomous A1 external action, not only previously human-approved actions.
 - The hero external integration now requires a **machine acknowledgement** so the Taskmaster loop closes without a person clicking acknowledge.
 - The BYOF benchmark now explicitly compares the builder's manual AMR research/coordination workflow against the zero-human Ngabo hero.
@@ -47,7 +51,9 @@ synthetic AMR data
 → Pub/Sub-triggered Google ADK workflow
 → deterministic parallel investigation + join
 → bounded Gemini reasoning + approved evidence
-→ deterministic package validation / bounded automatic repair
+→ proof-carrying structured claims
+→ deterministic claim/evidence verification
+→ bounded automatic repair or safe abstention
 → deterministic A1 autonomy policy
 → freshness + idempotency
 → real authorized external coordination action

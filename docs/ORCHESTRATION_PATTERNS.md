@@ -1,8 +1,8 @@
 # Ngabo — ADK Orchestration Patterns
 
 **Status:** Required v0.1 orchestration contract  
-**Version:** 0.2  
-**Date:** 2026-08-16  
+**Version:** 0.3  
+**Date:** 2026-08-17  
 **Framework:** Google ADK
 
 ---
@@ -13,9 +13,12 @@ Ngabo uses a **graph-first hybrid orchestration model**.
 
 > **Deterministic when the workflow is known; agentic when the decision is ambiguous; dynamic only when the workflow itself cannot reasonably be known in advance.**
 
-For the Taskmaster hero, the workflow continues beyond package creation through deterministic autonomous-action policy, freshness, idempotency, real A1 external action and machine acknowledgement—without human intervention.
+For the Taskmaster hero, the workflow continues beyond package creation through proof-carrying model claims, deterministic claim/evidence verification, deterministic autonomous-action policy, freshness, idempotency, real A1 external action and machine acknowledgement—without human intervention.
 
-See `docs/TASKMASTER_ZERO_HUMAN_AUTONOMY.md`.
+See:
+
+- `docs/TASKMASTER_ZERO_HUMAN_AUTONOMY.md`
+- `docs/PROOF_CARRYING_REASONING.md`
 
 ---
 
@@ -44,12 +47,13 @@ AGENT: bounded investigation triage
           ↓
 approved evidence retrieval
           ↓
-AGENT: evidence-grounded synthesis
+AGENT: proof-carrying evidence-grounded synthesis
           ↓
-FUNCTION: deterministic package validation
+FUNCTION: deterministic claim/evidence verification
           ↓
-ROUTE: valid?
-   ├─ no → bounded automatic repair → validate
+ROUTE: verified?
+   ├─ no → bounded automatic repair → verify
+   │         └─ exhausted → autonomous abstention
    └─ yes
           ↓
 FUNCTION: autonomous action policy
@@ -81,7 +85,9 @@ Use ordinary code for same-input/same-policy work:
 - structural missingness;
 - fixed routing;
 - state-transition legality;
-- schema/claim validation;
+- canonical record/finding/source reference verification;
+- claim-type/policy validation;
+- schema/package validation;
 - source/citation integrity;
 - action classification A0/A1/A2/A3;
 - destination allow-list authorization;
@@ -90,7 +96,7 @@ Use ordinary code for same-input/same-policy work:
 - join semantics;
 - acknowledgement state transition.
 
-Do not call Gemini to implement deterministic safety policy.
+Do not call Gemini to implement deterministic safety or evidence-reference policy.
 
 ---
 
@@ -101,15 +107,39 @@ Use Gemini where reasoning materially adds value:
 - interpret joined structured findings;
 - judge evidence intent when rules are insufficient;
 - formulate bounded hypotheses;
-- synthesize approved evidence into a structured package;
-- repair a package from structured validator errors;
+- synthesize approved evidence into typed proof-carrying claims/package;
+- repair a package from structured verifier errors;
 - stop with uncertainty when approved evidence is insufficient.
 
 Agent nodes must use typed inputs/outputs, bounded tools/steps/time and no direct consequential side effects.
 
+Private/hidden chain-of-thought is not part of the application contract and must not be exposed or used as evidence.
+
 ---
 
-## 5. No-Human Missing-Data Routing
+## 5. Proof-Carrying Claim Stage
+
+Material Gemini output must reference checkable support.
+
+Minimum claim families:
+
+```text
+OBSERVED_FACT      -> canonical record IDs
+DERIVED_FINDING    -> deterministic result IDs
+EVIDENCE_STATEMENT -> retrieved approved source IDs
+HYPOTHESIS         -> supporting claim/finding/source IDs + uncertainty
+ACTION_JUSTIFICATION -> verified upstream claims; never authorizes action
+```
+
+Forbidden autonomous claim semantics include diagnosis, prescription, outbreak confirmation, mandatory containment authority and official public-health declaration.
+
+Unknown/stale references fail deterministic verification.
+
+Model confidence, verbose reasoning or consensus does not bypass this stage.
+
+---
+
+## 6. No-Human Missing-Data Routing
 
 The hero fixture contains all material information.
 
@@ -127,7 +157,7 @@ Optional facts may remain unknown when the A1 policy allows continuation.
 
 ---
 
-## 6. Deterministic Routing
+## 7. Deterministic Routing
 
 No Gemini for:
 
@@ -137,7 +167,9 @@ incident state -> legal transition
 duplicate event -> idempotency path
 schema invalid -> validation failure
 required branch failed -> bounded failure
-package valid/invalid -> next path
+claim reference valid/invalid -> verification path
+forbidden claim type -> reject
+package verified/unverified -> next path
 action class A1 -> autonomy gate
 action class A2/A3 -> block
 non-allow-listed target -> block
@@ -147,21 +179,21 @@ ack duplicate -> idempotent success
 
 ---
 
-## 7. Agentic Routing
+## 8. Agentic Routing
 
 Permitted bounded questions:
 
 - Which approved evidence topic is relevant?
 - Is there enough evidence to form a labelled hypothesis?
 - Which optional bounded capability is useful?
-- How should structured findings be synthesized?
-- How should a package be repaired given deterministic validator errors?
+- How should structured findings be synthesized into proof-carrying claims?
+- How should a package be repaired given deterministic verifier errors?
 
-Gemini may not decide final action authorization.
+Gemini may not decide final action authorization or whether its own references are valid.
 
 ---
 
-## 8. Parallel Fan-Out / Join
+## 9. Parallel Fan-Out / Join
 
 Core independent read-only branches:
 
@@ -183,30 +215,36 @@ Requirements:
 
 ---
 
-## 9. Automatic Repair Loop
+## 10. Automatic Repair Loop
 
 ```text
-Gemini synthesis
-→ deterministic validator
+Gemini proof-carrying synthesis
+→ deterministic claim verifier
    ├─ valid → autonomy policy
    └─ invalid → structured errors
                   ↓
              Gemini repair
                   ↓
-               validator
+            claim verifier
+                  ↓
+          budget exhausted?
+             └─ yes → abstain
 ```
 
 Hard max attempts. Suggested `2`.
+
+Repair cannot invent canonical records/findings/sources, mutate action policy, or bypass verification.
 
 This is an intentionally bounded loop, not dynamic open-ended planning.
 
 ---
 
-## 10. Autonomy Policy Stage
+## 11. Autonomy Policy Stage
 
 The deterministic policy engine evaluates:
 
 - action class;
+- proof-verification result;
 - package validity;
 - evidence integrity;
 - material blockers;
@@ -220,27 +258,29 @@ AUTO_EXECUTE_A1
 POLICY_BLOCKED
 NEEDS_INFORMATION
 INSUFFICIENT_APPROVED_EVIDENCE
+CLAIM_VERIFICATION_FAILED
 ```
 
 The policy stage is application/domain logic exposed to orchestration through a typed contract.
 
 ---
 
-## 11. Freshness / Idempotency Stages
+## 12. Freshness / Idempotency Stages
 
 Immediately before A1 external action:
 
 ```text
-freshness
+proof-verified current package
+→ freshness
 → idempotency reservation
 → external adapter
 ```
 
-Material canonical change causes recompute/revalidation; duplicate/retry must not duplicate external effect.
+Material canonical change invalidates/requires recomputation of the current package/verification context; duplicate/retry must not duplicate external effect.
 
 ---
 
-## 12. External Action / Ack
+## 13. External Action / Ack
 
 External action is **not** an unrestricted Gemini tool.
 
@@ -257,7 +297,7 @@ This preserves Clean Architecture and safety.
 
 ---
 
-## 13. Clean Architecture Placement
+## 14. Clean Architecture Placement
 
 ```text
 ADK/workflow primitive
@@ -269,18 +309,29 @@ application query/use case/port
 domain/application deterministic policy
 ```
 
+Recommended inward proof concepts:
+
+```text
+ReasoningClaim
+ClaimType
+ClaimVerificationReport
+VerifyReasoningClaims
+ClaimPolicy
+```
+
 Forbidden:
 
 ```text
 ADK node -> raw Firestore business mutation
 ADK router -> direct notification
+Gemini -> claim verifier override
 Gemini -> action class authorization
 function node -> duplicated domain calculation
 ```
 
 ---
 
-## 14. ADK API Fallback
+## 15. ADK API Fallback
 
 Before coding, complete `docs/ADK_CAPABILITY_SPIKE.md`.
 
@@ -294,7 +345,7 @@ Architecture semantics matter more than copying webinar class names.
 
 ---
 
-## 15. Collaborative Pattern
+## 16. Collaborative Pattern
 
 Not default for v0.1.
 
@@ -307,9 +358,11 @@ Potential future specialists only if evaluation shows measurable value:
 
 Do not add agents for visual complexity or bonus optics.
 
+Even specialist consensus never replaces proof verification.
+
 ---
 
-## 16. Dynamic Pattern
+## 17. Dynamic Pattern
 
 Deferred from core v0.1.
 
@@ -317,7 +370,7 @@ A dynamic topology is for workflows whose structure genuinely cannot be known ah
 
 ---
 
-## 17. Model-Call Budget
+## 18. Model-Call Budget
 
 A model call must have a reason.
 
@@ -327,6 +380,8 @@ Do not use Gemini for:
 - fixed routing;
 - similarity/baseline;
 - missing-field extraction;
+- claim reference verification;
+- claim-type policy;
 - validation;
 - join;
 - action classification;
@@ -338,7 +393,7 @@ Record model-call count as a regression metric.
 
 ---
 
-## 18. Failure Semantics
+## 19. Failure Semantics
 
 Required typed failure/abstention states include:
 
@@ -346,6 +401,7 @@ Required typed failure/abstention states include:
 REQUIRED_BRANCH_FAILED
 NEEDS_INFORMATION
 INSUFFICIENT_APPROVED_EVIDENCE
+CLAIM_VERIFICATION_FAILED
 VALIDATION_FAILED
 POLICY_BLOCKED
 STALE_RECOMPUTE_REQUIRED
@@ -357,7 +413,7 @@ No later Gemini stage may convert a critical deterministic failure into apparent
 
 ---
 
-## 19. Observability
+## 20. Observability
 
 Useful events:
 
@@ -368,9 +424,13 @@ PARALLEL_BRANCH_COMPLETED
 PARALLEL_JOIN_COMPLETED
 AGENT_NODE_STARTED
 EVIDENCE_SEARCH_COMPLETED
-PACKAGE_VALIDATION_FAILED
-PACKAGE_REPAIR_STARTED
-PACKAGE_VALIDATION_COMPLETED
+REASONING_PACKAGE_GENERATED
+CLAIM_VERIFICATION_STARTED
+CLAIM_VERIFICATION_FAILED
+CLAIM_VERIFICATION_PASSED
+REASONING_REPAIR_STARTED
+REASONING_REPAIR_COMPLETED
+REASONING_REPAIR_EXHAUSTED
 AUTONOMY_POLICY_EVALUATED
 FRESHNESS_CHECK_PASSED
 IDEMPOTENCY_RESERVED
@@ -384,7 +444,7 @@ No chain-of-thought.
 
 ---
 
-## 20. Evaluation
+## 21. Evaluation
 
 Required:
 
@@ -392,7 +452,11 @@ Required:
 - fan-out completion-order independence;
 - required branch failure;
 - fixed-router zero-model-call test;
-- auto-repair success/exhaustion;
+- fabricated record/finding/source reference rejection;
+- hypothesis→fact escalation rejection;
+- forbidden claim-type rejection;
+- proof-verification repair success/exhaustion;
+- no A1 action from unverified package;
 - A1 policy acceptance;
 - A2/A3 policy rejection;
 - missing-material-data abstention;
@@ -401,18 +465,21 @@ Required:
 - machine acknowledgement idempotency;
 - hero zero-human trajectory.
 
+Track `unsafe_claim_escape_rate` on the committed software adversarial suite and target `0`; do not represent this as clinical validation or a universal hallucination guarantee.
+
 ---
 
-## 21. Hero Acceptance
+## 22. Hero Acceptance
 
 - [ ] surveillance event starts workflow without prompt;
 - [ ] deterministic branches fan out/join;
 - [ ] Gemini only handles bounded reasoning;
 - [ ] approved evidence retrieved automatically;
-- [ ] package validates or repairs within budget;
+- [ ] material Gemini claims are typed/proof-carrying;
+- [ ] deterministic claim/reference verification passes or repair/abstention occurs;
 - [ ] no human clarification;
 - [ ] no approval click;
-- [ ] policy deterministically authorizes only A1;
+- [ ] policy deterministically authorizes only verified A1;
 - [ ] freshness/idempotency pass;
 - [ ] real external A1 action occurs;
 - [ ] machine acknowledgement returns;
