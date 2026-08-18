@@ -32,7 +32,21 @@ Optimize for:
 
 ---
 
-## 2. Required Read Order
+## 2. Issue-Driven Execution
+
+Work is driven by GitHub issues. The active issue is the **task-specific implementation contract** for the current change.
+
+- `CLAUDE.md`, `AGENTS.md`, architecture docs, ADRs, safety/data contracts and hackathon invariants remain governing constraints.
+- An issue may **narrow scope** but may not override those governing constraints.
+- If an issue conflicts with a governing contract, stop and report the conflict; do not silently choose one side.
+- Do not implement later milestones merely because the next work is obvious.
+- Stop when the current issue's acceptance criteria are satisfied.
+- Keep each PR limited to the issue it closes.
+- Do not merge the PR yourself unless explicitly instructed by the human maintainer.
+
+---
+
+## 3. Required Read Order
 
 1. `CLAUDE.md`
 2. `ROADMAP.md`
@@ -67,7 +81,7 @@ If older documents still mention mandatory human approval/clarification in the v
 
 ---
 
-## 3. Hero Invariant
+## 4. Hero Invariant
 
 Required canonical flow:
 
@@ -83,7 +97,7 @@ signal
 → bounded repair or abstention
 → deterministic A1 autonomy policy
 → freshness
-→ idempotency
+→ transactional ActionIntent / outbox / stable idempotency key
 → real external action
 → machine acknowledgement
 ```
@@ -102,7 +116,7 @@ Do not implement the hero as an interactive chat or human-guided workflow.
 
 ---
 
-## 4. Safety Envelope
+## 5. Safety Envelope
 
 Action classes:
 
@@ -124,7 +138,7 @@ Rules:
 
 ---
 
-## 5. Missing Data
+## 6. Missing Data
 
 Do not use a human question to keep the hero moving.
 
@@ -140,7 +154,7 @@ The hero fixture must be complete enough to finish safely.
 
 ---
 
-## 6. Clean Architecture
+## 7. Clean Architecture
 
 ```text
 Frameworks / Infrastructure
@@ -169,7 +183,7 @@ React -> cloud/model SDK
 
 ---
 
-## 7. Deterministic vs Agentic
+## 8. Deterministic vs Agentic
 
 Deterministic owns:
 
@@ -201,7 +215,11 @@ No model call for ordinary fixed policy.
 
 ---
 
-## 8. Proof-Carrying Reasoning
+## 9. Proof-Carrying Reasoning
+
+Ngabo's hackathon **Twist** is **Proof-Carrying Autonomy**. The governing principle:
+
+> **LLM proposes; deterministic machinery verifies whatever can be verified before the claim may influence autonomous action.**
 
 Read `docs/PROOF_CARRYING_REASONING.md` and ADR 0009.
 
@@ -232,7 +250,7 @@ Private/hidden chain-of-thought is not evidence, is not canonical incident truth
 
 ---
 
-## 9. ADK Capability Spike
+## 10. ADK Capability Spike
 
 Before production orchestration code:
 
@@ -244,11 +262,21 @@ Before production orchestration code:
 - verify session/resume/eval/trace path;
 - choose documented fallback if workshop API differs.
 
+The spike must prove the chosen ADK version supports:
+
+```text
+structured proof-carrying DTOs
+→ deterministic verifier routing
+→ bounded automatic repair
+```
+
+Verification and authorization policy must not be moved into prompts or model behavior.
+
 Do not guess APIs and do not add another orchestration framework to compensate.
 
 ---
 
-## 10. Automatic Repair
+## 11. Automatic Repair
 
 Claim/package verification is deterministic.
 
@@ -266,14 +294,26 @@ If budget exhausted: `VALIDATION_FAILED`; no action.
 
 ---
 
-## 11. External Action
+## 12. External Action
 
 Hero uses a real A1 integration through `NotificationPort`.
+
+Governing rule:
+
+> **exactly-once Ngabo intent + idempotent external execution**
+
+Applied to every autonomous external effect (see `docs/AUTONOMOUS_EFFECT_OUTBOX.md` for the full lifecycle):
+
+- external effects must not bypass the durable `ActionIntent`/outbox path;
+- retries reuse the stable idempotency key;
+- verification, policy and freshness remain prerequisites to action;
+- a crash/retry must not create a second Ngabo intent for the same authorized effect.
 
 Preferred:
 
 ```text
 verified package
+→ ActionIntent / outbox
 → authorized test/sandbox webhook
 → delivery ID
 → machine acknowledgement callback/event
@@ -285,7 +325,7 @@ No person should need to acknowledge the hero action.
 
 ---
 
-## 12. State / Retry / Freshness
+## 13. State / Retry / Freshness
 
 - Firestore/application state is canonical truth;
 - ADK session is execution continuity only;
@@ -299,7 +339,7 @@ No person should need to acknowledge the hero action.
 
 ---
 
-## 13. Failure / Abstention
+## 14. Failure / Abstention
 
 Legitimate states:
 
@@ -318,7 +358,7 @@ Do not fake completion.
 
 ---
 
-## 14. UI
+## 15. UI
 
 Hero UI shows:
 
@@ -340,7 +380,7 @@ Never expose chain-of-thought; expose evidence references, uncertainty and verif
 
 ---
 
-## 15. Evaluation
+## 16. Evaluation
 
 Hero assertions:
 
@@ -379,7 +419,7 @@ Run three consecutive deployed hero E2Es before demo freeze.
 
 ---
 
-## 16. BYOF
+## 17. BYOF
 
 The personal friction is the builder's own repeated AMR research/coordination workflow described in `docs/BYOF_FRICTION.md`.
 
@@ -389,7 +429,7 @@ Operational benchmark compares builder reference human steps against zero-human 
 
 ---
 
-## 17. Git / Release Governance
+## 18. Git / Release Governance
 
 Feature work:
 
@@ -413,7 +453,7 @@ For hackathon release, follow `docs/SUBMISSION_FREEZE.md`: preserve judged main/
 
 ---
 
-## 18. Scope Freeze
+## 19. Scope Freeze
 
 Until zero-human deployed hero and core evals are green, do not add:
 
@@ -433,7 +473,7 @@ EmbeddingGemma begins only after core green.
 
 ---
 
-## 19. Stop Conditions
+## 20. Stop Conditions
 
 Stop rather than guess if:
 
@@ -453,7 +493,7 @@ Stop rather than guess if:
 
 ---
 
-## 20. Definition of Done
+## 21. Definition of Done
 
 A milestone is done only when relevant tests are green, architecture boundaries hold, proof-carrying claim verification holds, safety policy holds, docs/evidence are updated, and the change does not weaken the zero-human Taskmaster hero.
 
