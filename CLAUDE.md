@@ -704,6 +704,8 @@ And the code/evals must make equally obvious that clinical/official A2/A3 action
 
 ---
 
-## 27. Commit Attribution
+## 27. Commit / PR Attribution
 
 Commit messages must not credit AI tooling. Do not add `Co-Authored-By: Claude` (or similar AI-attribution trailers) to commit messages; commit authorship belongs to the human contributor.
+
+PR descriptions must not carry AI-generation footers such as "🤖 Generated with Claude Code" (or similar AI-attribution lines).
