@@ -49,9 +49,8 @@ def _python_files(directory: Path) -> list[Path]:
 def _module_package(path: Path) -> str:
     """Dotted package name of the directory containing ``path``."""
     relative = path.relative_to(PACKAGE_ROOT.parent)
-    parts = list(relative.with_suffix("").parts)
-    if parts[-1] == "__init__":
-        parts = parts[:-1]
+    # Drop the file's own name; ``__init__.py`` files are the package itself.
+    parts = relative.with_suffix("").parts[:-1]
     return ".".join(parts)
 
 
@@ -141,4 +140,26 @@ def test_relative_inner_layer_import_is_allowed() -> None:
     imported = _collected_imports(
         "from ..domain.models import Isolate", "ngabo.application"
     )
+    assert _forbidden(imported, _APPLICATION_OUTER_LAYERS) == set()
+
+
+def test_module_package_anchors_at_containing_package() -> None:
+    path = PACKAGE_ROOT / "application" / "use_cases" / "foo.py"
+    assert _module_package(path) == "ngabo.application.use_cases"
+
+
+def test_module_package_preserves_init_package() -> None:
+    path = PACKAGE_ROOT / "application" / "use_cases" / "__init__.py"
+    assert _module_package(path) == "ngabo.application.use_cases"
+
+
+def test_nested_module_relative_outer_import_is_forbidden() -> None:
+    package = _module_package(PACKAGE_ROOT / "application" / "use_cases" / "foo.py")
+    imported = _collected_imports("from ...infrastructure.foo import Bar", package)
+    assert _forbidden(imported, _APPLICATION_OUTER_LAYERS) == {"ngabo.infrastructure.foo"}
+
+
+def test_nested_module_relative_inward_import_is_allowed() -> None:
+    package = _module_package(PACKAGE_ROOT / "application" / "use_cases" / "foo.py")
+    imported = _collected_imports("from ...domain.models import Isolate", package)
     assert _forbidden(imported, _APPLICATION_OUTER_LAYERS) == set()
