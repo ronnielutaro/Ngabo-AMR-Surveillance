@@ -1,0 +1,26 @@
+{
+  "name": "ngabo",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.22.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm web:dev",
+    "build": "pnpm web:build",
+    "lint": "pnpm web:lint && pnpm core:lint",
+    "typecheck": "pnpm web:typecheck && pnpm core:typecheck",
+    "test": "pnpm web:test && pnpm core:test",
+    "web:dev": "pnpm --filter ngabo-web dev",
+    "web:build": "pnpm --filter ngabo-web build",
+    "web:lint": "pnpm --filter ngabo-web lint",
+    "web:typecheck": "pnpm --filter ngabo-web typecheck",
+    "web:test": "pnpm --filter ngabo-web test",
+    "core:install": "cd services/core && uv sync",
+    "core:lint": "cd services/core && uv run ruff check .",
+    "core:typecheck": "cd services/core && uv run mypy ngabo tests",
+    "core:test": "cd services/core && uv run pytest",
+    "core:health": "cd services/core && uv run ngabo-health"
+  }
+}
