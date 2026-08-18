@@ -701,3 +701,9 @@ A judge should be able to truthfully see:
 > **new AMR data arrived → deterministic logic detected a signal → Pub/Sub started Ngabo automatically → deterministic investigation work ran in parallel and joined → Gemini reasoned only where ambiguity existed → approved evidence was assembled → Gemini produced typed proof-carrying claims → deterministic machinery verified every action-relevant record/finding/source reference and blocked unsupported/forbidden claims → invalid output was automatically repaired within a fixed budget or safely abstained → deterministic policy classified the action as safe A1 → freshness passed → Ngabo committed one durable action intent → a real authorized external effect executed idempotently → a machine acknowledgement returned → the workflow completed with zero human intervention.**
 
 And the code/evals must make equally obvious that clinical/official A2/A3 actions are not autonomously permitted merely because the hero flow is fully autonomous.
+
+---
+
+## 27. Commit Attribution
+
+Commit messages must not credit AI tooling. Do not add `Co-Authored-By: Claude` (or similar AI-attribution trailers) to commit messages; commit authorship belongs to the human contributor.
