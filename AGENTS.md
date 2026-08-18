@@ -407,6 +407,8 @@ Use SemVer + Conventional Commits.
 
 Commit messages must not credit AI tooling. Do not add `Co-Authored-By: Claude` (or similar AI-attribution trailers) to commit messages; commit authorship belongs to the human contributor.
 
+PR descriptions must not carry AI-generation footers such as "🤖 Generated with Claude Code" (or similar AI-attribution lines).
+
 For hackathon release, follow `docs/SUBMISSION_FREEZE.md`: preserve judged main/tag/Cloud Run revisions/video through judging.
 
 ---
