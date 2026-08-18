@@ -405,6 +405,8 @@ release/vX.Y.Z → main → tag → reconcile develop
 
 Use SemVer + Conventional Commits.
 
+Commit messages must not credit AI tooling. Do not add `Co-Authored-By: Claude` (or similar AI-attribution trailers) to commit messages; commit authorship belongs to the human contributor.
+
 For hackathon release, follow `docs/SUBMISSION_FREEZE.md`: preserve judged main/tag/Cloud Run revisions/video through judging.
 
 ---
