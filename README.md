@@ -304,9 +304,47 @@ Ngabo uses:
 
 Hackathon submission uses an immutable judged release policy described in [`docs/SUBMISSION_FREEZE.md`](./docs/SUBMISSION_FREEZE.md).
 
+## Development
+
+**Prerequisites:** Node.js 20+ with pnpm (version pinned in `package.json`) and Python 3.11 with [uv](https://docs.astral.sh/uv/).
+
+Install:
+
+```bash
+pnpm install                    # frontend workspace (apps/web)
+cd services/core && uv sync     # Python core
+```
+
+Frontend (`ngabo-web`):
+
+```bash
+pnpm dev            # Next.js dev server
+pnpm web:build      # production build
+pnpm web:lint       # ESLint
+pnpm web:typecheck  # tsc --noEmit
+pnpm web:test       # Vitest
+```
+
+Core (`ngabo-core`):
+
+```bash
+pnpm core:lint       # ruff
+pnpm core:typecheck  # mypy (strict)
+pnpm core:test       # pytest
+pnpm core:health     # bootstrap health check (ngabo-health)
+```
+
+Everything:
+
+```bash
+pnpm lint && pnpm typecheck && pnpm test && pnpm build
+```
+
+The M1A scaffold establishes the monorepo and Clean Architecture boundaries only. No Ngabo product behavior is implemented yet; the commands above verify the tooling and layer-boundary discipline (including an architecture smoke test that forbids framework/vendor imports in the inner layers).
+
 ## Current Repository State
 
-The repository is currently design-first. Application code, deployment proof, evaluation results and hosted URLs must be produced during implementation; design documents are not treated as execution proof.
+The repository is design-first with an M1A executable scaffold: the monorepo layout, Python Clean Architecture layer boundaries, and frontend tooling are in place and verified. Application/product code, deployment proof, evaluation results and hosted URLs must still be produced during implementation; design documents are not treated as execution proof.
 
 ## License
 
