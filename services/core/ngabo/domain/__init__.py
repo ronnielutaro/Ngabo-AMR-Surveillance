@@ -6,5 +6,5 @@ incident state policy, claim policy, action-class policy, and domain exceptions.
 Must remain free of framework/vendor imports (FastAPI, Google Cloud SDKs,
 Google ADK, Gemini SDKs, notification SDKs). Depends on no outer Ngabo layer.
 
-Intentionally empty in the M1A scaffold; populated by later milestones.
+Populated incrementally by milestone issues; see the subpackage docstrings.
 """
