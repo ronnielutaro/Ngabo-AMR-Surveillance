@@ -2,5 +2,6 @@
 
 Must never import frameworks, cloud SDKs, AI SDKs, or outer Ngabo layers
 (see ``docs/CLEAN_ARCHITECTURE.md``). Populated issue by issue; see Issue #25
-for the identity/version primitives added in M1B.1.
+for the identity/version primitives (M1B.1) and Issue #27 for the autonomy
+decision contract (M1B.3).
 """
