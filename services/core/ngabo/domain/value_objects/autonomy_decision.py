@@ -24,11 +24,18 @@ canonical one — is rejected deterministically. Because the mapping is
 enforced at construction, no caller (including a model) can supply a
 different status or reason value and obtain an A2/A3 decision that claims
 autonomous eligibility.
+
+The contract mapping is exposed as a runtime-immutable ``Mapping``
+(``types.MappingProxyType``), so callers cannot mutate the table itself —
+for example, rewriting A2/A3 to an eligible status behind the validator's
+back.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Final
 
 from ngabo.domain.enums.action_class import ActionClass
@@ -58,25 +65,27 @@ REASON_A3: Final[str] = (
 )
 
 AUTONOMY_CLASSIFICATION_CONTRACT: Final[
-    dict[ActionClass, tuple[AutonomyDecisionStatus, str]]
-] = {
-    ActionClass.INTERNAL_STATE: (
-        AutonomyDecisionStatus.AUTONOMOUS_ELIGIBLE,
-        REASON_A0,
-    ),
-    ActionClass.SAFE_EXTERNAL_COORDINATION: (
-        AutonomyDecisionStatus.GATES_REQUIRED,
-        REASON_A1,
-    ),
-    ActionClass.REAL_OPERATIONAL_ESCALATION: (
-        AutonomyDecisionStatus.BLOCKED,
-        REASON_A2,
-    ),
-    ActionClass.CLINICAL_OR_OFFICIAL_PUBLIC_HEALTH_DECISION: (
-        AutonomyDecisionStatus.BLOCKED,
-        REASON_A3,
-    ),
-}
+    Mapping[ActionClass, tuple[AutonomyDecisionStatus, str]]
+] = MappingProxyType(
+    {
+        ActionClass.INTERNAL_STATE: (
+            AutonomyDecisionStatus.AUTONOMOUS_ELIGIBLE,
+            REASON_A0,
+        ),
+        ActionClass.SAFE_EXTERNAL_COORDINATION: (
+            AutonomyDecisionStatus.GATES_REQUIRED,
+            REASON_A1,
+        ),
+        ActionClass.REAL_OPERATIONAL_ESCALATION: (
+            AutonomyDecisionStatus.BLOCKED,
+            REASON_A2,
+        ),
+        ActionClass.CLINICAL_OR_OFFICIAL_PUBLIC_HEALTH_DECISION: (
+            AutonomyDecisionStatus.BLOCKED,
+            REASON_A3,
+        ),
+    }
+)
 
 
 @dataclass(frozen=True)

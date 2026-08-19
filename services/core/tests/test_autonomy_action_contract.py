@@ -143,6 +143,87 @@ class TestClassificationContract:
         assert len({REASON_A0, REASON_A1, REASON_A2, REASON_A3}) == 4
 
 
+class TestContractRuntimeImmutability:
+    """Regression coverage for the Issue #27 review fix.
+
+    The classification contract is exposed as a runtime-immutable mapping;
+    mutation attempts must raise so the A2/A3 blocks cannot be rewritten
+    behind the validator's back.
+    """
+
+    def _attempt_upgrade(
+        self, action_class: ActionClass, status: AutonomyDecisionStatus
+    ) -> None:
+        with pytest.raises(TypeError):
+            AUTONOMY_CLASSIFICATION_CONTRACT[action_class] = (  # type: ignore[index]
+                status,
+                "attempted runtime upgrade",
+            )
+
+    def test_item_assignment_is_rejected_for_every_class(self) -> None:
+        for action_class in EXPECTED_CLASSES:
+            self._attempt_upgrade(
+                action_class, AutonomyDecisionStatus.AUTONOMOUS_ELIGIBLE
+            )
+
+    def test_item_deletion_is_rejected(self) -> None:
+        with pytest.raises(TypeError):
+            del AUTONOMY_CLASSIFICATION_CONTRACT[  # type: ignore[attr-defined]
+                ActionClass.REAL_OPERATIONAL_ESCALATION
+            ]
+
+    def test_a2_cannot_become_autonomously_eligible(self) -> None:
+        self._attempt_upgrade(
+            ActionClass.REAL_OPERATIONAL_ESCALATION,
+            AutonomyDecisionStatus.AUTONOMOUS_ELIGIBLE,
+        )
+        assert (
+            AUTONOMY_CLASSIFICATION_CONTRACT[ActionClass.REAL_OPERATIONAL_ESCALATION]
+            == EXPECTED_CONTRACT[ActionClass.REAL_OPERATIONAL_ESCALATION]
+        )
+        decision = AutonomyDecision.for_class(ActionClass.REAL_OPERATIONAL_ESCALATION)
+        assert decision.status is AutonomyDecisionStatus.BLOCKED
+
+    def test_a3_cannot_become_autonomously_eligible(self) -> None:
+        self._attempt_upgrade(
+            ActionClass.CLINICAL_OR_OFFICIAL_PUBLIC_HEALTH_DECISION,
+            AutonomyDecisionStatus.AUTONOMOUS_ELIGIBLE,
+        )
+        assert (
+            AUTONOMY_CLASSIFICATION_CONTRACT[
+                ActionClass.CLINICAL_OR_OFFICIAL_PUBLIC_HEALTH_DECISION
+            ]
+            == EXPECTED_CONTRACT[ActionClass.CLINICAL_OR_OFFICIAL_PUBLIC_HEALTH_DECISION]
+        )
+        decision = AutonomyDecision.for_class(
+            ActionClass.CLINICAL_OR_OFFICIAL_PUBLIC_HEALTH_DECISION
+        )
+        assert decision.status is AutonomyDecisionStatus.BLOCKED
+
+    def test_a1_remains_gates_required(self) -> None:
+        self._attempt_upgrade(
+            ActionClass.SAFE_EXTERNAL_COORDINATION,
+            AutonomyDecisionStatus.AUTONOMOUS_ELIGIBLE,
+        )
+        assert (
+            AUTONOMY_CLASSIFICATION_CONTRACT[ActionClass.SAFE_EXTERNAL_COORDINATION]
+            == EXPECTED_CONTRACT[ActionClass.SAFE_EXTERNAL_COORDINATION]
+        )
+        decision = AutonomyDecision.for_class(ActionClass.SAFE_EXTERNAL_COORDINATION)
+        assert decision.status is AutonomyDecisionStatus.GATES_REQUIRED
+
+    def test_for_class_behavior_unchanged_after_mutation_attempts(self) -> None:
+        self._attempt_upgrade(
+            ActionClass.INTERNAL_STATE, AutonomyDecisionStatus.BLOCKED
+        )
+        for action_class in EXPECTED_CLASSES:
+            status, reason = EXPECTED_CONTRACT[action_class]
+            decision = AutonomyDecision.for_class(action_class)
+            assert decision.action_class is action_class
+            assert decision.status is status
+            assert decision.reason == reason
+
+
 class TestValidDecisions:
     @pytest.mark.parametrize("action_class", EXPECTED_CLASSES)
     def test_for_class_builds_canonical_decision(self, action_class: ActionClass) -> None:
