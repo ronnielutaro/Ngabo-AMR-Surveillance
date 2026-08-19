@@ -20,7 +20,10 @@ from dataclasses import dataclass
 def _require_opaque_id(value: object, label: str) -> None:
     """Reject IDs that are not non-blank strings without edge whitespace.
 
-    Structural validation only — no existence check happens here.
+    Structural validation only — no existence check happens here. Also used
+    for proof values (``expected_value`` / ``output_value``), which the
+    v0.1 contract intentionally represents as trimmed, nonblank serialized
+    strings.
     """
     if (
         not isinstance(value, str)
@@ -36,7 +39,8 @@ class CanonicalRecordReference:
 
     ``field_path`` and ``expected_value`` preserve the exact field/value
     provenance used by the claim where practical; the later verifier may
-    compare them against the canonical record.
+    compare them against the canonical record. Both are intentionally
+    represented as trimmed, nonblank serialized strings in v0.1.
     """
 
     record_id: str
@@ -53,8 +57,10 @@ class CanonicalRecordReference:
 class DeterministicFindingReference:
     """Proof reference pointing a claim at a deterministic Ngabo result.
 
-    ``input_refs`` are the opaque IDs of the finding's referenced inputs;
-    ``output_value`` preserves the output value/reference used by the claim.
+    ``input_refs`` are the opaque IDs of the finding's referenced inputs
+    (an actual tuple, enforced at construction); ``output_value`` preserves
+    the output value/reference used by the claim as a trimmed, nonblank
+    serialized string.
     """
 
     finding_id: str
@@ -66,6 +72,11 @@ class DeterministicFindingReference:
         _require_opaque_id(self.finding_id, "deterministic finding ID")
         _require_opaque_id(self.policy_version, "calculation/policy version")
         _require_opaque_id(self.output_value, "deterministic finding output value")
+        if not isinstance(self.input_refs, tuple):
+            raise ValueError(
+                f"Invalid deterministic finding input references {self.input_refs!r}; "
+                "expected a tuple of opaque IDs"
+            )
         for ref in self.input_refs:
             _require_opaque_id(ref, "deterministic finding input reference")
 

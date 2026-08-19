@@ -16,9 +16,10 @@ check. It preserves the semantic fields of the canonical claim schema in
 
 Construction-time validation covers intrinsic contract invariants only:
 non-blank statement, non-blank uncertainty/limitation entries, non-blank
-confidence label, type guards, and the hypothesis uncertainty rule. Whether
-a particular claim type carries *sufficient* proof is deliberately NOT
-checked here — that is deterministic verifier work (#29).
+confidence label, type guards, structural collection enforcement (actual
+tuples with per-element type checks), and the hypothesis uncertainty rule.
+Whether a particular claim type carries *sufficient* proof is deliberately
+NOT checked here — that is deterministic verifier work (#29).
 
 ``requested_action_class`` is descriptive input only: it is not an
 ``AutonomyDecision``, not authorization, and not permission to execute.
@@ -40,13 +41,31 @@ from ngabo.domain.value_objects.proof_references import (
 )
 
 
+def _require_typed_elements(values: object, label: str, expected_type: type[object]) -> None:
+    """Fail closed unless ``values`` is an actual tuple of ``expected_type``.
+
+    Structural runtime enforcement: Python does not enforce annotations,
+    so these checks are what keeps the constructed claim deeply immutable
+    and correctly typed regardless of the calling layer.
+    """
+    if not isinstance(values, tuple):
+        raise ValueError(f"Invalid {label} {values!r}; expected a tuple")
+    for index, element in enumerate(values):
+        if not isinstance(element, expected_type):
+            raise ValueError(
+                f"Invalid {label} element at position {index}: {element!r}; "
+                f"expected {expected_type.__name__}"
+            )
+
+
 @dataclass(frozen=True)
 class ReasoningClaim:
     """Immutable typed proof-carrying claim proposed by the model layer.
 
     Deeply immutable: all collections are tuples of immutable value
-    objects/strings, so a constructed claim cannot be mutated through
-    aliases or in-place operations.
+    objects/strings, enforced at construction time — non-tuple collections
+    and wrong element types are rejected, so a constructed claim cannot be
+    mutated through aliases or in-place operations.
     """
 
     claim_id: ClaimId
@@ -74,8 +93,26 @@ class ReasoningClaim:
             )
         if not isinstance(self.statement, str) or not self.statement.strip():
             raise ValueError("Invalid claim statement; expected non-blank text")
+        _require_typed_elements(
+            self.supporting_record_refs,
+            "supporting record reference",
+            CanonicalRecordReference,
+        )
+        _require_typed_elements(
+            self.supporting_finding_refs,
+            "supporting finding reference",
+            DeterministicFindingReference,
+        )
+        _require_typed_elements(
+            self.supporting_evidence_refs,
+            "supporting evidence reference",
+            ApprovedEvidenceReference,
+        )
+        _require_typed_elements(self.supporting_claim_ids, "supporting claim ID", ClaimId)
+        _require_typed_elements(self.contradicting_claim_ids, "contradicting claim ID", ClaimId)
+        _require_typed_elements(self.uncertainties, "uncertainty entry", str)
         for index, uncertainty in enumerate(self.uncertainties):
-            if not isinstance(uncertainty, str) or not uncertainty.strip():
+            if not uncertainty.strip():
                 raise ValueError(
                     f"Invalid uncertainty entry at position {index}: "
                     f"{uncertainty!r}; expected non-blank text"

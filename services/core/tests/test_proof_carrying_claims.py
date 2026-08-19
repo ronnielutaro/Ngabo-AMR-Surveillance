@@ -456,3 +456,191 @@ class TestReasoningClaimImmutability:
         assert first is not second
         assert first != object()
         assert {first: "x"}[second] == "x"
+
+
+class TestCollectionShapeEnforcement:
+    """Regression coverage for the PR #34 review finding.
+
+    Python does not enforce annotations at runtime, so a frozen dataclass
+    could retain a mutable list passed where a tuple was annotated. These
+    contracts therefore require actual tuples and correct element types at
+    construction time and fail closed otherwise.
+    """
+
+    def test_list_record_refs_rejected(self) -> None:
+        with pytest.raises(ValueError):
+            ReasoningClaim(
+                claim_id=ClaimId("claim-01"),
+                claim_type=ClaimType.OBSERVED_FACT,
+                statement="Three isolates in Ward A.",
+                supporting_record_refs=[_record_ref()],  # type: ignore[arg-type]
+            )
+
+    def test_list_finding_refs_rejected(self) -> None:
+        with pytest.raises(ValueError):
+            ReasoningClaim(
+                claim_id=ClaimId("claim-01"),
+                claim_type=ClaimType.DERIVED_FINDING,
+                statement="The isolates' resistance profiles are similar.",
+                supporting_finding_refs=[_finding_ref()],  # type: ignore[arg-type]
+            )
+
+    def test_list_evidence_refs_rejected(self) -> None:
+        with pytest.raises(ValueError):
+            ReasoningClaim(
+                claim_id=ClaimId("claim-01"),
+                claim_type=ClaimType.EVIDENCE_STATEMENT,
+                statement="Guidance recommends carbapenem resistance screening.",
+                supporting_evidence_refs=[_evidence_ref()],  # type: ignore[arg-type]
+            )
+
+    def test_list_supporting_claim_ids_rejected(self) -> None:
+        with pytest.raises(ValueError):
+            ReasoningClaim(
+                claim_id=ClaimId("claim-01"),
+                claim_type=ClaimType.HYPOTHESIS,
+                statement="Possible shared process.",
+                supporting_claim_ids=[ClaimId("claim-00")],  # type: ignore[arg-type]
+                uncertainties=("Genomic relatedness is unavailable.",),
+            )
+
+    def test_list_contradicting_claim_ids_rejected(self) -> None:
+        with pytest.raises(ValueError):
+            ReasoningClaim(
+                claim_id=ClaimId("claim-01"),
+                claim_type=ClaimType.HYPOTHESIS,
+                statement="Possible shared process.",
+                contradicting_claim_ids=[ClaimId("claim-02")],  # type: ignore[arg-type]
+                uncertainties=("Genomic relatedness is unavailable.",),
+            )
+
+    def test_list_uncertainties_rejected(self) -> None:
+        with pytest.raises(ValueError):
+            _make_hypothesis(
+                uncertainties=["Genomic relatedness is unavailable."]  # type: ignore[arg-type]
+            )
+
+    def test_non_tuple_uncertainties_rejected(self) -> None:
+        with pytest.raises(ValueError):
+            _make_hypothesis(
+                uncertainties={"Genomic relatedness is unavailable."}  # type: ignore[arg-type]
+            )
+
+    def test_list_input_refs_rejected(self) -> None:
+        with pytest.raises(ValueError):
+            DeterministicFindingReference(
+                "profile-comparison-17",
+                "detector-v1",
+                ["ISO-031"],  # type: ignore[arg-type]
+                "similarity=0.93",
+            )
+
+    def test_mutable_alias_never_reaches_claim(self) -> None:
+        source = ["uncertainty one"]
+        with pytest.raises(ValueError):
+            _make_hypothesis(uncertainties=source)  # type: ignore[arg-type]
+        source.append("mutated later")
+        # No claim was constructed, so no contract ever retained the alias.
+        assert source == ["uncertainty one", "mutated later"]
+
+    def test_input_refs_mutable_alias_rejected(self) -> None:
+        source = ["ISO-031"]
+        with pytest.raises(ValueError):
+            DeterministicFindingReference(
+                "profile-comparison-17",
+                "detector-v1",
+                source,  # type: ignore[arg-type]
+                "similarity=0.93",
+            )
+        source.append("ISO-999")
+        assert source == ["ISO-031", "ISO-999"]
+
+    def test_string_in_record_refs_rejected(self) -> None:
+        with pytest.raises(ValueError):
+            ReasoningClaim(
+                claim_id=ClaimId("claim-01"),
+                claim_type=ClaimType.OBSERVED_FACT,
+                statement="Three isolates in Ward A.",
+                supporting_record_refs=("ISO-031",),  # type: ignore[arg-type]
+            )
+
+    def test_finding_ref_in_record_refs_rejected(self) -> None:
+        with pytest.raises(ValueError):
+            ReasoningClaim(
+                claim_id=ClaimId("claim-01"),
+                claim_type=ClaimType.OBSERVED_FACT,
+                statement="Three isolates in Ward A.",
+                supporting_record_refs=(_finding_ref(),),  # type: ignore[arg-type]
+            )
+
+    def test_record_ref_in_finding_refs_rejected(self) -> None:
+        with pytest.raises(ValueError):
+            ReasoningClaim(
+                claim_id=ClaimId("claim-01"),
+                claim_type=ClaimType.DERIVED_FINDING,
+                statement="The isolates' resistance profiles are similar.",
+                supporting_finding_refs=(_record_ref(),),  # type: ignore[arg-type]
+            )
+
+    def test_record_ref_in_evidence_refs_rejected(self) -> None:
+        with pytest.raises(ValueError):
+            ReasoningClaim(
+                claim_id=ClaimId("claim-01"),
+                claim_type=ClaimType.EVIDENCE_STATEMENT,
+                statement="Guidance recommends carbapenem resistance screening.",
+                supporting_evidence_refs=(_record_ref(),),  # type: ignore[arg-type]
+            )
+
+    def test_raw_string_claim_ids_rejected(self) -> None:
+        with pytest.raises(ValueError):
+            ReasoningClaim(
+                claim_id=ClaimId("claim-01"),
+                claim_type=ClaimType.HYPOTHESIS,
+                statement="Possible shared process.",
+                supporting_claim_ids=("claim-00",),  # type: ignore[arg-type]
+                uncertainties=("Genomic relatedness is unavailable.",),
+            )
+        with pytest.raises(ValueError):
+            ReasoningClaim(
+                claim_id=ClaimId("claim-01"),
+                claim_type=ClaimType.HYPOTHESIS,
+                statement="Possible shared process.",
+                contradicting_claim_ids=("claim-02",),  # type: ignore[arg-type]
+                uncertainties=("Genomic relatedness is unavailable.",),
+            )
+
+    def test_non_string_uncertainty_rejected(self) -> None:
+        with pytest.raises(ValueError):
+            _make_hypothesis(uncertainties=(123,))  # type: ignore[arg-type]
+
+    def test_mixed_uncertainty_types_rejected(self) -> None:
+        with pytest.raises(ValueError):
+            _make_hypothesis(uncertainties=("ok entry", None))  # type: ignore[arg-type]
+
+    def test_claim_id_object_in_input_refs_rejected(self) -> None:
+        with pytest.raises(ValueError):
+            DeterministicFindingReference(
+                "profile-comparison-17",
+                "detector-v1",
+                (ClaimId("claim-01"),),  # type: ignore[arg-type]
+                "similarity=0.93",
+            )
+
+    def test_valid_tuple_construction_unchanged(self) -> None:
+        claim = ReasoningClaim(
+            claim_id=ClaimId("claim-01"),
+            claim_type=ClaimType.HYPOTHESIS,
+            statement="Possible shared process.",
+            supporting_record_refs=(_record_ref(),),
+            supporting_finding_refs=(_finding_ref(),),
+            supporting_evidence_refs=(_evidence_ref(),),
+            supporting_claim_ids=(ClaimId("claim-00"),),
+            contradicting_claim_ids=(ClaimId("claim-02"),),
+            uncertainties=("Genomic relatedness is unavailable.",),
+        )
+        assert claim.supporting_record_refs == (_record_ref(),)
+        assert claim.supporting_finding_refs == (_finding_ref(),)
+        assert claim.supporting_evidence_refs == (_evidence_ref(),)
+        assert claim.supporting_claim_ids == (ClaimId("claim-00"),)
+        assert claim.contradicting_claim_ids == (ClaimId("claim-02"),)
+        assert claim.uncertainties == ("Genomic relatedness is unavailable.",)
