@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ngabo:schema:canonical-hero:1.0.0",
+  "title": "Ngabo Canonical Synthetic Hero Dataset",
+  "description": "Input contract for the canonical Taskmaster hero dataset (M1B.6 / Issue #30): synthetic WHONET-style isolate/AST surveillance observations only. The fixture records laboratory observations; derived facts (signal, incident, cluster, verification, action) are owned by later deterministic/application stages and are deliberately absent from this schema. Synthetic-only by construction: the synthetic marker is pinned true and all facility/lab/ward/case/import identifiers must carry the SYNTH- prefix. Antimicrobial identity has a single source of truth: the ast_results map key (an antimicrobial code); each entry carries only the observation itself (interpretation), so key/value disagreement is structurally impossible. Semantic invariant not expressible by this plain JSON Schema array shape: isolate_id MUST be unique within one canonical dataset. The committed golden fixture satisfies it; deterministic enforcement belongs to the import/dedup boundary (Issue #40).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "dataset_id",
+    "synthetic",
+    "provenance",
+    "records"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "dataset_id": {
+      "$ref": "#/$defs/nonblank"
+    },
+    "synthetic": {
+      "const": true
+    },
+    "provenance": {
+      "$ref": "#/$defs/provenance"
+    },
+    "records": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/isolate_record"
+      }
+    }
+  },
+  "$defs": {
+    "nonblank": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "synthetic_id": {
+      "type": "string",
+      "pattern": "^SYNTH-[A-Z0-9-]+$"
+    },
+    "isolate_id": {
+      "type": "string",
+      "pattern": "^ISO-\\d{3}$"
+    },
+    "antibiotic_code": {
+      "type": "string",
+      "pattern": "^[A-Z]{2,6}$"
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "origin",
+        "disclaimer"
+      ],
+      "properties": {
+        "origin": {
+          "$ref": "#/$defs/nonblank"
+        },
+        "disclaimer": {
+          "$ref": "#/$defs/nonblank"
+        }
+      }
+    },
+    "ast_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "interpretation"
+      ],
+      "properties": {
+        "interpretation": {
+          "enum": [
+            "S",
+            "I",
+            "R",
+            "UNKNOWN"
+          ]
+        }
+      }
+    },
+    "isolate_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "isolate_id",
+        "collection_date",
+        "organism_code",
+        "organism_name",
+        "facility_id",
+        "lab_id",
+        "ward",
+        "specimen_type",
+        "patient_token",
+        "source_import_id",
+        "ast_results"
+      ],
+      "properties": {
+        "isolate_id": {
+          "$ref": "#/$defs/isolate_id"
+        },
+        "collection_date": {
+          "type": "string",
+          "format": "date"
+        },
+        "organism_code": {
+          "$ref": "#/$defs/nonblank"
+        },
+        "organism_name": {
+          "$ref": "#/$defs/nonblank"
+        },
+        "facility_id": {
+          "$ref": "#/$defs/synthetic_id"
+        },
+        "lab_id": {
+          "$ref": "#/$defs/synthetic_id"
+        },
+        "ward": {
+          "$ref": "#/$defs/synthetic_id"
+        },
+        "specimen_type": {
+          "$ref": "#/$defs/nonblank"
+        },
+        "patient_token": {
+          "$ref": "#/$defs/synthetic_id"
+        },
+        "source_import_id": {
+          "$ref": "#/$defs/synthetic_id"
+        },
+        "ast_results": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "$ref": "#/$defs/antibiotic_code"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/ast_entry"
+          }
+        }
+      }
+    }
+  }
+}
