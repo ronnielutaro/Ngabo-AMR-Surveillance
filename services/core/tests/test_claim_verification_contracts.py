@@ -24,6 +24,21 @@ EXPECTED_ERROR_CODES = (
     VerificationErrorCode.UNKNOWN_RECORD_REFERENCE,
     VerificationErrorCode.UNKNOWN_FINDING_REFERENCE,
     VerificationErrorCode.UNKNOWN_EVIDENCE_SOURCE,
+    VerificationErrorCode.UNKNOWN_CLAIM_REFERENCE,
+    VerificationErrorCode.UNSUPPORTED_FACTUAL_ASSERTION,
+    VerificationErrorCode.CLAIM_TYPE_EPISTEMIC_MISMATCH,
+    VerificationErrorCode.FORBIDDEN_CLAIM_OR_AUTHORITY,
+    VerificationErrorCode.STALE_REFERENCE_OR_VERSION,
+    VerificationErrorCode.MISSING_UNCERTAINTY,
+)
+
+# The original eight families from PR #35, in their original declaration
+# order — a regression guard proving the post-merge fix added one code
+# without renaming, revaluing or reordering any existing family.
+PRIOR_EIGHT_CODES = (
+    VerificationErrorCode.UNKNOWN_RECORD_REFERENCE,
+    VerificationErrorCode.UNKNOWN_FINDING_REFERENCE,
+    VerificationErrorCode.UNKNOWN_EVIDENCE_SOURCE,
     VerificationErrorCode.UNSUPPORTED_FACTUAL_ASSERTION,
     VerificationErrorCode.CLAIM_TYPE_EPISTEMIC_MISMATCH,
     VerificationErrorCode.FORBIDDEN_CLAIM_OR_AUTHORITY,
@@ -47,7 +62,7 @@ class TestVerificationErrorCode:
 
     def test_exact_minimal_vocabulary(self) -> None:
         assert tuple(VerificationErrorCode) == EXPECTED_ERROR_CODES
-        assert len(VerificationErrorCode) == 8
+        assert len(VerificationErrorCode) == 9
 
     def test_preserves_governing_document_names(self) -> None:
         # Both names are established verbatim in PROOF_CARRYING_REASONING §7.
@@ -59,6 +74,16 @@ class TestVerificationErrorCode:
             VerificationErrorCode.UNSUPPORTED_FACTUAL_ASSERTION.value
             == "UNSUPPORTED_FACTUAL_ASSERTION"
         )
+
+    def test_prior_eight_codes_unchanged(self) -> None:
+        # The post-merge correction (UNKNOWN_CLAIM_REFERENCE) must not
+        # rename, revalue or reorder any of the original eight families.
+        prior = tuple(
+            code
+            for code in VerificationErrorCode
+            if code is not VerificationErrorCode.UNKNOWN_CLAIM_REFERENCE
+        )
+        assert prior == PRIOR_EIGHT_CODES
 
 
 class TestClaimVerificationError:
@@ -77,6 +102,33 @@ class TestClaimVerificationError:
         assert error.field == "supporting_finding_refs"
         assert error.detail == "Finding 9 is not a deterministic result of this incident."
 
+    def test_represents_unknown_supporting_claim_reference(self) -> None:
+        claim_id = ClaimId("claim-17")
+        error = ClaimVerificationError(
+            code=VerificationErrorCode.UNKNOWN_CLAIM_REFERENCE,
+            claim_id=claim_id,
+            reference="claim-99",
+            field="supporting_claim_ids",
+        )
+        assert error.code is VerificationErrorCode.UNKNOWN_CLAIM_REFERENCE
+        assert error.claim_id is claim_id
+        assert error.reference == "claim-99"
+        assert error.field == "supporting_claim_ids"
+        assert error.detail is None
+
+    def test_represents_unknown_contradicting_claim_reference(self) -> None:
+        claim_id = ClaimId("claim-17")
+        error = ClaimVerificationError(
+            code=VerificationErrorCode.UNKNOWN_CLAIM_REFERENCE,
+            claim_id=claim_id,
+            reference="claim-42",
+            field="contradicting_claim_ids",
+        )
+        assert error.code is VerificationErrorCode.UNKNOWN_CLAIM_REFERENCE
+        assert error.claim_id is claim_id
+        assert error.reference == "claim-42"
+        assert error.field == "contradicting_claim_ids"
+
     def test_minimal_construction_allows_none_optionals(self) -> None:
         error = _error()
         assert error.reference is None
@@ -89,6 +141,15 @@ class TestClaimVerificationError:
         with pytest.raises(ValueError):
             ClaimVerificationError(
                 code="UNKNOWN_FINDING_REFERENCE",  # type: ignore[arg-type]
+                claim_id=ClaimId("claim-17"),
+            )
+
+    def test_rejects_raw_string_unknown_claim_reference(self) -> None:
+        # The typed enum is still required: a raw string must not construct
+        # an error even when it equals the member's serialized value.
+        with pytest.raises(ValueError):
+            ClaimVerificationError(
+                code="UNKNOWN_CLAIM_REFERENCE",  # type: ignore[arg-type]
                 claim_id=ClaimId("claim-17"),
             )
 

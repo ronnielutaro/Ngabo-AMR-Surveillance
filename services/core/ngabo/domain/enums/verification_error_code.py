@@ -1,10 +1,10 @@
 """Stable verification error-code vocabulary (M1B.5 / Issue #29).
 
-Exactly the eight error families the deterministic claim verifier needs for
-routing, repair, telemetry and evaluation, per
-``docs/PROOF_CARRYING_REASONING.md`` §6–7, ``docs/AGENT_ARCHITECTURE.md`` §7
-and ADR 0009. Smallest stable taxonomy covering the required families — no
-speculative codes for mechanisms that do not exist yet.
+Exactly the nine stable error families the deterministic claim verifier
+needs for routing, repair, telemetry and evaluation, per
+``docs/PROOF_CARRYING_REASONING.md`` §6–7, ``docs/AGENT_ARCHITECTURE.md`` §7,
+AGENTS.md §9 and ADR 0009. Smallest stable taxonomy covering the required
+families — no speculative codes for mechanisms that do not exist yet.
 
 Codes:
 
@@ -16,6 +16,11 @@ Codes:
   actually retrieved and approved for this package. One code covers both
   "unknown" and "unretrieved": the governing contract gives no useful
   deterministic distinction between the two.
+- ``UNKNOWN_CLAIM_REFERENCE`` — a ``supporting_claim_ids`` or
+  ``contradicting_claim_ids`` entry on a ``ReasoningClaim`` (#28) points to
+  a claim ID that cannot be resolved in the verification context/package.
+  This claim-to-claim referential-integrity failure is distinct from the
+  record/finding/evidence reference families above.
 - ``UNSUPPORTED_FACTUAL_ASSERTION`` — the claim asserts a fact that the
   referenced canonical record/finding/evidence values do not support.
 - ``CLAIM_TYPE_EPISTEMIC_MISMATCH`` — the claim's epistemic stance does not
@@ -45,11 +50,12 @@ from enum import StrEnum
 
 
 class VerificationErrorCode(StrEnum):
-    """The eight stable claim-verification error families (v0.1)."""
+    """The nine stable claim-verification error families (v0.1)."""
 
     UNKNOWN_RECORD_REFERENCE = "UNKNOWN_RECORD_REFERENCE"
     UNKNOWN_FINDING_REFERENCE = "UNKNOWN_FINDING_REFERENCE"
     UNKNOWN_EVIDENCE_SOURCE = "UNKNOWN_EVIDENCE_SOURCE"
+    UNKNOWN_CLAIM_REFERENCE = "UNKNOWN_CLAIM_REFERENCE"
     UNSUPPORTED_FACTUAL_ASSERTION = "UNSUPPORTED_FACTUAL_ASSERTION"
     CLAIM_TYPE_EPISTEMIC_MISMATCH = "CLAIM_TYPE_EPISTEMIC_MISMATCH"
     FORBIDDEN_CLAIM_OR_AUTHORITY = "FORBIDDEN_CLAIM_OR_AUTHORITY"
