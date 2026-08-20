@@ -13,6 +13,12 @@ Before writing production ADK orchestration, perform a small executable capabili
 
 The goal is to remove framework/API uncertainty before it can threaten the hackathon critical path.
 
+### Official Google documentation rule
+
+Before implementing any Google ADK, Gemini, Vertex AI, Firestore, Pub/Sub, Cloud Storage, Cloud Run, or related Google integration, the coding agent **must consult the current official Google documentation for the exact SDK/API/version being used** and, where applicable, the current Google GEAR learning resources.
+
+Repository architecture/governance defines Ngabo's required semantics; current official Google materials define how those semantics are implemented using supported APIs. Do **not** implement Google behavior from model memory, workshop screenshots, blog posts, stale examples, or assumed class/API names when current official documentation is available. Pin exact dependencies/versions where applicable, verify material API assumptions with a small executable capability proof, and record material version/API/fallback decisions in the implementation PR.
+
 ---
 
 ## 2. Required Outputs
