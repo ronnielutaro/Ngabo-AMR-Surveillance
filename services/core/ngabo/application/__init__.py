@@ -6,5 +6,6 @@ review/notification gating policy.
 May depend on ``ngabo.domain``. Must not import concrete infrastructure
 adapters or framework/vendor SDKs.
 
-Intentionally empty in the M1A scaffold; populated by later milestones.
+Populated issue by issue; see Issue #29 for the first application port
+contract (M1B.5).
 """
