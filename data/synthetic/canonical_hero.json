@@ -1,0 +1,171 @@
+{
+  "schema_version": "1.0.0",
+  "dataset_id": "canonical-hero-v1",
+  "synthetic": true,
+  "provenance": {
+    "origin": "Ngabo-authored synthetic WHONET-style demonstration dataset for the canonical Taskmaster hero (M1B.6 / Issue #30). All isolates, cases, wards, facilities and laboratories are invented; no real patient, hospital or laboratory identity appears anywhere.",
+    "disclaimer": "This dataset is synthetic and intended solely for software demonstration/evaluation. It does not represent real patient records and is not suitable for clinical inference."
+  },
+  "records": [
+    {
+      "isolate_id": "ISO-012",
+      "collection_date": "2026-08-16",
+      "organism_code": "eco",
+      "organism_name": "Escherichia coli",
+      "facility_id": "SYNTH-FACILITY-001",
+      "lab_id": "SYNTH-LAB-001",
+      "ward": "SYNTH-WARD-B",
+      "specimen_type": "urine",
+      "patient_token": "SYNTH-CASE-012",
+      "source_import_id": "SYNTH-IMPORT-001",
+      "ast_results": {
+        "AMK": { "antibiotic_code": "AMK", "interpretation": "S" },
+        "CAZ": { "antibiotic_code": "CAZ", "interpretation": "S" },
+        "CIP": { "antibiotic_code": "CIP", "interpretation": "S" },
+        "CRO": { "antibiotic_code": "CRO", "interpretation": "S" },
+        "MEM": { "antibiotic_code": "MEM", "interpretation": "S" },
+        "SXT": { "antibiotic_code": "SXT", "interpretation": "S" }
+      }
+    },
+    {
+      "isolate_id": "ISO-027",
+      "collection_date": "2026-08-16",
+      "organism_code": "kle",
+      "organism_name": "Klebsiella pneumoniae",
+      "facility_id": "SYNTH-FACILITY-001",
+      "lab_id": "SYNTH-LAB-001",
+      "ward": "SYNTH-WARD-B",
+      "specimen_type": "sputum",
+      "patient_token": "SYNTH-CASE-027",
+      "source_import_id": "SYNTH-IMPORT-001",
+      "ast_results": {
+        "AMK": { "antibiotic_code": "AMK", "interpretation": "S" },
+        "CAZ": { "antibiotic_code": "CAZ", "interpretation": "S" },
+        "CIP": { "antibiotic_code": "CIP", "interpretation": "R" },
+        "CRO": { "antibiotic_code": "CRO", "interpretation": "S" },
+        "MEM": { "antibiotic_code": "MEM", "interpretation": "S" },
+        "SXT": { "antibiotic_code": "SXT", "interpretation": "S" }
+      }
+    },
+    {
+      "isolate_id": "ISO-031",
+      "collection_date": "2026-08-17",
+      "organism_code": "kle",
+      "organism_name": "Klebsiella pneumoniae",
+      "facility_id": "SYNTH-FACILITY-001",
+      "lab_id": "SYNTH-LAB-001",
+      "ward": "SYNTH-WARD-A",
+      "specimen_type": "blood",
+      "patient_token": "SYNTH-CASE-031",
+      "source_import_id": "SYNTH-IMPORT-001",
+      "ast_results": {
+        "AMK": { "antibiotic_code": "AMK", "interpretation": "S" },
+        "CAZ": { "antibiotic_code": "CAZ", "interpretation": "R" },
+        "CIP": { "antibiotic_code": "CIP", "interpretation": "R" },
+        "CRO": { "antibiotic_code": "CRO", "interpretation": "R" },
+        "MEM": { "antibiotic_code": "MEM", "interpretation": "R" },
+        "SXT": { "antibiotic_code": "SXT", "interpretation": "R" }
+      }
+    },
+    {
+      "isolate_id": "ISO-034",
+      "collection_date": "2026-08-17",
+      "organism_code": "kle",
+      "organism_name": "Klebsiella pneumoniae",
+      "facility_id": "SYNTH-FACILITY-001",
+      "lab_id": "SYNTH-LAB-001",
+      "ward": "SYNTH-WARD-A",
+      "specimen_type": "blood",
+      "patient_token": "SYNTH-CASE-034",
+      "source_import_id": "SYNTH-IMPORT-001",
+      "ast_results": {
+        "AMK": { "antibiotic_code": "AMK", "interpretation": "S" },
+        "CAZ": { "antibiotic_code": "CAZ", "interpretation": "R" },
+        "CIP": { "antibiotic_code": "CIP", "interpretation": "R" },
+        "CRO": { "antibiotic_code": "CRO", "interpretation": "R" },
+        "MEM": { "antibiotic_code": "MEM", "interpretation": "R" },
+        "SXT": { "antibiotic_code": "SXT", "interpretation": "R" }
+      }
+    },
+    {
+      "isolate_id": "ISO-039",
+      "collection_date": "2026-08-18",
+      "organism_code": "kle",
+      "organism_name": "Klebsiella pneumoniae",
+      "facility_id": "SYNTH-FACILITY-001",
+      "lab_id": "SYNTH-LAB-001",
+      "ward": "SYNTH-WARD-A",
+      "specimen_type": "blood",
+      "patient_token": "SYNTH-CASE-039",
+      "source_import_id": "SYNTH-IMPORT-001",
+      "ast_results": {
+        "AMK": { "antibiotic_code": "AMK", "interpretation": "S" },
+        "CAZ": { "antibiotic_code": "CAZ", "interpretation": "R" },
+        "CIP": { "antibiotic_code": "CIP", "interpretation": "R" },
+        "CRO": { "antibiotic_code": "CRO", "interpretation": "R" },
+        "MEM": { "antibiotic_code": "MEM", "interpretation": "R" },
+        "SXT": { "antibiotic_code": "SXT", "interpretation": "R" }
+      }
+    },
+    {
+      "isolate_id": "ISO-052",
+      "collection_date": "2026-08-18",
+      "organism_code": "pae",
+      "organism_name": "Pseudomonas aeruginosa",
+      "facility_id": "SYNTH-FACILITY-001",
+      "lab_id": "SYNTH-LAB-001",
+      "ward": "SYNTH-WARD-A",
+      "specimen_type": "respiratory",
+      "patient_token": "SYNTH-CASE-052",
+      "source_import_id": "SYNTH-IMPORT-001",
+      "ast_results": {
+        "AMK": { "antibiotic_code": "AMK", "interpretation": "R" },
+        "CAZ": { "antibiotic_code": "CAZ", "interpretation": "R" },
+        "CIP": { "antibiotic_code": "CIP", "interpretation": "R" },
+        "CRO": { "antibiotic_code": "CRO", "interpretation": "R" },
+        "MEM": { "antibiotic_code": "MEM", "interpretation": "R" },
+        "SXT": { "antibiotic_code": "SXT", "interpretation": "R" }
+      }
+    },
+    {
+      "isolate_id": "ISO-063",
+      "collection_date": "2026-08-19",
+      "organism_code": "ecl",
+      "organism_name": "Enterobacter cloacae",
+      "facility_id": "SYNTH-FACILITY-001",
+      "lab_id": "SYNTH-LAB-001",
+      "ward": "SYNTH-WARD-C",
+      "specimen_type": "blood",
+      "patient_token": "SYNTH-CASE-063",
+      "source_import_id": "SYNTH-IMPORT-001",
+      "ast_results": {
+        "AMK": { "antibiotic_code": "AMK", "interpretation": "S" },
+        "CAZ": { "antibiotic_code": "CAZ", "interpretation": "S" },
+        "CIP": { "antibiotic_code": "CIP", "interpretation": "S" },
+        "CRO": { "antibiotic_code": "CRO", "interpretation": "S" },
+        "MEM": { "antibiotic_code": "MEM", "interpretation": "S" },
+        "SXT": { "antibiotic_code": "SXT", "interpretation": "S" }
+      }
+    },
+    {
+      "isolate_id": "ISO-071",
+      "collection_date": "2026-08-18",
+      "organism_code": "eco",
+      "organism_name": "Escherichia coli",
+      "facility_id": "SYNTH-FACILITY-001",
+      "lab_id": "SYNTH-LAB-001",
+      "ward": "SYNTH-WARD-A",
+      "specimen_type": "urine",
+      "patient_token": "SYNTH-CASE-071",
+      "source_import_id": "SYNTH-IMPORT-001",
+      "ast_results": {
+        "AMK": { "antibiotic_code": "AMK", "interpretation": "S" },
+        "CAZ": { "antibiotic_code": "CAZ", "interpretation": "S" },
+        "CIP": { "antibiotic_code": "CIP", "interpretation": "S" },
+        "CRO": { "antibiotic_code": "CRO", "interpretation": "S" },
+        "MEM": { "antibiotic_code": "MEM", "interpretation": "S" },
+        "SXT": { "antibiotic_code": "SXT", "interpretation": "S" }
+      }
+    }
+  ]
+}
