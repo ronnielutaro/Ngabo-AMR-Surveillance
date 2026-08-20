@@ -6,6 +6,13 @@ laboratory observations — these tests prove the schema enforces the contract,
 and that the fixture carries no missing material fact and no derived
 signal/incident/action fact. No parser, detector or runtime behavior exists
 yet, so none is exercised here. All tests run offline.
+
+Antimicrobial identity has a single source of truth: the ``ast_results`` map
+key is the antimicrobial code and each entry carries only the observation
+(``interpretation``). Dataset-level ``isolate_id`` uniqueness is a documented
+semantic invariant (not schema-expressible in draft 2020-12 for this array
+shape); the fixture satisfies it and runtime enforcement belongs to the
+deterministic import/dedup boundary (Issue #40).
 """
 
 from __future__ import annotations
@@ -170,6 +177,22 @@ class TestSchemaContract:
         synthetic_id = schema["$defs"]["synthetic_id"]
         assert synthetic_id["pattern"] == "^SYNTH-[A-Z0-9-]+$"
 
+    def test_schema_documents_ast_single_source_of_truth(self, schema: dict[str, Any]) -> None:
+        # The ast_results map key owns antimicrobial identity and the entry
+        # carries only the observation, so key/value disagreement cannot exist.
+        description = schema.get("description", "")
+        assert "single source of truth" in description
+
+    def test_schema_documents_isolate_id_uniqueness_invariant(
+        self, schema: dict[str, Any]
+    ) -> None:
+        # Uniqueness across the records array is not expressible in plain
+        # JSON Schema draft 2020-12; the schema documents it as a mandatory
+        # semantic invariant enforced by the import/dedup boundary (#40).
+        description = schema.get("description", "")
+        assert "unique within one canonical dataset" in description
+        assert "Issue #40" in description
+
 
 class TestFixtureContract:
     def test_fixture_validates_against_schema(
@@ -242,6 +265,10 @@ class TestMaterialCompleteness:
 
 class TestIdentityAndProofReferenceReadiness:
     def test_record_ids_unique(self, hero_fixture: dict[str, Any]) -> None:
+        # The golden fixture satisfies the documented dataset-level
+        # uniqueness invariant (schema description + data READMEs). Runtime
+        # enforcement of the invariant belongs to the deterministic
+        # import/dedup boundary (Issue #40) — not to this data contract.
         ids = [record["isolate_id"] for record in _records(hero_fixture)]
         assert len(ids) == len(set(ids))
 
@@ -283,17 +310,19 @@ class TestAstObservations:
         for _, _, entry in self._ast_pairs(hero_fixture):
             _validator(entry_schema).validate(entry)
 
-    def test_ast_keys_match_antibiotic_codes(self, hero_fixture: dict[str, Any]) -> None:
-        for _, code, entry in self._ast_pairs(hero_fixture):
-            assert entry["antibiotic_code"] == code
-
-    def test_ast_antibiotic_codes_nonblank(self, hero_fixture: dict[str, Any]) -> None:
+    def test_ast_keys_are_valid_antimicrobial_codes(
+        self, hero_fixture: dict[str, Any], schema: dict[str, Any]
+    ) -> None:
+        # The map key is the single source of truth for antimicrobial
+        # identity; every key must satisfy the schema's own code vocabulary.
+        pattern = schema["$defs"]["antibiotic_code"]["pattern"]
         for _, code, _ in self._ast_pairs(hero_fixture):
-            assert code.strip() == code
+            assert re.fullmatch(pattern, code)
 
     def test_interpretations_use_explicit_vocabulary(self, hero_fixture: dict[str, Any]) -> None:
-        # The golden fixture uses only S/I/R; UNKNOWN is schema-reserved but
-        # never used by the complete hero input.
+        # Every AST value carries the required observation and uses only the
+        # governing vocabulary; UNKNOWN is schema-reserved but never used by
+        # the complete hero input.
         for _, _, entry in self._ast_pairs(hero_fixture):
             assert entry["interpretation"] in GOLDEN_INTERPRETATIONS
 
@@ -439,6 +468,21 @@ class TestSchemaEnforcesContract:
     def test_rejects_unknown_interpretation(self, schema: dict[str, Any]) -> None:
         def mutate(f: dict[str, Any]) -> None:
             f["records"][0]["ast_results"]["MEM"]["interpretation"] = "X"
+
+        _expect_invalid(schema, mutate)
+
+    def test_rejects_nested_antibiotic_code_field(self, schema: dict[str, Any]) -> None:
+        # Regression for the review finding: an AST entry must not smuggle a
+        # second, disagreeing antibiotic identity. additionalProperties:
+        # false on ast_entry rejects it structurally (no runtime validator).
+        def mutate(f: dict[str, Any]) -> None:
+            f["records"][0]["ast_results"]["MEM"]["antibiotic_code"] = "CIP"
+
+        _expect_invalid(schema, mutate)
+
+    def test_rejects_ast_entry_without_interpretation(self, schema: dict[str, Any]) -> None:
+        def mutate(f: dict[str, Any]) -> None:
+            f["records"][0]["ast_results"]["MEM"] = {}
 
         _expect_invalid(schema, mutate)
 

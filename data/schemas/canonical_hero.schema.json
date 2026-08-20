@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:ngabo:schema:canonical-hero:1.0.0",
   "title": "Ngabo Canonical Synthetic Hero Dataset",
-  "description": "Input contract for the canonical Taskmaster hero dataset (M1B.6 / Issue #30): synthetic WHONET-style isolate/AST surveillance observations only. The fixture records laboratory observations; derived facts (signal, incident, cluster, verification, action) are owned by later deterministic/application stages and are deliberately absent from this schema. Synthetic-only by construction: the synthetic marker is pinned true and all facility/lab/ward/case/import identifiers must carry the SYNTH- prefix.",
+  "description": "Input contract for the canonical Taskmaster hero dataset (M1B.6 / Issue #30): synthetic WHONET-style isolate/AST surveillance observations only. The fixture records laboratory observations; derived facts (signal, incident, cluster, verification, action) are owned by later deterministic/application stages and are deliberately absent from this schema. Synthetic-only by construction: the synthetic marker is pinned true and all facility/lab/ward/case/import identifiers must carry the SYNTH- prefix. Antimicrobial identity has a single source of truth: the ast_results map key (an antimicrobial code); each entry carries only the observation itself (interpretation), so key/value disagreement is structurally impossible. Semantic invariant not expressible by this plain JSON Schema array shape: isolate_id MUST be unique within one canonical dataset. The committed golden fixture satisfies it; deterministic enforcement belongs to the import/dedup boundary (Issue #40).",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -71,13 +71,9 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "antibiotic_code",
         "interpretation"
       ],
       "properties": {
-        "antibiotic_code": {
-          "$ref": "#/$defs/antibiotic_code"
-        },
         "interpretation": {
           "enum": [
             "S",

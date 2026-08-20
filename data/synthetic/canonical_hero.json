@@ -19,12 +19,12 @@
       "patient_token": "SYNTH-CASE-012",
       "source_import_id": "SYNTH-IMPORT-001",
       "ast_results": {
-        "AMK": { "antibiotic_code": "AMK", "interpretation": "S" },
-        "CAZ": { "antibiotic_code": "CAZ", "interpretation": "S" },
-        "CIP": { "antibiotic_code": "CIP", "interpretation": "S" },
-        "CRO": { "antibiotic_code": "CRO", "interpretation": "S" },
-        "MEM": { "antibiotic_code": "MEM", "interpretation": "S" },
-        "SXT": { "antibiotic_code": "SXT", "interpretation": "S" }
+        "AMK": { "interpretation": "S" },
+        "CAZ": { "interpretation": "S" },
+        "CIP": { "interpretation": "S" },
+        "CRO": { "interpretation": "S" },
+        "MEM": { "interpretation": "S" },
+        "SXT": { "interpretation": "S" }
       }
     },
     {
@@ -39,12 +39,12 @@
       "patient_token": "SYNTH-CASE-027",
       "source_import_id": "SYNTH-IMPORT-001",
       "ast_results": {
-        "AMK": { "antibiotic_code": "AMK", "interpretation": "S" },
-        "CAZ": { "antibiotic_code": "CAZ", "interpretation": "S" },
-        "CIP": { "antibiotic_code": "CIP", "interpretation": "R" },
-        "CRO": { "antibiotic_code": "CRO", "interpretation": "S" },
-        "MEM": { "antibiotic_code": "MEM", "interpretation": "S" },
-        "SXT": { "antibiotic_code": "SXT", "interpretation": "S" }
+        "AMK": { "interpretation": "S" },
+        "CAZ": { "interpretation": "S" },
+        "CIP": { "interpretation": "R" },
+        "CRO": { "interpretation": "S" },
+        "MEM": { "interpretation": "S" },
+        "SXT": { "interpretation": "S" }
       }
     },
     {
@@ -59,12 +59,12 @@
       "patient_token": "SYNTH-CASE-031",
       "source_import_id": "SYNTH-IMPORT-001",
       "ast_results": {
-        "AMK": { "antibiotic_code": "AMK", "interpretation": "S" },
-        "CAZ": { "antibiotic_code": "CAZ", "interpretation": "R" },
-        "CIP": { "antibiotic_code": "CIP", "interpretation": "R" },
-        "CRO": { "antibiotic_code": "CRO", "interpretation": "R" },
-        "MEM": { "antibiotic_code": "MEM", "interpretation": "R" },
-        "SXT": { "antibiotic_code": "SXT", "interpretation": "R" }
+        "AMK": { "interpretation": "S" },
+        "CAZ": { "interpretation": "R" },
+        "CIP": { "interpretation": "R" },
+        "CRO": { "interpretation": "R" },
+        "MEM": { "interpretation": "R" },
+        "SXT": { "interpretation": "R" }
       }
     },
     {
@@ -79,12 +79,12 @@
       "patient_token": "SYNTH-CASE-034",
       "source_import_id": "SYNTH-IMPORT-001",
       "ast_results": {
-        "AMK": { "antibiotic_code": "AMK", "interpretation": "S" },
-        "CAZ": { "antibiotic_code": "CAZ", "interpretation": "R" },
-        "CIP": { "antibiotic_code": "CIP", "interpretation": "R" },
-        "CRO": { "antibiotic_code": "CRO", "interpretation": "R" },
-        "MEM": { "antibiotic_code": "MEM", "interpretation": "R" },
-        "SXT": { "antibiotic_code": "SXT", "interpretation": "R" }
+        "AMK": { "interpretation": "S" },
+        "CAZ": { "interpretation": "R" },
+        "CIP": { "interpretation": "R" },
+        "CRO": { "interpretation": "R" },
+        "MEM": { "interpretation": "R" },
+        "SXT": { "interpretation": "R" }
       }
     },
     {
@@ -99,12 +99,12 @@
       "patient_token": "SYNTH-CASE-039",
       "source_import_id": "SYNTH-IMPORT-001",
       "ast_results": {
-        "AMK": { "antibiotic_code": "AMK", "interpretation": "S" },
-        "CAZ": { "antibiotic_code": "CAZ", "interpretation": "R" },
-        "CIP": { "antibiotic_code": "CIP", "interpretation": "R" },
-        "CRO": { "antibiotic_code": "CRO", "interpretation": "R" },
-        "MEM": { "antibiotic_code": "MEM", "interpretation": "R" },
-        "SXT": { "antibiotic_code": "SXT", "interpretation": "R" }
+        "AMK": { "interpretation": "S" },
+        "CAZ": { "interpretation": "R" },
+        "CIP": { "interpretation": "R" },
+        "CRO": { "interpretation": "R" },
+        "MEM": { "interpretation": "R" },
+        "SXT": { "interpretation": "R" }
       }
     },
     {
@@ -119,12 +119,12 @@
       "patient_token": "SYNTH-CASE-052",
       "source_import_id": "SYNTH-IMPORT-001",
       "ast_results": {
-        "AMK": { "antibiotic_code": "AMK", "interpretation": "R" },
-        "CAZ": { "antibiotic_code": "CAZ", "interpretation": "R" },
-        "CIP": { "antibiotic_code": "CIP", "interpretation": "R" },
-        "CRO": { "antibiotic_code": "CRO", "interpretation": "R" },
-        "MEM": { "antibiotic_code": "MEM", "interpretation": "R" },
-        "SXT": { "antibiotic_code": "SXT", "interpretation": "R" }
+        "AMK": { "interpretation": "R" },
+        "CAZ": { "interpretation": "R" },
+        "CIP": { "interpretation": "R" },
+        "CRO": { "interpretation": "R" },
+        "MEM": { "interpretation": "R" },
+        "SXT": { "interpretation": "R" }
       }
     },
     {
@@ -139,12 +139,12 @@
       "patient_token": "SYNTH-CASE-063",
       "source_import_id": "SYNTH-IMPORT-001",
       "ast_results": {
-        "AMK": { "antibiotic_code": "AMK", "interpretation": "S" },
-        "CAZ": { "antibiotic_code": "CAZ", "interpretation": "S" },
-        "CIP": { "antibiotic_code": "CIP", "interpretation": "S" },
-        "CRO": { "antibiotic_code": "CRO", "interpretation": "S" },
-        "MEM": { "antibiotic_code": "MEM", "interpretation": "S" },
-        "SXT": { "antibiotic_code": "SXT", "interpretation": "S" }
+        "AMK": { "interpretation": "S" },
+        "CAZ": { "interpretation": "S" },
+        "CIP": { "interpretation": "S" },
+        "CRO": { "interpretation": "S" },
+        "MEM": { "interpretation": "S" },
+        "SXT": { "interpretation": "S" }
       }
     },
     {
@@ -159,12 +159,12 @@
       "patient_token": "SYNTH-CASE-071",
       "source_import_id": "SYNTH-IMPORT-001",
       "ast_results": {
-        "AMK": { "antibiotic_code": "AMK", "interpretation": "S" },
-        "CAZ": { "antibiotic_code": "CAZ", "interpretation": "S" },
-        "CIP": { "antibiotic_code": "CIP", "interpretation": "S" },
-        "CRO": { "antibiotic_code": "CRO", "interpretation": "S" },
-        "MEM": { "antibiotic_code": "MEM", "interpretation": "S" },
-        "SXT": { "antibiotic_code": "SXT", "interpretation": "S" }
+        "AMK": { "interpretation": "S" },
+        "CAZ": { "interpretation": "S" },
+        "CIP": { "interpretation": "S" },
+        "CRO": { "interpretation": "S" },
+        "MEM": { "interpretation": "S" },
+        "SXT": { "interpretation": "S" }
       }
     }
   ]
