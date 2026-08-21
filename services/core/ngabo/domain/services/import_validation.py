@@ -11,9 +11,10 @@ parser will later emit) into typed ``CanonicalIsolate`` /
 Semantics:
 
 - candidates are raw JSON-derived values — ``collection_date`` is expected
-  as an ISO date STRING (format-checked with ``datetime.date.fromisoformat``,
-  converted nowhere); typed ``date`` values belong to the constructed
-  ``CanonicalIsolate``, not to the candidate;
+  as a date STRING in the exact canonical shape (``YYYY-MM-DD`` full-match
+  first, then calendar validity proven with ``datetime.date.fromisoformat``;
+  converted nowhere); typed date-only ``date`` values belong to the
+  constructed ``CanonicalIsolate``, not to the candidate;
 - material invalid values are REPORTED, never repaired or "helpfully"
   corrected (Issue #38 / ``docs/DATA_SAFETY_EVALUATION.md``);
 - every independent failure is collected — validation never stops at the
@@ -39,6 +40,7 @@ Semantics:
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from datetime import date
 
@@ -83,6 +85,13 @@ be derived from this container (the field order above owns ordering)."""
 
 _VALID_INTERPRETATIONS = frozenset(member.value for member in Interpretation)
 """#30 interpretation vocabulary, derived from the single Interpretation enum."""
+
+_COLLECTION_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+"""Exact canonical collection-date string shape (Issue #30): YYYY-MM-DD.
+
+The full-match shape check runs BEFORE ``date.fromisoformat`` because the
+stdlib parser alone would also accept compact ISO (``20260816``) and ISO
+week dates (``2026-W33-7``), which the canonical schema excludes."""
 
 
 def validate_isolate_candidate(candidate: object) -> ImportValidationReport:
@@ -231,9 +240,22 @@ def _check_collection_date(
                 record_id=record_id,
             )
         ]
+    if not _COLLECTION_DATE_PATTERN.fullmatch(value):
+        # Exact #30 shape first: date.fromisoformat alone would also accept
+        # compact ISO (20260816) and ISO week dates (2026-W33-7).
+        return [
+            _error(
+                ImportValidationErrorCode.INVALID_COLLECTION_DATE,
+                field="collection_date",
+                record_index=record_index,
+                record_id=record_id,
+                detail="expected a valid ISO calendar date (YYYY-MM-DD)",
+            )
+        ]
     try:
-        # Format validation only: the boundary parses to prove the string is
-        # an ISO calendar date but retains no converted value.
+        # Calendar validity: shape-correct strings must still name a real
+        # date (e.g. 2026-02-30 fails). Parsed for proof only; the boundary
+        # retains no converted value.
         date.fromisoformat(value)
     except ValueError:
         return [

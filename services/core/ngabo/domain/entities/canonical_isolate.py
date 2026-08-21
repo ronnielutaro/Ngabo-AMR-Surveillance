@@ -10,10 +10,12 @@ map. This boundary preserves #30 semantics rather than redesigning them:
 - antimicrobial identity lives ONLY in the ``ast_results`` map key (e.g.
   ``"AMK"``); entries are ``AstObservation`` values carrying only the
   interpretation — no nested antibiotic-code field is reintroduced;
-- ``collection_date`` is typed as ``datetime.date`` on the constructed
-  object; converting the schema's ISO date string into that type belongs
-  to the importing code, not to this boundary (which performs no parsing
-  and no normalization);
+- ``collection_date`` is typed as a date-only ``datetime.date`` on the
+  constructed object — the exact type, so timestamp-bearing
+  ``datetime.datetime`` values (which subclass ``date``) are rejected
+  rather than normalized down to their date; converting the schema's ISO
+  date string into that type belongs to the importing code, not to this
+  boundary (which performs no parsing and no normalization);
 - ``isolate_id`` keeps the ``^ISO-\\d{3}$`` shape so it stays suitable as
   the ``record_id`` of a later ``CanonicalRecordReference`` (M1B.4);
 - the SYNTH- prefixed identifier patterns and the dataset envelope
@@ -79,9 +81,13 @@ class CanonicalIsolate:
             raise ValueError(
                 f"Invalid isolate ID {self.isolate_id!r}; expected {ISOLATE_ID_PATTERN.pattern}"
             )
-        if not isinstance(self.collection_date, date):
+        # Exact type, not isinstance: datetime.datetime subclasses date, and
+        # this canonical field is date-only. A datetime must fail closed,
+        # never be normalized down to its date.
+        if type(self.collection_date) is not date:
             raise ValueError(
-                f"Invalid collection date {self.collection_date!r}; expected a datetime.date"
+                f"Invalid collection date {self.collection_date!r}; "
+                "expected a date-only datetime.date (datetime is not accepted)"
             )
         for name in _TEXT_FIELDS:
             value = getattr(self, name)

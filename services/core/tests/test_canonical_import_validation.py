@@ -234,7 +234,15 @@ class TestValidateIsolateCandidate:
 
     @pytest.mark.parametrize(
         "bad_date",
-        ["not-a-date", "2026-13-99", "2026-08-16T10:00:00", "08/16/2026"],
+        [
+            "not-a-date",
+            "2026-13-99",
+            "2026-08-16T10:00:00",
+            "08/16/2026",
+            "2026-8-16",
+            "2026-02-30",
+            "2026-13-01",
+        ],
     )
     def test_invalid_collection_date(self, bad_date: str) -> None:
         report = validate_isolate_candidate(make_candidate(collection_date=bad_date))
@@ -242,6 +250,30 @@ class TestValidateIsolateCandidate:
         error = report.errors[0]
         assert error.code == ImportValidationErrorCode.INVALID_COLLECTION_DATE
         assert error.field == "collection_date"
+
+    def test_collection_date_rejects_compact_iso_form(self) -> None:
+        """Regression: date.fromisoformat accepts 20260816; the canonical
+        contract requires the exact YYYY-MM-DD shape."""
+        report = validate_isolate_candidate(make_candidate(collection_date="20260816"))
+        assert report.valid is False
+        error = report.errors[0]
+        assert error.code == ImportValidationErrorCode.INVALID_COLLECTION_DATE
+        assert error.field == "collection_date"
+
+    def test_collection_date_rejects_iso_week_date_form(self) -> None:
+        """Regression: date.fromisoformat accepts ISO week dates such as
+        2026-W33-7; the canonical contract requires the exact YYYY-MM-DD shape."""
+        report = validate_isolate_candidate(make_candidate(collection_date="2026-W33-7"))
+        assert report.valid is False
+        error = report.errors[0]
+        assert error.code == ImportValidationErrorCode.INVALID_COLLECTION_DATE
+        assert error.field == "collection_date"
+
+    @pytest.mark.parametrize("good_date", ["2026-08-16", "2024-02-29"])
+    def test_collection_date_accepts_exact_calendar_dates(self, good_date: str) -> None:
+        report = validate_isolate_candidate(make_candidate(collection_date=good_date))
+        assert report.valid is True
+        assert report.errors == ()
 
     def test_collection_date_must_be_string(self) -> None:
         """Candidates are raw JSON-derived values; typed date belongs to CanonicalIsolate."""

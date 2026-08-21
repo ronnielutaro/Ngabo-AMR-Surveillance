@@ -9,7 +9,7 @@ FastAPI/GCP/ADK/Gemini dependency appears anywhere in the boundary.
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
-from datetime import date
+from datetime import date, datetime
 
 import pytest
 
@@ -141,6 +141,13 @@ class TestCanonicalIsolate:
         """The typed boundary takes datetime.date; string conversion belongs to importers."""
         with pytest.raises(ValueError):
             make_isolate(collection_date="2026-08-16")  # type: ignore[arg-type]
+
+    def test_rejects_datetime_collection_date(self) -> None:
+        """Regression: datetime.datetime subclasses date, but this canonical
+        field is date-only. A timestamp-bearing datetime must fail closed,
+        never be normalized down to its date."""
+        with pytest.raises(ValueError):
+            make_isolate(collection_date=datetime(2026, 8, 16, 10, 30))
 
     @pytest.mark.parametrize(
         "field_name",
