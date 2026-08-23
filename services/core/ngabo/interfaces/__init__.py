@@ -1,7 +1,21 @@
-"""Ngabo interfaces layer — HTTP/event translation.
+"""Interfaces layer: transport, API, and format adapters (M2.2 / Issue #39)."""
 
-Owns FastAPI routes and Pub/Sub handlers that translate external input into
-application commands. No scientific/business policy lives here.
+from __future__ import annotations
 
-Intentionally empty in the M1A scaffold; populated by later milestones.
-"""
+from ngabo.interfaces.parsers import (
+    ACCEPTED_INTERPRETATIONS,
+    DEFAULT_WHONET_COLUMN_MAPPING,
+    WhonetParserError,
+    WhonetParserErrorCode,
+    WhonetParseResult,
+    parse_whonet_csv,
+)
+
+__all__ = [
+    "ACCEPTED_INTERPRETATIONS",
+    "DEFAULT_WHONET_COLUMN_MAPPING",
+    "WhonetParseResult",
+    "WhonetParserError",
+    "WhonetParserErrorCode",
+    "parse_whonet_csv",
+]

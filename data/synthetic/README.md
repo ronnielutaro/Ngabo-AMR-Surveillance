@@ -11,6 +11,11 @@ Synthetic demonstration datasets (WHONET-style fixtures).
   action facts. All eight `isolate_id` values are unique, satisfying the
   dataset-level uniqueness invariant documented in `../schemas/README.md`
   (deterministic enforcement is owned by Issue #40).
+- `canonical_hero.csv` — the synthetic WHONET-style tabular CSV demonstration
+  fixture (M2.2 / Issue #39) corresponding field-for-field to `canonical_hero.json`.
+  Demonstrates deterministic source-column mapping and normalization into the
+  canonical isolate record boundary.
 
 Every fixture must be explicitly labelled as synthetic; no real patient,
 hospital, or laboratory data may ever be committed.
+
