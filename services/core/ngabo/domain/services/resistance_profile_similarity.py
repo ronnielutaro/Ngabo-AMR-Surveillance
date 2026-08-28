@@ -17,6 +17,19 @@ from ngabo.domain.value_objects.profile_similarity_finding import (
 from ngabo.domain.value_objects.resistance_profile import ResistanceProfile
 
 
+def _resolve_governed_config(
+    config: ProfileSimilarityConfig | None,
+) -> ProfileSimilarityConfig:
+    """Return the closed governed config or fail closed on any non-governed input."""
+    if config is None:
+        return ProfileSimilarityConfig()
+
+    if type(config) is not ProfileSimilarityConfig:
+        raise TypeError("config must be a validated ProfileSimilarityConfig")
+
+    return config
+
+
 def _compute_stable_finding_id(
     *,
     policy_version: str,
@@ -85,7 +98,7 @@ def compute_profile_similarity(
        constitute genomic relatedness, transmission links, outbreak confirmation, or clinical
        guidance.
     """
-    cfg = config if config is not None else ProfileSimilarityConfig()
+    cfg = _resolve_governed_config(config)
 
     ordered_refs: tuple[str, str] = (
         (profile_a.isolate_id, profile_b.isolate_id)
@@ -317,7 +330,7 @@ def compare_isolate_collection(
     - Generates non-reflexive combinations of 2 (i < j).
     - Returns findings ordered deterministically by input_refs.
     """
-    cfg = config if config is not None else ProfileSimilarityConfig()
+    cfg = _resolve_governed_config(config)
 
     seen_isolates: dict[str, CanonicalIsolate] = {}
     for iso in isolates:

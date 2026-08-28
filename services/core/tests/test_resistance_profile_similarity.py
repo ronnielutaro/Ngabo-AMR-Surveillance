@@ -6,6 +6,7 @@ import json
 from datetime import date
 from pathlib import Path
 from types import MappingProxyType
+from typing import Any
 
 import pytest
 
@@ -37,6 +38,32 @@ from ngabo.domain.value_objects.resistance_profile import ResistanceProfile
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 HERO_JSON_PATH = REPO_ROOT / "data" / "synthetic" / "canonical_hero.json"
+
+
+class _SpoofedProfileSimilarityConfig:
+    def __init__(
+        self,
+        *,
+        min_comparable_antibiotics: int,
+        similarity_precision: int,
+    ) -> None:
+        self.policy_version = PROFILE_SIM_POLICY_VERSION
+        self.algorithm_version = PROFILE_SIM_ALGORITHM_VERSION
+        self.config_version = PROFILE_SIM_CONFIG_VERSION
+        self.min_comparable_antibiotics = min_comparable_antibiotics
+        self.strict_organism_match = True
+        self.similarity_precision = similarity_precision
+
+
+def _make_spoofed_profile_similarity_config(
+    *,
+    min_comparable_antibiotics: int,
+    similarity_precision: int,
+) -> Any:
+    return _SpoofedProfileSimilarityConfig(
+        min_comparable_antibiotics=min_comparable_antibiotics,
+        similarity_precision=similarity_precision,
+    )
 
 
 def _make_isolate(
@@ -633,6 +660,80 @@ class TestProofCarryingReferenceCompatibility:
 
 
 class TestValueObjectInvariants:
+    def test_none_config_uses_governed_default_config(self) -> None:
+        iso_a = _make_isolate("ISO-001")
+        iso_b = _make_isolate("ISO-002")
+        prof_a = ResistanceProfile.from_canonical_isolate(iso_a)
+        prof_b = ResistanceProfile.from_canonical_isolate(iso_b)
+
+        finding = compute_profile_similarity(prof_a, prof_b, None)
+
+        assert finding.status == ProfileSimilarityStatus.SUCCESS
+        assert finding.policy_version == PROFILE_SIM_POLICY_VERSION
+        assert finding.algorithm_version == PROFILE_SIM_ALGORITHM_VERSION
+        assert finding.config_version == PROFILE_SIM_CONFIG_VERSION
+
+    def test_valid_governed_config_object_succeeds(self) -> None:
+        iso_a = _make_isolate("ISO-001")
+        iso_b = _make_isolate("ISO-002")
+        cfg = ProfileSimilarityConfig()
+
+        finding = compare_canonical_isolates(iso_a, iso_b, cfg)
+
+        assert finding.status == ProfileSimilarityStatus.SUCCESS
+        assert finding.similarity_score == 1.0
+        assert finding.policy_version == PROFILE_SIM_POLICY_VERSION
+        assert finding.algorithm_version == PROFILE_SIM_ALGORITHM_VERSION
+        assert finding.config_version == PROFILE_SIM_CONFIG_VERSION
+
+    @pytest.mark.parametrize(
+        "spoofed_config",
+        [
+            _make_spoofed_profile_similarity_config(
+                min_comparable_antibiotics=1, similarity_precision=4
+            ),
+            _make_spoofed_profile_similarity_config(
+                min_comparable_antibiotics=3, similarity_precision=2
+            ),
+        ],
+    )
+    def test_spoofed_config_objects_fail_closed(
+        self, spoofed_config: object
+    ) -> None:
+        iso_a = _make_isolate("ISO-001")
+        iso_b = _make_isolate("ISO-002")
+        prof_a = ResistanceProfile.from_canonical_isolate(iso_a)
+        prof_b = ResistanceProfile.from_canonical_isolate(iso_b)
+
+        with pytest.raises(TypeError, match="validated ProfileSimilarityConfig"):
+            compute_profile_similarity(prof_a, prof_b, spoofed_config)  # type: ignore[arg-type]
+
+    def test_dict_config_fails_closed(self) -> None:
+        iso_a = _make_isolate("ISO-001")
+        iso_b = _make_isolate("ISO-002")
+        prof_a = ResistanceProfile.from_canonical_isolate(iso_a)
+        prof_b = ResistanceProfile.from_canonical_isolate(iso_b)
+        spoofed_config = {
+            "policy_version": PROFILE_SIM_POLICY_VERSION,
+            "algorithm_version": PROFILE_SIM_ALGORITHM_VERSION,
+            "config_version": PROFILE_SIM_CONFIG_VERSION,
+            "min_comparable_antibiotics": 3,
+            "strict_organism_match": True,
+            "similarity_precision": 4,
+        }
+
+        with pytest.raises(TypeError, match="validated ProfileSimilarityConfig"):
+            compute_profile_similarity(prof_a, prof_b, spoofed_config)  # type: ignore[arg-type]
+
+    def test_arbitrary_object_config_fails_closed(self) -> None:
+        iso_a = _make_isolate("ISO-001")
+        iso_b = _make_isolate("ISO-002")
+        prof_a = ResistanceProfile.from_canonical_isolate(iso_a)
+        prof_b = ResistanceProfile.from_canonical_isolate(iso_b)
+
+        with pytest.raises(TypeError, match="validated ProfileSimilarityConfig"):
+            compute_profile_similarity(prof_a, prof_b, object())  # type: ignore[arg-type]
+
     def test_config_invariants(self) -> None:
         # Default exact config succeeds with governed ADR 0010 constants
         cfg = ProfileSimilarityConfig()
@@ -691,6 +792,36 @@ class TestValueObjectInvariants:
 
         with pytest.raises(ValueError, match="strict_organism_match must be True"):
             ProfileSimilarityConfig(strict_organism_match=False)
+
+    def test_compare_canonical_isolates_rejects_spoofed_config(self) -> None:
+        iso_a = _make_isolate("ISO-001")
+        iso_b = _make_isolate("ISO-002")
+        spoofed_config = _make_spoofed_profile_similarity_config(
+            min_comparable_antibiotics=1,
+            similarity_precision=4,
+        )
+
+        with pytest.raises(TypeError, match="validated ProfileSimilarityConfig"):
+            compare_canonical_isolates(iso_a, iso_b, spoofed_config)
+
+    @pytest.mark.parametrize(
+        "isolates",
+        [
+            [],
+            [_make_isolate("ISO-001")],
+            [_make_isolate("ISO-001"), _make_isolate("ISO-002")],
+        ],
+    )
+    def test_compare_isolate_collection_rejects_spoofed_config_before_collection_logic(
+        self, isolates: list[CanonicalIsolate]
+    ) -> None:
+        spoofed_config = _make_spoofed_profile_similarity_config(
+            min_comparable_antibiotics=1,
+            similarity_precision=4,
+        )
+
+        with pytest.raises(TypeError, match="validated ProfileSimilarityConfig"):
+            compare_isolate_collection(isolates, spoofed_config)
 
     def test_resistance_profile_immutability(self) -> None:
         iso = _make_isolate("ISO-001")
