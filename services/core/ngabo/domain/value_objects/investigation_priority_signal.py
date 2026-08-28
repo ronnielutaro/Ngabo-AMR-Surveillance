@@ -39,6 +39,25 @@ class SignalComponents:
                 raise ValueError(f"{name} must be finite and within [0.0, 1.0]; got {val}")
 
 
+def compute_composite_score(components: SignalComponents, config: SignalConfig) -> float:
+    """Deterministically compute composite signal score from components and config.
+
+    Enforces exact-type validation on both inputs and applies the governed
+    weighted sum, precision rounding, and [0.0, 1.0] bounding.
+    """
+    if type(components) is not SignalComponents:
+        raise TypeError("components must be an exact SignalComponents instance")
+    if type(config) is not SignalConfig:
+        raise TypeError("config must be an exact validated SignalConfig")
+    raw = (
+        config.w_phenotype * components.c_phenotype
+        + config.w_location * components.c_location
+        + config.w_temporal * components.c_temporal
+        + config.w_baseline * components.c_baseline
+    )
+    return min(1.0, max(0.0, round(raw, config.precision)))
+
+
 @dataclass(frozen=True)
 class InvestigationPrioritySignal:
     """Immutable, machine-verifiable investigation-priority signal candidate.
@@ -46,6 +65,11 @@ class InvestigationPrioritySignal:
     Primary Invariant: This finding is an INVESTIGATION-PRIORITY POLICY OUTPUT.
     It is NEVER an outbreak declaration, outbreak probability, diagnosis, model
     confidence, clinical decision, or prescribing/treatment guidance.
+
+    Semantic Invariant: InvestigationPrioritySignal is a TRIGGERED-ONLY value object.
+    It can only exist when status is TRIGGERED, reason is HIGH_PRIORITY_CLUSTER,
+    cohort count satisfies min_candidate_count, and score satisfies trigger_threshold.
+    Non-triggering evaluations belong strictly in SignalEvaluationResult.
     """
 
     signal_id: str
@@ -103,13 +127,18 @@ class InvestigationPrioritySignal:
         ):
             raise ValueError("facility_organism_count must be an integer >= ward_organism_count")
 
-        if not isinstance(self.components, SignalComponents):
+        if type(self.components) is not SignalComponents:
             cls_name = type(self.components).__name__
-            raise TypeError(f"components must be a SignalComponents instance; got {cls_name}")
+            raise TypeError(
+                f"components must be an exact SignalComponents instance; got {cls_name}"
+            )
 
-        if not isinstance(self.policy_config, SignalConfig):
+        # Exact-type enforcement closing subclass bypass
+        if type(self.policy_config) is not SignalConfig:
             cls_name = type(self.policy_config).__name__
-            raise TypeError(f"policy_config must be a SignalConfig instance; got {cls_name}")
+            raise TypeError(
+                f"policy_config must be an exact validated SignalConfig; got {cls_name}"
+            )
 
         if not isinstance(self.signal_score, float) or isinstance(self.signal_score, bool):
             raise TypeError("signal_score must be a float")
@@ -128,6 +157,15 @@ class InvestigationPrioritySignal:
                 f"got {self.trigger_threshold}"
             )
 
+        # Internal score self-consistency: signal_score must exactly match score computed
+        # from persisted components and policy_config
+        expected_score = compute_composite_score(self.components, self.policy_config)
+        if self.signal_score != expected_score:
+            raise ValueError(
+                f"signal_score ({self.signal_score}) does not match score computed from "
+                f"components and policy_config ({expected_score})"
+            )
+
         if self.policy_config.trigger_threshold != self.trigger_threshold:
             raise ValueError(
                 f"trigger_threshold ({self.trigger_threshold}) does not match "
@@ -140,11 +178,30 @@ class InvestigationPrioritySignal:
         if self.policy_config.algorithm_version != self.algorithm_version:
             raise ValueError("algorithm_version does not match policy_config.algorithm_version")
 
-        if not isinstance(self.status, SignalStatus):
-            raise TypeError(f"Invalid status {self.status!r}; expected SignalStatus")
+        # Triggered-only semantic invariant: reject any non-triggered states
+        if self.status != SignalStatus.TRIGGERED:
+            raise ValueError(
+                f"InvestigationPrioritySignal is a triggered-only value object; "
+                f"status must be SignalStatus.TRIGGERED, got {self.status!r}"
+            )
 
-        if not isinstance(self.reason, SignalReason):
-            raise TypeError(f"Invalid reason {self.reason!r}; expected SignalReason")
+        if self.reason != SignalReason.HIGH_PRIORITY_CLUSTER:
+            raise ValueError(
+                f"InvestigationPrioritySignal requires reason=SignalReason.HIGH_PRIORITY_CLUSTER; "
+                f"got {self.reason!r}"
+            )
+
+        if self.ward_organism_count < self.policy_config.min_candidate_count:
+            raise ValueError(
+                f"ward_organism_count ({self.ward_organism_count}) must be >= "
+                f"policy_config.min_candidate_count ({self.policy_config.min_candidate_count})"
+            )
+
+        if self.signal_score < self.policy_config.trigger_threshold:
+            raise ValueError(
+                f"signal_score ({self.signal_score}) must be >= "
+                f"policy_config.trigger_threshold ({self.policy_config.trigger_threshold})"
+            )
 
         if not isinstance(self.supporting_finding_refs, tuple):
             raise TypeError("supporting_finding_refs must be a tuple of strings")
@@ -162,21 +219,6 @@ class InvestigationPrioritySignal:
             )
         for ref in self.supporting_isolate_refs:
             _require_opaque_id(ref, "supporting isolate reference")
-
-        if self.status == SignalStatus.TRIGGERED:
-            if self.ward_organism_count < self.policy_config.min_candidate_count:
-                raise ValueError(
-                    f"TRIGGERED signal status requires ward_organism_count >= "
-                    f"{self.policy_config.min_candidate_count}"
-                )
-            if self.signal_score < self.trigger_threshold:
-                raise ValueError(
-                    "TRIGGERED signal status requires signal_score >= trigger_threshold"
-                )
-            if self.reason != SignalReason.HIGH_PRIORITY_CLUSTER:
-                raise ValueError(
-                    "TRIGGERED signal status requires reason=SignalReason.HIGH_PRIORITY_CLUSTER"
-                )
 
     @property
     def w_phenotype(self) -> float:
@@ -220,13 +262,7 @@ class InvestigationPrioritySignal:
 
     def recompute_score(self) -> float:
         """Deterministically recompute composite score from persisted components and config."""
-        raw = (
-            self.policy_config.w_phenotype * self.components.c_phenotype
-            + self.policy_config.w_location * self.components.c_location
-            + self.policy_config.w_temporal * self.components.c_temporal
-            + self.policy_config.w_baseline * self.components.c_baseline
-        )
-        return min(1.0, max(0.0, round(raw, self.policy_config.precision)))
+        return compute_composite_score(self.components, self.policy_config)
 
     def verify_trigger_decision(self) -> bool:
         """Deterministically verify whether this candidate satisfies the trigger policy."""

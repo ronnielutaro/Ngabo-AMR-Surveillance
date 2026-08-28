@@ -27,6 +27,7 @@ from ngabo.domain.entities.canonical_isolate import CanonicalIsolate
 from ngabo.domain.enums.interpretation import Interpretation
 from ngabo.domain.enums.signal_status import SignalReason, SignalStatus
 from ngabo.domain.services.signal_detection import (
+    SignalEvaluationResult,
     _compute_signal_id,
     _resolve_governed_config,
     evaluate_cohort_signal,
@@ -36,6 +37,7 @@ from ngabo.domain.services.signal_detection import (
 from ngabo.domain.value_objects.investigation_priority_signal import (
     InvestigationPrioritySignal,
     SignalComponents,
+    compute_composite_score,
 )
 from ngabo.domain.value_objects.proof_references import DeterministicFindingReference
 from ngabo.domain.value_objects.signal_config import SignalConfig
@@ -661,7 +663,7 @@ class TestValueObjectHardening:
                 )
 
     def test_investigation_priority_signal_rejects_non_finite_score(self) -> None:
-        comp = SignalComponents(c_phenotype=1.0, c_location=1.0, c_temporal=1.0, c_baseline=1.0)
+        comp = SignalComponents(c_phenotype=1.0, c_location=0.75, c_temporal=1.0, c_baseline=1.0)
         for bad_score in (float("nan"), float("inf"), float("-inf"), -0.01, 1.01):
             with pytest.raises(ValueError, match="signal_score must be finite and within"):
                 InvestigationPrioritySignal(
@@ -688,7 +690,7 @@ class TestValueObjectHardening:
                 )
 
     def test_investigation_priority_signal_rejects_non_finite_trigger_threshold(self) -> None:
-        comp = SignalComponents(c_phenotype=1.0, c_location=1.0, c_temporal=1.0, c_baseline=1.0)
+        comp = SignalComponents(c_phenotype=1.0, c_location=0.75, c_temporal=1.0, c_baseline=1.0)
         for bad_thresh in (float("nan"), float("inf"), float("-inf"), -0.1, 1.1):
             with pytest.raises(ValueError, match="trigger_threshold must be finite and within"):
                 InvestigationPrioritySignal(
@@ -715,7 +717,7 @@ class TestValueObjectHardening:
                 )
 
     def test_policy_config_mismatch_fails_closed(self) -> None:
-        comp = SignalComponents(c_phenotype=1.0, c_location=1.0, c_temporal=1.0, c_baseline=1.0)
+        comp = SignalComponents(c_phenotype=1.0, c_location=0.75, c_temporal=1.0, c_baseline=1.0)
         with pytest.raises(ValueError, match="policy_version does not match"):
             InvestigationPrioritySignal(
                 signal_id="sig-0123456789abcdef",
@@ -738,6 +740,220 @@ class TestValueObjectHardening:
                 supporting_isolate_refs=("ISO-001", "ISO-002", "ISO-003"),
                 output_value="out",
                 policy_config=SignalConfig(),
+            )
+
+    def test_score_self_consistency_enforced(self) -> None:
+        """Signal object must not carry claimed score disagreeing with components/policy."""
+        cfg = SignalConfig()
+        comp = SignalComponents(c_phenotype=1.0, c_location=0.75, c_temporal=1.0, c_baseline=1.0)
+        # Components imply exactly 0.9375
+        expected_score = compute_composite_score(comp, cfg)
+        assert expected_score == 0.9375
+
+        # Valid claimed score matching implied score succeeds
+        sig = InvestigationPrioritySignal(
+            signal_id="sig-0123456789abcdef",
+            policy_version="ngabo-signal-v1",
+            algorithm_version="composite-priority-v1",
+            config_version="signal-win7d-org-facility-ward-v1",
+            organism_code="kle",
+            facility_id="SYNTH-FACILITY-001",
+            ward="SYNTH-WARD-A",
+            window_start=date(2026, 8, 12),
+            window_end=date(2026, 8, 18),
+            ward_organism_count=3,
+            facility_organism_count=4,
+            components=comp,
+            signal_score=0.9375,
+            trigger_threshold=0.7500,
+            status=SignalStatus.TRIGGERED,
+            reason=SignalReason.HIGH_PRIORITY_CLUSTER,
+            supporting_finding_refs=("tconc-1",),
+            supporting_isolate_refs=("ISO-001", "ISO-002", "ISO-003"),
+            output_value="out",
+            policy_config=cfg,
+        )
+        assert sig.signal_score == 0.9375
+
+        # Claiming any score that disagrees with computed components fails closed
+        for tampered_score in (0.9374, 0.9376, 0.9500, 0.7500, 1.0000, 0.8500):
+            with pytest.raises(
+                ValueError,
+                match="does not match score computed from components and policy_config",
+            ):
+                InvestigationPrioritySignal(
+                    signal_id="sig-0123456789abcdef",
+                    policy_version="ngabo-signal-v1",
+                    algorithm_version="composite-priority-v1",
+                    config_version="signal-win7d-org-facility-ward-v1",
+                    organism_code="kle",
+                    facility_id="SYNTH-FACILITY-001",
+                    ward="SYNTH-WARD-A",
+                    window_start=date(2026, 8, 12),
+                    window_end=date(2026, 8, 18),
+                    ward_organism_count=3,
+                    facility_organism_count=4,
+                    components=comp,
+                    signal_score=tampered_score,
+                    trigger_threshold=0.7500,
+                    status=SignalStatus.TRIGGERED,
+                    reason=SignalReason.HIGH_PRIORITY_CLUSTER,
+                    supporting_finding_refs=("tconc-1",),
+                    supporting_isolate_refs=("ISO-001", "ISO-002", "ISO-003"),
+                    output_value="out",
+                    policy_config=cfg,
+                )
+
+    def test_cannot_claim_triggering_score_by_mutating_persisted_score(self) -> None:
+        """Low components implying 0.5000 cannot claim triggering score 0.7500 or 0.9375."""
+        cfg = SignalConfig()
+        low_comp = SignalComponents(c_phenotype=0.5, c_location=0.5, c_temporal=0.5, c_baseline=0.5)
+        assert compute_composite_score(low_comp, cfg) == 0.5000
+
+        with pytest.raises(
+            ValueError, match="does not match score computed from components and policy_config"
+        ):
+            InvestigationPrioritySignal(
+                signal_id="sig-0123456789abcdef",
+                policy_version="ngabo-signal-v1",
+                algorithm_version="composite-priority-v1",
+                config_version="signal-win7d-org-facility-ward-v1",
+                organism_code="kle",
+                facility_id="SYNTH-FACILITY-001",
+                ward="SYNTH-WARD-A",
+                window_start=date(2026, 8, 12),
+                window_end=date(2026, 8, 18),
+                ward_organism_count=3,
+                facility_organism_count=4,
+                components=low_comp,
+                signal_score=0.7500,
+                trigger_threshold=0.7500,
+                status=SignalStatus.TRIGGERED,
+                reason=SignalReason.HIGH_PRIORITY_CLUSTER,
+                supporting_finding_refs=("tconc-1",),
+                supporting_isolate_refs=("ISO-001", "ISO-002", "ISO-003"),
+                output_value="out",
+                policy_config=cfg,
+            )
+
+    def test_investigation_priority_signal_is_triggered_only(self) -> None:
+        """InvestigationPrioritySignal rejects all non-triggered states, reasons, counts, scores."""
+        cfg = SignalConfig()
+        comp = SignalComponents(c_phenotype=1.0, c_location=0.75, c_temporal=1.0, c_baseline=1.0)
+
+        # 1. Reject NO_SIGNAL
+        with pytest.raises(
+            ValueError, match="triggered-only value object; status must be SignalStatus.TRIGGERED"
+        ):
+            InvestigationPrioritySignal(
+                signal_id="sig-0123456789abcdef",
+                policy_version="ngabo-signal-v1",
+                algorithm_version="composite-priority-v1",
+                config_version="signal-win7d-org-facility-ward-v1",
+                organism_code="kle",
+                facility_id="SYNTH-FACILITY-001",
+                ward="SYNTH-WARD-A",
+                window_start=date(2026, 8, 12),
+                window_end=date(2026, 8, 18),
+                ward_organism_count=3,
+                facility_organism_count=4,
+                components=comp,
+                signal_score=0.9375,
+                trigger_threshold=0.7500,
+                status=SignalStatus.NO_SIGNAL,
+                reason=SignalReason.HIGH_PRIORITY_CLUSTER,
+                supporting_finding_refs=("tconc-1",),
+                supporting_isolate_refs=("ISO-001", "ISO-002", "ISO-003"),
+                output_value="out",
+                policy_config=cfg,
+            )
+
+        # 2. Reject INSUFFICIENT_DATA
+        with pytest.raises(
+            ValueError, match="triggered-only value object; status must be SignalStatus.TRIGGERED"
+        ):
+            InvestigationPrioritySignal(
+                signal_id="sig-0123456789abcdef",
+                policy_version="ngabo-signal-v1",
+                algorithm_version="composite-priority-v1",
+                config_version="signal-win7d-org-facility-ward-v1",
+                organism_code="kle",
+                facility_id="SYNTH-FACILITY-001",
+                ward="SYNTH-WARD-A",
+                window_start=date(2026, 8, 12),
+                window_end=date(2026, 8, 18),
+                ward_organism_count=3,
+                facility_organism_count=4,
+                components=comp,
+                signal_score=0.9375,
+                trigger_threshold=0.7500,
+                status=SignalStatus.INSUFFICIENT_DATA,
+                reason=SignalReason.HIGH_PRIORITY_CLUSTER,
+                supporting_finding_refs=("tconc-1",),
+                supporting_isolate_refs=("ISO-001", "ISO-002", "ISO-003"),
+                output_value="out",
+                policy_config=cfg,
+            )
+
+        # 3. Reject non-HIGH_PRIORITY_CLUSTER reasons
+        for bad_reason in (
+            SignalReason.BELOW_PRIORITY_THRESHOLD,
+            SignalReason.INSUFFICIENT_CLUSTER_SIZE,
+            SignalReason.INSUFFICIENT_PHENOTYPE_EVIDENCE,
+            SignalReason.INVALID_BASELINE_CONFIGURATION,
+        ):
+            with pytest.raises(
+                ValueError, match="requires reason=SignalReason.HIGH_PRIORITY_CLUSTER"
+            ):
+                InvestigationPrioritySignal(
+                    signal_id="sig-0123456789abcdef",
+                    policy_version="ngabo-signal-v1",
+                    algorithm_version="composite-priority-v1",
+                    config_version="signal-win7d-org-facility-ward-v1",
+                    organism_code="kle",
+                    facility_id="SYNTH-FACILITY-001",
+                    ward="SYNTH-WARD-A",
+                    window_start=date(2026, 8, 12),
+                    window_end=date(2026, 8, 18),
+                    ward_organism_count=3,
+                    facility_organism_count=4,
+                    components=comp,
+                    signal_score=0.9375,
+                    trigger_threshold=0.7500,
+                    status=SignalStatus.TRIGGERED,
+                    reason=bad_reason,
+                    supporting_finding_refs=("tconc-1",),
+                    supporting_isolate_refs=("ISO-001", "ISO-002", "ISO-003"),
+                    output_value="out",
+                    policy_config=cfg,
+                )
+
+        # 4. Reject ward_organism_count < 3
+        with pytest.raises(
+            ValueError,
+            match=r"ward_organism_count \(2\) must be >= policy_config\.min_candidate_count \(3\)",
+        ):
+            InvestigationPrioritySignal(
+                signal_id="sig-0123456789abcdef",
+                policy_version="ngabo-signal-v1",
+                algorithm_version="composite-priority-v1",
+                config_version="signal-win7d-org-facility-ward-v1",
+                organism_code="kle",
+                facility_id="SYNTH-FACILITY-001",
+                ward="SYNTH-WARD-A",
+                window_start=date(2026, 8, 12),
+                window_end=date(2026, 8, 18),
+                ward_organism_count=2,
+                facility_organism_count=4,
+                components=comp,
+                signal_score=0.9375,
+                trigger_threshold=0.7500,
+                status=SignalStatus.TRIGGERED,
+                reason=SignalReason.HIGH_PRIORITY_CLUSTER,
+                supporting_finding_refs=("tconc-1",),
+                supporting_isolate_refs=("ISO-001", "ISO-002"),
+                output_value="out",
+                policy_config=cfg,
             )
 
 
@@ -814,6 +1030,67 @@ class TestConfigAndGovernanceInvariants:
                 isolates,
                 date(2026, 8, 18),
                 config=SubConfig(),
+            )
+
+    def test_subclass_config_rejected_in_all_downstream_trust_boundaries(self) -> None:
+        """Adversarial subclass attempting to override policy parameters is rejected everywhere."""
+
+        class MaliciousSubConfig(SignalConfig):
+            # Attempt to bypass trigger threshold or alter weights
+            trigger_threshold: float = 0.5000
+            w_phenotype: float = 0.80
+
+        sub = MaliciousSubConfig()
+        comp = SignalComponents(c_phenotype=1.0, c_location=0.75, c_temporal=1.0, c_baseline=1.0)
+
+        # 1. InvestigationPrioritySignal constructor rejects subclass
+        with pytest.raises(TypeError, match="exact validated SignalConfig"):
+            InvestigationPrioritySignal(
+                signal_id="sig-0123456789abcdef",
+                policy_version="ngabo-signal-v1",
+                algorithm_version="composite-priority-v1",
+                config_version="signal-win7d-org-facility-ward-v1",
+                organism_code="kle",
+                facility_id="SYNTH-FACILITY-001",
+                ward="SYNTH-WARD-A",
+                window_start=date(2026, 8, 12),
+                window_end=date(2026, 8, 18),
+                ward_organism_count=3,
+                facility_organism_count=4,
+                components=comp,
+                signal_score=0.9375,
+                trigger_threshold=0.7500,
+                status=SignalStatus.TRIGGERED,
+                reason=SignalReason.HIGH_PRIORITY_CLUSTER,
+                supporting_finding_refs=("tconc-1",),
+                supporting_isolate_refs=("ISO-001", "ISO-002", "ISO-003"),
+                output_value="out",
+                policy_config=sub,
+            )
+
+        # 2. recompute_signal_score rejects subclass
+        with pytest.raises(TypeError, match="exact validated SignalConfig"):
+            recompute_signal_score(comp, sub)
+
+        # 3. compute_composite_score rejects subclass
+        with pytest.raises(TypeError, match="exact validated SignalConfig"):
+            compute_composite_score(comp, sub)
+
+        # 4. SignalEvaluationResult rejects subclass
+        with pytest.raises(TypeError, match="exact validated SignalConfig"):
+            SignalEvaluationResult(
+                organism_code="kle",
+                facility_id="SYNTH-FACILITY-001",
+                ward="SYNTH-WARD-A",
+                window_start=date(2026, 8, 12),
+                window_end=date(2026, 8, 18),
+                ward_organism_count=3,
+                status=SignalStatus.TRIGGERED,
+                reason=SignalReason.HIGH_PRIORITY_CLUSTER,
+                components=comp,
+                signal_score=0.9375,
+                signal=None,
+                policy_config=sub,
             )
 
 

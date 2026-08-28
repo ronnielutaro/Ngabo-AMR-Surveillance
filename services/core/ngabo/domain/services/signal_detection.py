@@ -28,6 +28,7 @@ from ngabo.domain.value_objects.concentration_config import ConcentrationConfig
 from ngabo.domain.value_objects.investigation_priority_signal import (
     InvestigationPrioritySignal,
     SignalComponents,
+    compute_composite_score,
 )
 from ngabo.domain.value_objects.signal_config import SignalConfig
 
@@ -52,6 +53,13 @@ class SignalEvaluationResult:
     signal_score: float | None
     signal: InvestigationPrioritySignal | None
     policy_config: SignalConfig
+
+    def __post_init__(self) -> None:
+        if type(self.policy_config) is not SignalConfig:
+            cls_name = type(self.policy_config).__name__
+            raise TypeError(
+                f"policy_config must be an exact validated SignalConfig; got {cls_name}"
+            )
 
 
 def _resolve_governed_config(config: SignalConfig | None) -> SignalConfig:
@@ -171,17 +179,7 @@ def recompute_signal_score(
     config: SignalConfig,
 ) -> float:
     """Deterministically recompute composite score from persisted components and config."""
-    if not isinstance(components, SignalComponents):
-        raise TypeError("components must be a SignalComponents instance")
-    if not isinstance(config, SignalConfig):
-        raise TypeError("config must be a SignalConfig instance")
-    raw = (
-        config.w_phenotype * components.c_phenotype
-        + config.w_location * components.c_location
-        + config.w_temporal * components.c_temporal
-        + config.w_baseline * components.c_baseline
-    )
-    return min(1.0, max(0.0, round(raw, config.precision)))
+    return compute_composite_score(components, config)
 
 
 def evaluate_cohort_signal(
@@ -372,14 +370,8 @@ def evaluate_cohort_signal(
         c_baseline=c_baseline,
     )
 
-    # Composite score
-    raw_score = (
-        cfg.w_phenotype * c_phenotype
-        + cfg.w_location * c_location
-        + cfg.w_temporal * c_temporal
-        + cfg.w_baseline * c_baseline
-    )
-    signal_score = min(1.0, max(0.0, round(raw_score, cfg.precision)))
+    # Composite score via single pure calculation primitive
+    signal_score = compute_composite_score(components, cfg)
 
     # Trigger rule: signal_score >= trigger_threshold AND ward_organism_count >= 3
     if signal_score >= cfg.trigger_threshold and ward_organism_count >= cfg.min_candidate_count:
