@@ -75,22 +75,6 @@ def deduplicate_canonical_batch(
     if not isinstance(batch, CanonicalImportBatch):
         raise TypeError(f"Invalid batch {batch!r}; expected CanonicalImportBatch")
 
-    if not batch.records:
-        error = ImportDeduplicationError(
-            code=ImportDeduplicationErrorCode.EMPTY_BATCH,
-            isolate_id=None,
-            indices=(),
-            differing_fields=(),
-            detail="Batch contains no records to deduplicate",
-        )
-        return ImportDeduplicationReport(
-            success=False,
-            batch=None,
-            watermark=None,
-            exact_duplicates=(),
-            errors=(error,),
-        )
-
     unique_records: list[CanonicalIsolate] = []
     # isolate_id -> (first_record, first_fingerprint, first_index)
     seen_isolates: dict[str, tuple[CanonicalIsolate, str, int]] = {}

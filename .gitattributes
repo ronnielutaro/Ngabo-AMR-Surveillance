@@ -1,0 +1,3 @@
+# Ensure committed synthetic data fixtures have deterministic LF line endings across all platforms
+data/synthetic/*.csv text eol=lf
+data/synthetic/*.json text eol=lf

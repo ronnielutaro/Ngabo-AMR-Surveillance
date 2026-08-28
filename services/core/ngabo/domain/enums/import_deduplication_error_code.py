@@ -9,4 +9,3 @@ class ImportDeduplicationErrorCode(StrEnum):
     """Error codes emitted when canonical import deduplication fails."""
 
     CONFLICTING_DUPLICATE_RECORD = "CONFLICTING_DUPLICATE_RECORD"
-    EMPTY_BATCH = "EMPTY_BATCH"

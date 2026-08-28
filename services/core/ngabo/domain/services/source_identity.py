@@ -34,23 +34,27 @@ CANONICAL_HASH_ALGORITHM = "sha256"
 """Standard cryptographic hash algorithm used for source digests and watermarks."""
 
 
-def compute_raw_source_digest(source: bytes | str) -> SourceDigest:
-    """Compute deterministic SHA-256 digest of raw source content bytes.
+def compute_raw_source_digest(source: bytes | bytearray) -> SourceDigest:
+    """Compute deterministic SHA-256 digest of exact raw artifact content bytes.
+
+    Operates strictly on raw bytes to preserve exact file provenance (including
+    exact line endings, BOM, and character encoding) for later Cloud Storage
+    provenance and ingestion verification. Ordinary ``str`` is not accepted;
+    callers with decoded text must explicitly choose an encoding (e.g.
+    ``text.encode('utf-8')``).
 
     Args:
-        source: Raw file bytes or a string. If a string is provided, it is
-            encoded using explicit UTF-8.
+        source: Exact raw file bytes or bytearray. If a bytearray is provided,
+            it is copied immediately to immutable bytes.
 
     Returns:
         A ``SourceDigest`` containing the lowercase 64-character SHA-256 hex digest.
     """
-    if isinstance(source, str):
-        raw_bytes = source.encode("utf-8")
-    elif isinstance(source, (bytes, bytearray)):
+    if isinstance(source, (bytes, bytearray)):
         raw_bytes = bytes(source)
     else:
         raise TypeError(
-            f"Unsupported source type: {type(source)!r}; expected bytes or str"
+            f"Unsupported source type: {type(source)!r}; expected bytes or bytearray"
         )
     hex_digest = hashlib.sha256(raw_bytes).hexdigest().lower()
     return SourceDigest(algorithm=CANONICAL_HASH_ALGORITHM, hex_digest=hex_digest)
@@ -122,9 +126,13 @@ def compute_isolate_fingerprint(record: CanonicalIsolate) -> str:
 
 
 def compute_source_watermark(records: Sequence[CanonicalIsolate]) -> SourceWatermark:
-    """Compute a deterministic ``SourceWatermark`` over a collection of canonical records.
+    """Compute a deterministic ``SourceWatermark`` over a collection of unique canonical records.
 
     In accordance with Issue #40 and ADR 0006/0008:
+    - Preconditions: input must be a non-empty sequence of unique ``CanonicalIsolate``
+      records. Passing an empty sequence or duplicate isolate IDs (whether exact
+      or conflicting) raises ``ValueError``; imported data must first pass through
+      ``deduplicate_canonical_batch()``;
     - Logical dataset order-independence: records are sorted by ``isolate_id``
       before hashing, ensuring that reordered rows representing the same
       underlying unique observations produce the identical source watermark;
@@ -133,20 +141,36 @@ def compute_source_watermark(records: Sequence[CanonicalIsolate]) -> SourceWater
     - Token format: ``ngabo-source-v1:sha256:<64-char-lowercase-hex>``.
 
     Args:
-        records: A sequence of validated unique ``CanonicalIsolate`` records.
+        records: A non-empty sequence of validated unique ``CanonicalIsolate`` records.
 
     Returns:
         A ``SourceWatermark`` value object wrapping the deterministic token.
+
+    Raises:
+        TypeError: If ``records`` is not a tuple or list, or contains non-CanonicalIsolate items.
+        ValueError: If ``records`` is empty, or contains duplicate ``isolate_id`` values.
     """
     if not isinstance(records, (tuple, list)):
         raise TypeError(
             f"Invalid records {records!r}; expected a tuple or list of CanonicalIsolate"
         )
+    if not records:
+        raise ValueError(
+            "records cannot be empty; expected at least one CanonicalIsolate"
+        )
+
+    seen_isolate_ids: set[str] = set()
     for idx, rec in enumerate(records):
         if not isinstance(rec, CanonicalIsolate):
             raise TypeError(
                 f"Invalid record at position {idx}: {rec!r}; expected CanonicalIsolate"
             )
+        if rec.isolate_id in seen_isolate_ids:
+            raise ValueError(
+                f"Duplicate isolate ID {rec.isolate_id!r} detected at index {idx}; "
+                "SourceWatermark requires unique records (use deduplicate_canonical_batch first)"
+            )
+        seen_isolate_ids.add(rec.isolate_id)
 
     sorted_records = sorted(records, key=lambda r: r.isolate_id)
     payload = {

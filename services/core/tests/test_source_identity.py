@@ -85,11 +85,14 @@ class TestRawSourceDigest:
         assert len(digest_1.hex_digest) == 64
         assert str(digest_1) == f"sha256:{digest_1.hex_digest}"
 
-    def test_string_source_is_utf8_encoded(self) -> None:
+    def test_bytearray_produces_identical_digest_to_bytes(self) -> None:
+        content = b"ISOLATE_ID,COLLECTION_DATE\nISO-001,2026-08-16\n"
+        assert compute_raw_source_digest(bytearray(content)) == compute_raw_source_digest(content)
+
+    def test_string_source_is_rejected(self) -> None:
         text = "ISOLATE_ID,COLLECTION_DATE\nISO-001,2026-08-16\n"
-        digest_text = compute_raw_source_digest(text)
-        digest_bytes = compute_raw_source_digest(text.encode("utf-8"))
-        assert digest_text == digest_bytes
+        with pytest.raises(TypeError, match="Unsupported source type"):
+            compute_raw_source_digest(text)  # type: ignore[arg-type]
 
     def test_byte_change_produces_different_digest(self) -> None:
         base = b"ISO-001,2026-08-16"
@@ -97,23 +100,23 @@ class TestRawSourceDigest:
         assert compute_raw_source_digest(base) != compute_raw_source_digest(modified)
 
     def test_line_ending_difference_produces_different_digest(self) -> None:
-        lf_content = "header\nrow1\n"
-        crlf_content = "header\r\nrow1\r\n"
+        lf_content = b"header\nrow1\n"
+        crlf_content = b"header\r\nrow1\r\n"
         assert compute_raw_source_digest(lf_content) != compute_raw_source_digest(crlf_content)
 
     def test_whitespace_difference_produces_different_digest(self) -> None:
-        content_a = "ISO-001, 2026-08-16"
-        content_b = "ISO-001,2026-08-16"
+        content_a = b"ISO-001, 2026-08-16"
+        content_b = b"ISO-001,2026-08-16"
         assert compute_raw_source_digest(content_a) != compute_raw_source_digest(content_b)
 
     def test_row_reordering_produces_different_raw_digest(self) -> None:
-        order_1 = "header\nrowA\nrowB\n"
-        order_2 = "header\nrowB\nrowA\n"
+        order_1 = b"header\nrowA\nrowB\n"
+        order_2 = b"header\nrowB\nrowA\n"
         assert compute_raw_source_digest(order_1) != compute_raw_source_digest(order_2)
 
     def test_pinned_hero_csv_raw_digest(self) -> None:
-        csv_text = HERO_CSV_PATH.read_text(encoding="utf-8")
-        digest = compute_raw_source_digest(csv_text)
+        csv_bytes = HERO_CSV_PATH.read_bytes()
+        digest = compute_raw_source_digest(csv_bytes)
         assert str(digest) == PINNED_HERO_RAW_DIGEST
 
     def test_invalid_source_type_raises_type_error(self) -> None:
@@ -378,6 +381,30 @@ class TestSourceWatermark:
 
         with pytest.raises(TypeError, match="expected CanonicalIsolate"):
             compute_source_watermark(["not-an-isolate"])  # type: ignore[list-item]
+
+    def test_empty_sequence_raises_value_error(self) -> None:
+        with pytest.raises(ValueError, match="records cannot be empty"):
+            compute_source_watermark([])
+        with pytest.raises(ValueError, match="records cannot be empty"):
+            compute_source_watermark(())
+
+    def test_exact_duplicate_isolate_ids_raises_value_error(self) -> None:
+        iso_1 = _make_isolate("ISO-001")
+        iso_dup = _make_isolate("ISO-001")
+        with pytest.raises(ValueError, match="Duplicate isolate ID 'ISO-001' detected"):
+            compute_source_watermark([iso_1, iso_dup])
+
+    def test_conflicting_ast_duplicate_isolate_ids_raises_value_error(self) -> None:
+        iso_1 = _make_isolate("ISO-001", ast_results={"AMK": Interpretation.SUSCEPTIBLE})
+        iso_2 = _make_isolate("ISO-001", ast_results={"AMK": Interpretation.RESISTANT})
+        with pytest.raises(ValueError, match="Duplicate isolate ID 'ISO-001' detected"):
+            compute_source_watermark([iso_1, iso_2])
+
+    def test_conflicting_metadata_duplicate_isolate_ids_raises_value_error(self) -> None:
+        iso_1 = _make_isolate("ISO-001", organism_code="eco")
+        iso_2 = _make_isolate("ISO-001", organism_code="kle")
+        with pytest.raises(ValueError, match="Duplicate isolate ID 'ISO-001' detected"):
+            compute_source_watermark([iso_1, iso_2])
 
 
 # ============================================================================

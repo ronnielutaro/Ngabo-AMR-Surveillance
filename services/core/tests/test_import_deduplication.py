@@ -364,12 +364,28 @@ class TestDeduplicationValueObjectInvariants:
                 duplicate_indices=(1,),  # expected 2 indices
             )
 
-        with pytest.raises(ValueError, match="must be integer > original_index"):
+        with pytest.raises(ValueError, match="must be strictly increasing integer"):
             DuplicateRecordFinding(
                 isolate_id="ISO-001",
                 occurrences=2,
                 original_index=2,
                 duplicate_indices=(1,),  # 1 <= 2 is invalid
+            )
+
+        with pytest.raises(ValueError, match="must be strictly increasing integer"):
+            DuplicateRecordFinding(
+                isolate_id="ISO-001",
+                occurrences=3,
+                original_index=0,
+                duplicate_indices=(2, 2),  # duplicate index is invalid
+            )
+
+        with pytest.raises(ValueError, match="must be strictly increasing integer"):
+            DuplicateRecordFinding(
+                isolate_id="ISO-001",
+                occurrences=3,
+                original_index=0,
+                duplicate_indices=(3, 2),  # decreasing index is invalid
             )
 
     def test_invalid_input_to_deduplicate_raises_type_error(self) -> None:
