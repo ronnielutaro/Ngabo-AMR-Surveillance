@@ -45,6 +45,11 @@ ISOLATE_ID_PATTERN = re.compile(r"^ISO-\d{3}$")
 ANTIBIOTIC_CODE_PATTERN = re.compile(r"^[A-Z]{2,6}$")
 """Canonical antimicrobial code shape (Issue #30): 2–6 uppercase letters."""
 
+SYNTHETIC_ID_PATTERN = re.compile(r"^SYNTH-[A-Z0-9-]+$")
+"""Canonical synthetic identifier shape (Issue #30): ``SYNTH-`` plus
+uppercase alphanumerics/hyphens.
+"""
+
 _TEXT_FIELDS = (
     "organism_code",
     "organism_name",
@@ -81,9 +86,10 @@ class CanonicalIsolate:
             raise ValueError(
                 f"Invalid isolate ID {self.isolate_id!r}; expected {ISOLATE_ID_PATTERN.pattern}"
             )
-        # Exact type, not isinstance: datetime.datetime subclasses date, and
-        # this canonical field is date-only. A datetime must fail closed,
-        # never be normalized down to its date.
+        # Exact type, not isinstance: datetime.datetime subclasses date, so
+        # timestamp-bearing datetime values are rejected. This canonical field
+        # is date-only — a datetime must fail closed, never be normalized down
+        # to its date.
         if type(self.collection_date) is not date:
             raise ValueError(
                 f"Invalid collection date {self.collection_date!r}; "

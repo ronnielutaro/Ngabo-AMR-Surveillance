@@ -5,10 +5,20 @@ isolate candidates and typed ``CanonicalIsolate`` / ``CanonicalImportBatch``
 entities using the #30 schema and #38 validation boundaries.
 
 Key invariants:
-- Deterministic CSV parsing: stdlib csv with explicit column mappings.
+- Deterministic CSV stream parsing: stdlib csv in strict mode with physical
+  line number tracking via ``csv.reader.line_num``.
 - Source-oriented column names: default mapping connects WHONET CSV headers
   (e.g. ``ISOLATE_ID``, ``COLLECTION_DATE``, ``ORGANISM_CODE``, ``AMK``)
   to canonical fields.
+- Synthetic-only identifier enforcement: ``facility_id``, ``lab_id``,
+  ``ward``, ``patient_token``, and ``source_import_id`` must match the #30
+  schema pattern ``^SYNTH-[A-Z0-9-]+$``. Real/unprefixed identifiers fail
+  closed with structured ``INVALID_SYNTHETIC_ID`` errors.
+- Blank-row policy:
+  - Leading blank lines before header: rejected with ``MALFORMED_CSV_ROW``;
+  - Trailing blank lines after final record: ignored as EOF padding;
+  - Interior blank rows between data records: fail closed with
+    ``MALFORMED_CSV_ROW``.
 - Narrow deterministic normalization:
   - Whitespace trimming on headers and cell values;
   - Supported susceptibility interpretations mapped to ``Interpretation``:
@@ -21,11 +31,12 @@ Key invariants:
   - Preservation of source row order and stable isolate IDs.
 - Fail-closed structured errors: malformed rows, missing headers, missing
   required values, invalid AST columns, unsupported susceptibility values,
-  or canonical validation failures emit structured ``WhonetParserError``s
-  with row number, column name, isolate ID context, and diagnostic detail.
+  non-synthetic identifiers, or canonical validation failures emit
+  structured ``WhonetParserError``s with physical row number, column name,
+  isolate ID context, and diagnostic detail.
 - Multi-error collection: independent row and field errors are collected
-  across the batch in deterministic order (row order -> canonical field
-  order -> AST column order).
+  across the batch in deterministic order (physical row order -> canonical
+  field order -> AST column order).
 - Duplicate isolate IDs remain preserved in source order for Issue #40.
   No hashing, no deduplication, no replay logic is performed here.
 - Framework-free: depends only on Python stdlib and ngabo domain entities.
@@ -47,6 +58,7 @@ from ngabo.domain.entities.canonical_import_batch import CanonicalImportBatch
 from ngabo.domain.entities.canonical_isolate import (
     ANTIBIOTIC_CODE_PATTERN,
     ISOLATE_ID_PATTERN,
+    SYNTHETIC_ID_PATTERN,
     CanonicalIsolate,
 )
 from ngabo.domain.enums.interpretation import Interpretation
@@ -85,19 +97,19 @@ _CANONICAL_TO_SOURCE_ORDER = (
 )
 """Fixed canonical metadata field ordering for deterministic field error reporting."""
 
-_TEXT_FIELDS = frozenset(
+SYNTHETIC_ID_PATTERN = SYNTHETIC_ID_PATTERN
+"""Exact #30 synthetic identifier pattern: SYNTH- prefix with uppercase alphanumerics/dashes."""
+
+_SYNTHETIC_ID_FIELDS = frozenset(
     {
-        "organism_code",
-        "organism_name",
         "facility_id",
         "lab_id",
         "ward",
-        "specimen_type",
         "patient_token",
         "source_import_id",
     }
 )
-"""Text fields required to be non-blank strings."""
+"""Canonical fields required to carry synthetic identifiers matching SYNTHETIC_ID_PATTERN."""
 
 ACCEPTED_INTERPRETATIONS: MappingProxyType[str, Interpretation] = MappingProxyType(
     {
@@ -154,67 +166,126 @@ def parse_whonet_csv(
             ),
         )
 
+    reader = csv.reader(io.StringIO(raw_text), strict=True)
+    header: list[str] | None = None
+    header_line_num: int = 1
+    detected_ast_columns: list[str] = []
+    header_errors: list[WhonetParserError] = []
+
+    stream_errors: list[WhonetParserError] = []
+    data_records: list[tuple[int, list[str], int]] = []
+    pending_empty_rows: list[int] = []
+
+    start_line = 1
     try:
-        reader = csv.reader(io.StringIO(raw_text))
-        all_raw_rows = list(reader)
+        for raw_row in reader:
+            end_line = reader.line_num
+            is_empty = not raw_row or all(not cell.strip() for cell in raw_row)
+
+            if header is None:
+                if is_empty:
+                    stream_errors.append(
+                        WhonetParserError(
+                            code=WhonetParserErrorCode.MALFORMED_CSV_ROW,
+                            row_number=start_line,
+                            record_index=None,
+                            column=None,
+                            record_id=None,
+                            detail="unexpected blank line before CSV header",
+                        )
+                    )
+                else:
+                    header = [cell.strip() for cell in raw_row]
+                    header_line_num = start_line
+                    header_errors, detected_ast_columns = _validate_header(
+                        header_row=header,
+                        header_line_num=header_line_num,
+                        mapping=mapping,
+                        configured_ast_columns=ast_columns,
+                    )
+            else:
+                if is_empty:
+                    pending_empty_rows.append(start_line)
+                else:
+                    if pending_empty_rows:
+                        for empty_start in pending_empty_rows:
+                            stream_errors.append(
+                                WhonetParserError(
+                                    code=WhonetParserErrorCode.MALFORMED_CSV_ROW,
+                                    row_number=empty_start,
+                                    record_index=len(data_records),
+                                    column=None,
+                                    record_id=None,
+                                    detail="unexpected blank row between CSV data records",
+                                )
+                            )
+                        pending_empty_rows.clear()
+
+                    record_idx = len(data_records)
+                    data_records.append(
+                        (start_line, [cell.strip() for cell in raw_row], record_idx)
+                    )
+
+            start_line = end_line + 1
     except csv.Error as exc:
+        if pending_empty_rows:
+            for empty_start in pending_empty_rows:
+                stream_errors.append(
+                    WhonetParserError(
+                        code=WhonetParserErrorCode.MALFORMED_CSV_ROW,
+                        row_number=empty_start,
+                        record_index=len(data_records),
+                        column=None,
+                        record_id=None,
+                        detail="unexpected blank row between CSV data records",
+                    )
+                )
+            pending_empty_rows.clear()
+        stream_errors.append(
+            WhonetParserError(
+                code=WhonetParserErrorCode.MALFORMED_CSV_ROW,
+                row_number=reader.line_num,
+                record_index=len(data_records) if header is not None else None,
+                column=None,
+                record_id=None,
+                detail=f"CSV format error: {exc}",
+            )
+        )
+
+    if header is None:
+        header_missing_errors = tuple(stream_errors) if stream_errors else (
+            WhonetParserError(
+                code=WhonetParserErrorCode.EMPTY_CSV,
+                row_number=None,
+                record_index=None,
+                column=None,
+                record_id=None,
+                detail="CSV contains no header row",
+            ),
+        )
         return WhonetParseResult(
             success=False,
             records=(),
             batch=None,
-            errors=(
-                WhonetParserError(
-                    code=WhonetParserErrorCode.MALFORMED_CSV_ROW,
-                    row_number=1,
-                    record_index=None,
-                    column=None,
-                    record_id=None,
-                    detail=f"CSV parsing error: {exc}",
-                ),
-            ),
+            errors=header_missing_errors,
         )
 
-    # Filter trailing empty rows, but keep row numbering accurate to raw input lines
-    rows_with_numbers: list[tuple[int, list[str]]] = []
-    for line_num, row in enumerate(all_raw_rows, start=1):
-        if not row or all(not cell.strip() for cell in row):
-            continue
-        rows_with_numbers.append((line_num, [cell.strip() for cell in row]))
-
-    if not rows_with_numbers:
-        return WhonetParseResult(
-            success=False,
-            records=(),
-            batch=None,
-            errors=(
-                WhonetParserError(
-                    code=WhonetParserErrorCode.EMPTY_CSV,
-                    row_number=None,
-                    record_index=None,
-                    column=None,
-                    record_id=None,
-                    detail="CSV contains no header or data rows",
-                ),
-            ),
-        )
-
-    header_line_num, header_row = rows_with_numbers[0]
-    header_errors, detected_ast_columns = _validate_header(
-        header_row,
-        header_line_num=header_line_num,
-        mapping=mapping,
-        configured_ast_columns=ast_columns,
-    )
     if header_errors:
+        all_header_errors = stream_errors + header_errors
+        all_header_errors.sort(
+            key=lambda e: (
+                e.row_number if e.row_number is not None else 0,
+                e.record_index if e.record_index is not None else -1,
+            )
+        )
         return WhonetParseResult(
             success=False,
             records=(),
             batch=None,
-            errors=tuple(header_errors),
+            errors=tuple(all_header_errors),
         )
 
-    data_rows = rows_with_numbers[1:]
-    if not data_rows:
+    if not data_records and not stream_errors:
         return WhonetParseResult(
             success=False,
             records=(),
@@ -234,28 +305,27 @@ def parse_whonet_csv(
     # Invert mapping: canonical field -> source column header in this CSV
     field_to_col: dict[str, str] = {}
     for src_col, canon_field in mapping.items():
-        if src_col in header_row:
+        if src_col in header:
             field_to_col[canon_field] = src_col
 
-    errors: list[WhonetParserError] = []
+    errors: list[WhonetParserError] = list(stream_errors)
     parsed_isolates: list[CanonicalIsolate] = []
-    raw_candidates: list[dict[str, object]] = []
 
-    for record_idx, (row_line_num, row_cells) in enumerate(data_rows):
-        if len(row_cells) != len(header_row):
+    for row_start_line, row_cells, record_idx in data_records:
+        if len(row_cells) != len(header):
             errors.append(
                 WhonetParserError(
                     code=WhonetParserErrorCode.MALFORMED_CSV_ROW,
-                    row_number=row_line_num,
+                    row_number=row_start_line,
                     record_index=record_idx,
                     column=None,
                     record_id=None,
-                    detail=f"row has {len(row_cells)} columns; expected {len(header_row)}",
+                    detail=f"row has {len(row_cells)} columns; expected {len(header)}",
                 )
             )
             continue
 
-        row_dict = {header_row[i]: row_cells[i] for i in range(len(header_row))}
+        row_dict = {header[i]: row_cells[i] for i in range(len(header))}
         isolate_col = field_to_col.get("isolate_id")
         raw_isolate_id = row_dict.get(isolate_col, "") if isolate_col else ""
         record_id = (
@@ -264,9 +334,9 @@ def parse_whonet_csv(
             else None
         )
 
-        row_errors, candidate_opt, typed_opt = _parse_and_validate_row(
+        row_errors, typed_opt = _parse_and_validate_row(
             row_dict=row_dict,
-            row_line_num=row_line_num,
+            row_line_num=row_start_line,
             record_idx=record_idx,
             record_id=record_id,
             field_to_col=field_to_col,
@@ -274,17 +344,21 @@ def parse_whonet_csv(
         )
         if row_errors:
             errors.extend(row_errors)
-        elif candidate_opt is not None and typed_opt is not None:
-            raw_candidates.append(candidate_opt)
+        elif typed_opt is not None:
             parsed_isolates.append(typed_opt)
 
     if errors:
+        errors.sort(
+            key=lambda e: (
+                e.row_number if e.row_number is not None else 0,
+                e.record_index if e.record_index is not None else -1,
+            )
+        )
         return WhonetParseResult(
             success=False,
             records=(),
             batch=None,
             errors=tuple(errors),
-            raw_candidates=tuple(raw_candidates),
         )
 
     batch = CanonicalImportBatch(records=tuple(parsed_isolates))
@@ -293,7 +367,6 @@ def parse_whonet_csv(
         records=tuple(parsed_isolates),
         batch=batch,
         errors=(),
-        raw_candidates=tuple(raw_candidates),
     )
 
 
@@ -395,7 +468,7 @@ def _parse_and_validate_row(
     record_id: str | None,
     field_to_col: dict[str, str],
     detected_ast_columns: list[str],
-) -> tuple[list[WhonetParserError], dict[str, object] | None, CanonicalIsolate | None]:
+) -> tuple[list[WhonetParserError], CanonicalIsolate | None]:
     row_errors: list[WhonetParserError] = []
 
     # Validate metadata fields in fixed canonical order
@@ -456,6 +529,20 @@ def _parse_and_validate_row(
                             detail="expected a valid ISO calendar date (YYYY-MM-DD)",
                         )
                     )
+        elif canon_field in _SYNTHETIC_ID_FIELDS and not SYNTHETIC_ID_PATTERN.fullmatch(val):
+            row_errors.append(
+                WhonetParserError(
+                    code=WhonetParserErrorCode.INVALID_SYNTHETIC_ID,
+                    row_number=row_line_num,
+                    record_index=record_idx,
+                    column=src_col,
+                    record_id=record_id,
+                    detail=(
+                        f"invalid synthetic identifier {val!r} for {canon_field}; "
+                        f"expected pattern {SYNTHETIC_ID_PATTERN.pattern}"
+                    ),
+                )
+            )
 
     # Validate AST observations in header column order
     row_ast_results: dict[str, Interpretation] = {}
@@ -495,7 +582,7 @@ def _parse_and_validate_row(
         )
 
     if row_errors:
-        return row_errors, None, None
+        return row_errors, None
 
     # Construct raw candidate mapping for #38 validation
     candidate: dict[str, object] = {
@@ -529,7 +616,7 @@ def _parse_and_validate_row(
                     detail=f"canonical validation error: {err.code.value} on {err.field}",
                 )
             )
-        return row_errors, None, None
+        return row_errors, None
 
     # Construct typed domain entities
     typed_ast = {
@@ -550,4 +637,4 @@ def _parse_and_validate_row(
         ast_results=typed_ast,
     )
 
-    return [], candidate, typed_isolate
+    return [], typed_isolate

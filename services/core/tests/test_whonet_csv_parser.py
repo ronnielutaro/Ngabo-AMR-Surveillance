@@ -11,6 +11,7 @@ import pytest
 
 from ngabo.domain.entities.ast_observation import AstObservation
 from ngabo.domain.entities.canonical_import_batch import CanonicalImportBatch
+from ngabo.domain.entities.canonical_isolate import CanonicalIsolate
 from ngabo.domain.enums.interpretation import Interpretation
 from ngabo.interfaces.parsers import (
     WhonetParserError,
@@ -234,6 +235,273 @@ class TestValidCsvParsing:
         assert any(
             err.code == WhonetParserErrorCode.INVALID_AST_COLUMN and err.column == "MEM"
             for err in res2.errors
+        )
+
+
+class TestSyntheticIdentifierEnforcement:
+    @pytest.mark.parametrize(
+        ("field_col", "invalid_value"),
+        [
+            ("FACILITY_ID", "REAL-HOSPITAL-1"),
+            ("FACILITY_ID", "Mulago Hospital"),
+            ("FACILITY_ID", "SYNTH-"),
+            ("FACILITY_ID", "synth-facility-001"),
+            ("FACILITY_ID", "SYNTH FACILITY"),
+            ("LAB_ID", "LAB-001"),
+            ("LAB_ID", "Kampala-Lab"),
+            ("LAB_ID", "SYNTH-"),
+            ("LAB_ID", "synth-lab-001"),
+            ("LAB_ID", "SYNTH LAB"),
+            ("WARD", "Ward-3A"),
+            ("WARD", "ICU"),
+            ("WARD", "SYNTH-"),
+            ("WARD", "synth-ward-a"),
+            ("WARD", "SYNTH WARD"),
+            ("PATIENT_TOKEN", "PATIENT-123"),
+            ("PATIENT_TOKEN", "John Doe"),
+            ("PATIENT_TOKEN", "CASE-031"),
+            ("PATIENT_TOKEN", "SYNTH-"),
+            ("PATIENT_TOKEN", "synth-case-001"),
+            ("PATIENT_TOKEN", "SYNTH PATIENT"),
+            ("SOURCE_IMPORT_ID", "IMPORT-REAL-1"),
+            ("SOURCE_IMPORT_ID", "IMPORT-2026"),
+            ("SOURCE_IMPORT_ID", "SYNTH-"),
+            ("SOURCE_IMPORT_ID", "synth-import-001"),
+            ("SOURCE_IMPORT_ID", "SYNTH IMPORT"),
+        ],
+    )
+    def test_non_synthetic_identifier_rejected(self, field_col: str, invalid_value: str) -> None:
+        row_fields = {
+            "ISOLATE_ID": "ISO-001",
+            "COLLECTION_DATE": "2026-08-16",
+            "ORGANISM_CODE": "eco",
+            "ORGANISM_NAME": "Escherichia coli",
+            "FACILITY_ID": "SYNTH-FACILITY-001",
+            "LAB_ID": "SYNTH-LAB-001",
+            "WARD": "SYNTH-WARD-A",
+            "SPECIMEN_TYPE": "urine",
+            "PATIENT_TOKEN": "SYNTH-CASE-001",
+            "SOURCE_IMPORT_ID": "SYNTH-IMPORT-001",
+            "AMK": "S",
+            "MEM": "R",
+        }
+        row_fields[field_col] = invalid_value
+        row_str = ",".join(row_fields[col] for col in _VALID_HEADER.split(","))
+        csv_text = "\n".join([_VALID_HEADER, row_str])
+
+        result = parse_whonet_csv(csv_text)
+        assert result.success is False
+        assert len(result.errors) == 1
+        err = result.errors[0]
+        assert err.code == WhonetParserErrorCode.INVALID_SYNTHETIC_ID
+        assert err.column == field_col
+        assert err.record_id == "ISO-001"
+        assert invalid_value in (err.detail or "")
+
+    def test_invalid_facility_id_rejected(self) -> None:
+        row = (
+            "ISO-001,2026-08-16,eco,Escherichia coli,"
+            "Mulago Hospital,SYNTH-LAB-001,SYNTH-WARD-A,urine,"
+            "SYNTH-CASE-001,SYNTH-IMPORT-001,S,R"
+        )
+        result = parse_whonet_csv(f"{_VALID_HEADER}\n{row}")
+        assert result.success is False
+        assert any(
+            err.code == WhonetParserErrorCode.INVALID_SYNTHETIC_ID and err.column == "FACILITY_ID"
+            for err in result.errors
+        )
+
+    def test_invalid_lab_id_rejected(self) -> None:
+        row = (
+            "ISO-001,2026-08-16,eco,Escherichia coli,"
+            "SYNTH-FACILITY-001,Kampala-Lab,SYNTH-WARD-A,urine,"
+            "SYNTH-CASE-001,SYNTH-IMPORT-001,S,R"
+        )
+        result = parse_whonet_csv(f"{_VALID_HEADER}\n{row}")
+        assert result.success is False
+        assert any(
+            err.code == WhonetParserErrorCode.INVALID_SYNTHETIC_ID and err.column == "LAB_ID"
+            for err in result.errors
+        )
+
+    def test_invalid_ward_rejected(self) -> None:
+        row = (
+            "ISO-001,2026-08-16,eco,Escherichia coli,"
+            "SYNTH-FACILITY-001,SYNTH-LAB-001,Ward-3A,urine,"
+            "SYNTH-CASE-001,SYNTH-IMPORT-001,S,R"
+        )
+        result = parse_whonet_csv(f"{_VALID_HEADER}\n{row}")
+        assert result.success is False
+        assert any(
+            err.code == WhonetParserErrorCode.INVALID_SYNTHETIC_ID and err.column == "WARD"
+            for err in result.errors
+        )
+
+    def test_invalid_patient_token_rejected(self) -> None:
+        row = (
+            "ISO-001,2026-08-16,eco,Escherichia coli,"
+            "SYNTH-FACILITY-001,SYNTH-LAB-001,SYNTH-WARD-A,urine,"
+            "John Doe,SYNTH-IMPORT-001,S,R"
+        )
+        result = parse_whonet_csv(f"{_VALID_HEADER}\n{row}")
+        assert result.success is False
+        assert any(
+            err.code == WhonetParserErrorCode.INVALID_SYNTHETIC_ID and err.column == "PATIENT_TOKEN"
+            for err in result.errors
+        )
+
+    def test_invalid_source_import_id_rejected(self) -> None:
+        row = (
+            "ISO-001,2026-08-16,eco,Escherichia coli,"
+            "SYNTH-FACILITY-001,SYNTH-LAB-001,SYNTH-WARD-A,urine,"
+            "SYNTH-CASE-001,IMPORT-REAL-1,S,R"
+        )
+        result = parse_whonet_csv(f"{_VALID_HEADER}\n{row}")
+        assert result.success is False
+        assert any(
+            err.code == WhonetParserErrorCode.INVALID_SYNTHETIC_ID
+            and err.column == "SOURCE_IMPORT_ID"
+            for err in result.errors
+        )
+
+    def test_valid_synthetic_identifiers_pass(self) -> None:
+        valid_row = (
+            "ISO-031,2026-08-17,kle,Klebsiella pneumoniae,"
+            "SYNTH-FACILITY-001,SYNTH-LAB-001,SYNTH-WARD-A,blood,"
+            "SYNTH-CASE-031,SYNTH-IMPORT-001,S,R"
+        )
+        csv_text = "\n".join([_VALID_HEADER, valid_row])
+        result = parse_whonet_csv(csv_text)
+        assert result.success is True
+        assert len(result.records) == 1
+        rec = result.records[0]
+        assert rec.facility_id == "SYNTH-FACILITY-001"
+        assert rec.lab_id == "SYNTH-LAB-001"
+        assert rec.ward == "SYNTH-WARD-A"
+        assert rec.patient_token == "SYNTH-CASE-031"
+        assert rec.source_import_id == "SYNTH-IMPORT-001"
+
+
+class TestPhysicalLineNumberTracking:
+    def test_physical_line_numbers_accurate_after_quoted_multiline_field(self) -> None:
+        # Line 1: Header
+        # Lines 2-3: Valid record with multiline quoted organism name
+        # Line 4: Invalid record with invalid date
+        csv_text = (
+            f"{_VALID_HEADER}\n"
+            "ISO-001,2026-08-16,eco,\"Escherichia\ncoli\","
+            "SYNTH-FACILITY-001,SYNTH-LAB-001,SYNTH-WARD-A,urine,SYNTH-CASE-001,SYNTH-IMPORT-001,S,R\n"
+            "ISO-002,2026-99-99,kle,Klebsiella pneumoniae,"
+            "SYNTH-FACILITY-001,SYNTH-LAB-001,SYNTH-WARD-B,blood,SYNTH-CASE-002,SYNTH-IMPORT-001,S,R\n"
+        )
+        result = parse_whonet_csv(csv_text)
+        assert result.success is False
+        assert len(result.errors) == 1
+        err = result.errors[0]
+        assert err.code == WhonetParserErrorCode.INVALID_COLLECTION_DATE
+        assert err.record_id == "ISO-002"
+        # Physical line number is line 4
+        assert err.row_number == 4
+        assert err.record_index == 1
+
+
+class TestBlankRowPolicy:
+    def test_interior_blank_row_fails_closed(self) -> None:
+        # Line 1: Header
+        # Line 2: Record 0
+        # Line 3: Blank line
+        # Line 4: Record 1
+        csv_text = "\n".join([_VALID_HEADER, _VALID_ROW_1, "", _VALID_ROW_2, ""])
+        result = parse_whonet_csv(csv_text)
+        assert result.success is False
+        assert len(result.errors) == 1
+        err = result.errors[0]
+        assert err.code == WhonetParserErrorCode.MALFORMED_CSV_ROW
+        assert err.row_number == 3
+        assert "blank row between CSV data records" in (err.detail or "")
+
+    def test_leading_blank_line_before_header_fails_closed(self) -> None:
+        csv_text = "\n".join(["", _VALID_HEADER, _VALID_ROW_1])
+        result = parse_whonet_csv(csv_text)
+        assert result.success is False
+        assert any(
+            err.code == WhonetParserErrorCode.MALFORMED_CSV_ROW and err.row_number == 1
+            for err in result.errors
+        )
+
+    def test_trailing_blank_lines_are_safely_ignored(self) -> None:
+        # Standard newline at EOF and trailing blank line
+        csv_text = "\n".join([_VALID_HEADER, _VALID_ROW_1, _VALID_ROW_2, "", ""])
+        result = parse_whonet_csv(csv_text)
+        assert result.success is True
+        assert len(result.records) == 2
+
+
+class TestCsvSyntaxRobustness:
+    def test_malformed_unclosed_quote_fails_closed(self) -> None:
+        bad_csv = (
+            f"{_VALID_HEADER}\n"
+            "ISO-001,2026-08-16,eco,\"unclosed quote,"
+            "SYNTH-FACILITY-001,SYNTH-LAB-001,SYNTH-WARD-A,urine,SYNTH-CASE-001,SYNTH-IMPORT-001,S,R\n"
+        )
+        result = parse_whonet_csv(bad_csv)
+        assert result.success is False
+        assert len(result.errors) == 1
+        err = result.errors[0]
+        assert err.code == WhonetParserErrorCode.MALFORMED_CSV_ROW
+        assert "CSV format error" in (err.detail or "")
+
+    def test_malformed_quote_on_header_fails_closed(self) -> None:
+        bad_csv = '"ISOLATE_ID,COLLECTION_DATE,ORGANISM_CODE'
+        result = parse_whonet_csv(bad_csv)
+        assert result.success is False
+        assert any(
+            err.code == WhonetParserErrorCode.MALFORMED_CSV_ROW and err.row_number == 1
+            for err in result.errors
+        )
+
+    def test_bad_quote_in_field_fails_closed_under_strict_mode(self) -> None:
+        # Strict mode rejects trailing data after closing quote: "eco"1
+        bad_csv = (
+            f"{_VALID_HEADER}\n"
+            "ISO-001,2026-08-16,\"eco\"1,Escherichia coli,"
+            "SYNTH-FACILITY-001,SYNTH-LAB-001,SYNTH-WARD-A,urine,SYNTH-CASE-001,SYNTH-IMPORT-001,S,R\n"
+        )
+        result = parse_whonet_csv(bad_csv)
+        assert result.success is False
+        assert any(
+            err.code == WhonetParserErrorCode.MALFORMED_CSV_ROW
+            for err in result.errors
+        )
+
+    def test_no_raw_csv_error_leaks_to_caller(self) -> None:
+        pathological_inputs = [
+            '"',
+            '"""',
+            '"hello\nworld',
+            'a,"b\nc,"d',
+        ]
+        for bad_input in pathological_inputs:
+            # Must return WhonetParseResult without raising csv.Error
+            result = parse_whonet_csv(bad_input)
+            assert result.success is False
+            assert len(result.errors) >= 1
+
+    def test_malformed_material_row_never_silently_dropped(self) -> None:
+        # Row with wrong column count between valid rows
+        bad_csv = (
+            f"{_VALID_HEADER}\n"
+            f"{_VALID_ROW_1}\n"
+            "ISO-BAD,short,row\n"
+            f"{_VALID_ROW_2}\n"
+        )
+        result = parse_whonet_csv(bad_csv)
+        assert result.success is False
+        assert any(
+            err.code == WhonetParserErrorCode.MALFORMED_CSV_ROW
+            and err.row_number == 3
+            and "row has 3 columns; expected 12" in (err.detail or "")
+            for err in result.errors
         )
 
 
@@ -469,6 +737,8 @@ class TestWhonetParseResultContracts:
         assert res.batch is not None
         assert len(res.records) == 2
         assert res.errors == ()
+        # Verify raw_candidates is not present on WhonetParseResult
+        assert not hasattr(res, "raw_candidates")
 
     def test_failure_result_invariants_raise_on_invalid_construction(self) -> None:
         sample_isolate = parse_whonet_csv(SAMPLE_VALID_CSV).records[0]
@@ -498,4 +768,142 @@ class TestWhonetParseResultContracts:
                         code=WhonetParserErrorCode.EMPTY_CSV,
                     ),
                 ),
+            )
+
+        # Type guards: non-tuple records or errors raise TypeError
+        with pytest.raises(TypeError, match="expected a tuple"):
+            WhonetParseResult(
+                success=False,
+                records=[sample_isolate],  # type: ignore[arg-type]
+                batch=None,
+                errors=(
+                    WhonetParserError(
+                        code=WhonetParserErrorCode.EMPTY_CSV,
+                    ),
+                ),
+            )
+
+        with pytest.raises(TypeError, match="expected a tuple"):
+            WhonetParseResult(
+                success=False,
+                records=(),
+                batch=None,
+                errors=[  # type: ignore[arg-type]
+                    WhonetParserError(
+                        code=WhonetParserErrorCode.EMPTY_CSV,
+                    ),
+                ],
+            )
+
+        # Success must be a bool
+        with pytest.raises(TypeError, match="Invalid success"):
+            WhonetParseResult(
+                success="true",  # type: ignore[arg-type]
+                records=(),
+                batch=None,
+                errors=(
+                    WhonetParserError(
+                        code=WhonetParserErrorCode.EMPTY_CSV,
+                    ),
+                ),
+            )
+
+        # Record element must be CanonicalIsolate
+        with pytest.raises(TypeError, match="expected CanonicalIsolate"):
+            WhonetParseResult(
+                success=True,
+                records=("not-an-isolate",),  # type: ignore[arg-type]
+                batch=batch,
+                errors=(),
+            )
+
+        # Error element must be WhonetParserError
+        with pytest.raises(TypeError, match="expected WhonetParserError"):
+            WhonetParseResult(
+                success=False,
+                records=(),
+                batch=None,
+                errors=("not-an-error",),  # type: ignore[arg-type]
+            )
+
+        # Success requires batch to be CanonicalImportBatch
+        with pytest.raises(ValueError, match="must provide a CanonicalImportBatch"):
+            WhonetParseResult(
+                success=True,
+                records=(sample_isolate,),
+                batch=None,
+                errors=(),
+            )
+
+        # Success requires batch.records == records
+        other_isolate = CanonicalIsolate(
+            isolate_id="ISO-999",
+            collection_date=sample_isolate.collection_date,
+            organism_code=sample_isolate.organism_code,
+            organism_name=sample_isolate.organism_name,
+            facility_id=sample_isolate.facility_id,
+            lab_id=sample_isolate.lab_id,
+            ward=sample_isolate.ward,
+            specimen_type=sample_isolate.specimen_type,
+            patient_token=sample_isolate.patient_token,
+            source_import_id=sample_isolate.source_import_id,
+            ast_results=sample_isolate.ast_results,
+        )
+        with pytest.raises(ValueError, match="batch records must match"):
+            WhonetParseResult(
+                success=True,
+                records=(sample_isolate,),
+                batch=CanonicalImportBatch(records=(other_isolate,)),
+                errors=(),
+            )
+
+        # Failure must not expose a batch
+        with pytest.raises(ValueError, match="must not expose an import batch"):
+            WhonetParseResult(
+                success=False,
+                records=(),
+                batch=batch,
+                errors=(
+                    WhonetParserError(
+                        code=WhonetParserErrorCode.EMPTY_CSV,
+                    ),
+                ),
+            )
+
+
+class TestWhonetParserErrorContracts:
+    def test_valid_construction(self) -> None:
+        err = WhonetParserError(
+            code=WhonetParserErrorCode.INVALID_ISOLATE_ID,
+            row_number=2,
+            record_index=0,
+            column="ISOLATE_ID",
+            record_id="BAD",
+            detail="detail message",
+        )
+        assert err.code == WhonetParserErrorCode.INVALID_ISOLATE_ID
+        assert err.row_number == 2
+        assert err.record_index == 0
+        assert err.column == "ISOLATE_ID"
+        assert err.record_id == "BAD"
+        assert err.detail == "detail message"
+
+    def test_invalid_code_type_raises_type_error(self) -> None:
+        with pytest.raises(TypeError, match="Invalid code"):
+            WhonetParserError(code="INVALID_ISOLATE_ID")  # type: ignore[arg-type]
+
+    @pytest.mark.parametrize("bad_row", [0, -1, True, False])
+    def test_invalid_row_number_raises_value_error(self, bad_row: object) -> None:
+        with pytest.raises(ValueError, match="Invalid row_number"):
+            WhonetParserError(
+                code=WhonetParserErrorCode.EMPTY_CSV,
+                row_number=bad_row,  # type: ignore[arg-type]
+            )
+
+    @pytest.mark.parametrize("bad_index", [-1, -5, True, False])
+    def test_invalid_record_index_raises_value_error(self, bad_index: object) -> None:
+        with pytest.raises(ValueError, match="Invalid record_index"):
+            WhonetParserError(
+                code=WhonetParserErrorCode.EMPTY_CSV,
+                record_index=bad_index,  # type: ignore[arg-type]
             )
