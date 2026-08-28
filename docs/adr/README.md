@@ -15,6 +15,7 @@ Current ADRs:
 - `0009-proof-carrying-reasoning.md` — machine-verifiable evidence/reference contracts for model-generated claims before autonomous action
 - `0010-v0.1-resistance-profile-similarity-policy.md` — v0.1 maintainer-approved resistance-profile similarity policy and non-clinical prototype boundaries
 - `0011-v0.1-temporal-location-concentration-policy.md` — v0.1 maintainer-approved temporal and location concentration policy and descriptive measurement boundaries
+- `0012-v0.1-investigation-priority-signal-policy.md` — v0.1 maintainer-approved investigation-priority signal policy, composite scoring, and triage boundaries
 
 ## Supersession Note
 

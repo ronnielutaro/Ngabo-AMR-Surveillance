@@ -9,6 +9,6 @@ claim-verification error-code enum (M1B.5), Issue #38 for the
 interpretation and import-validation error-code enums (M2.1),
 Issue #40 for the source replay disposition and import deduplication
 error-code enums (M2.3), Issue #45 for the resistance profile similarity
-status enum (M2.5), and Issue #46 for the concentration status and
-reason enums (M2.6).
+status enum (M2.5), Issue #46 for the concentration status and
+reason enums (M2.6), and Issue #47 for the signal status and reason enums (M2.7).
 """
