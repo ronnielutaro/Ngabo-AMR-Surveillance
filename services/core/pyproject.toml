@@ -8,6 +8,7 @@ dependencies = []
 
 [project.scripts]
 ngabo-health = "ngabo.bootstrap.health:main"
+ngabo-certify-hero = "ngabo.bootstrap.certify_hero:main"
 
 [dependency-groups]
 dev = [

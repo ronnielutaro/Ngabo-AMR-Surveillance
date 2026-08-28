@@ -1,0 +1,46 @@
+{
+  "hero_certification": {
+    "certified": true,
+    "input_valid": true,
+    "deterministic_import": true,
+    "input_location": "data/synthetic/canonical_hero.csv",
+    "raw_source_digest": "sha256:6b6bbc9a8d1f0e44419aee4ed4bdd073d965bab7507961307dcd051b4dae926b",
+    "source_watermark": "ngabo-source-v1:sha256:b1b00a5938f2515c77cf144ec4bf5731bcaa9406265996941818f914567cd94c",
+    "import_disposition": "FIRST_IMPORT",
+    "imported_record_count": 8,
+    "exact_duplicate_count": 0,
+    "signal_count": 1,
+    "signal_id": "sig-c4180061263e7207",
+    "signal_score": 0.9375,
+    "components": {
+      "c_phenotype": 1.0,
+      "c_location": 0.75,
+      "c_temporal": 1.0,
+      "c_baseline": 1.0
+    },
+    "supporting_finding_refs": [
+      "lconc-1d3ff528db1484f0",
+      "psim-8ce3cf934d3d8eb2",
+      "psim-a18b030a20a5f1b1",
+      "psim-cde2a3614f7f873d",
+      "tconc-ed312ddb0844c9ca"
+    ],
+    "supporting_isolate_refs": [
+      "ISO-031",
+      "ISO-034",
+      "ISO-039"
+    ],
+    "policy_version": "ngabo-signal-v1",
+    "config_version": "signal-win7d-org-facility-ward-v1",
+    "algorithm_version": "composite-priority-v1",
+    "autonomous_external_actions": 0,
+    "model_calls": 0,
+    "network_calls": 0,
+    "cloud_calls": 0,
+    "human_prompts": 0,
+    "human_interventions": 0,
+    "clarifications": 0,
+    "approvals": 0,
+    "primary_invariant": "INVESTIGATION_PRIORITY_SIGNAL only; never an outbreak declaration, diagnosis, model confidence, or clinical decision."
+  }
+}

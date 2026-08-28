@@ -15,6 +15,9 @@ Synthetic demonstration datasets (WHONET-style fixtures).
   fixture (M2.2 / Issue #39) corresponding field-for-field to `canonical_hero.json`.
   Demonstrates deterministic source-column mapping and normalization into the
   canonical isolate record boundary.
+- `canonical_hero_certification.json` — the machine-readable offline certification
+  release-gate evidence artifact (M2.8 / Issue #48) certifying the deterministic
+  input-to-signal hero outcome from committed raw input.
 
 Every fixture must be explicitly labelled as synthetic; no real patient,
 hospital, or laboratory data may ever be committed.

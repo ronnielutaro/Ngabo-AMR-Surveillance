@@ -21,6 +21,7 @@
     "core:lint": "cd services/core && uv run ruff check .",
     "core:typecheck": "cd services/core && uv run mypy ngabo tests",
     "core:test": "cd services/core && uv run pytest",
-    "core:health": "cd services/core && uv run ngabo-health"
+    "core:health": "cd services/core && uv run ngabo-health",
+    "core:certify-hero": "cd services/core && uv run ngabo-certify-hero"
   }
 }
