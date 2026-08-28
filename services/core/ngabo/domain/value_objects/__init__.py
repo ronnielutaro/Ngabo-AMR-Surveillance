@@ -8,6 +8,8 @@ proof-reference contracts (M1B.4), Issue #29 for the claim-verification
 error and report contracts (M1B.5), Issue #38 for the
 import-validation error and report contracts (M2.1), Issue #40
 for the source digest, duplicate record finding, and import deduplication
-error and report contracts (M2.3), and Issue #45 for the resistance profile,
-profile similarity configuration, and similarity finding contracts (M2.5).
+error and report contracts (M2.3), Issue #45 for the resistance profile,
+profile similarity configuration, and similarity finding contracts (M2.5),
+and Issue #46 for concentration configuration, temporal concentration
+finding, and location concentration finding contracts (M2.6).
 """
