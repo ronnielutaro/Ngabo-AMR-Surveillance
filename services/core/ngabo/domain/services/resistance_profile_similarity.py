@@ -3,29 +3,62 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from collections.abc import Sequence
 
 from ngabo.domain.entities.canonical_isolate import CanonicalIsolate
 from ngabo.domain.enums.profile_similarity_status import ProfileSimilarityStatus
-from ngabo.domain.value_objects.profile_similarity_config import ProfileSimilarityConfig
-from ngabo.domain.value_objects.profile_similarity_finding import ProfileSimilarityFinding
+from ngabo.domain.value_objects.profile_similarity_config import (
+    ProfileSimilarityConfig,
+)
+from ngabo.domain.value_objects.profile_similarity_finding import (
+    ProfileSimilarityFinding,
+)
 from ngabo.domain.value_objects.resistance_profile import ResistanceProfile
 
 
 def _compute_stable_finding_id(
+    *,
     policy_version: str,
     algorithm_version: str,
     config_version: str,
     input_refs: tuple[str, str],
+    organism_code: str | None,
     status: ProfileSimilarityStatus,
+    comparable_antibiotics: tuple[str, ...],
+    matching_antibiotics: tuple[str, ...],
+    differing_antibiotics: tuple[str, ...],
+    untested_or_unknown_antibiotics: tuple[str, ...],
+    similarity_score: float | None,
+    similarity_precision: int,
     output_value: str,
 ) -> str:
-    """Compute a deterministic, opaque SHA-256 finding ID based on canonical attributes."""
-    canonical_representation = (
-        f"{policy_version}|{algorithm_version}|{config_version}|"
-        f"{input_refs[0]}|{input_refs[1]}|{status.value}|{output_value}"
-    ).encode()
-    digest = hashlib.sha256(canonical_representation).hexdigest()
+    """Compute a deterministic, opaque SHA-256 finding ID based on canonical attributes.
+
+    Uses deterministic canonical JSON serialization with sorted keys and compact
+    separators, binding the ID to all scientifically material finding content.
+    """
+    payload = {
+        "algorithm_version": algorithm_version,
+        "comparable_antibiotics": list(comparable_antibiotics),
+        "config_version": config_version,
+        "differing_antibiotics": list(differing_antibiotics),
+        "input_refs": list(input_refs),
+        "matching_antibiotics": list(matching_antibiotics),
+        "organism_code": organism_code,
+        "output_value": output_value,
+        "policy_version": policy_version,
+        "similarity_precision": similarity_precision,
+        "similarity_score": (
+            f"{similarity_score:.{similarity_precision}f}"
+            if similarity_score is not None
+            else None
+        ),
+        "status": status.value,
+        "untested_or_unknown_antibiotics": list(untested_or_unknown_antibiotics),
+    }
+    serialized = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    digest = hashlib.sha256(serialized).hexdigest()
     return f"psim-{digest[:16]}"
 
 
@@ -36,16 +69,21 @@ def compute_profile_similarity(
 ) -> ProfileSimilarityFinding:
     """Calculate the deterministic resistance profile similarity between two isolates.
 
-    Follows the approved v0.1 scientific comparison policy:
+    Follows the proposed v0.1 prototype similarity policy (pending explicit maintainer
+    approval; see docs/DATA_SAFETY_EVALUATION.md for background):
     1. Symmetric pair ordering: input_refs is always sorted lexicographically by isolate ID.
     2. Self-comparison guard: identical isolate IDs yield IDENTICAL_INPUTS (similarity is None).
-    3. Organism compatibility: differing organism codes yield INCOMPATIBLE_ORGANISM
-       (similarity is None) when strict_organism_match is enabled.
+    3. Strict organism compatibility: differing organism codes yield INCOMPATIBLE_ORGANISM
+       (similarity is None) in a symmetric manner.
     4. Panel overlap: only tested antibiotics with known interpretations (S, I, R) in BOTH profiles
        are comparable. UNKNOWN and untested values are strictly excluded from the denominator.
-    5. Minimum panel threshold: if fewer than min_comparable_antibiotics (default 3) are shared,
+    5. Minimum panel threshold: if fewer than min_comparable_antibiotics (default 3, a synthetic
+       prototype configuration rather than a clinical threshold) are shared,
        yields INSUFFICIENT_DATA (similarity is None).
     6. Exact agreement ratio: matching count / comparable count, rounded to similarity_precision.
+    7. Pure phenotype similarity: findings represent AST profile agreement only; they do not
+       constitute genomic relatedness, transmission links, outbreak confirmation, or clinical
+       guidance.
     """
     cfg = config if config is not None else ProfileSimilarityConfig()
 
@@ -60,12 +98,19 @@ def compute_profile_similarity(
         status = ProfileSimilarityStatus.IDENTICAL_INPUTS
         output_value = f"status=IDENTICAL_INPUTS;isolate_id={profile_a.isolate_id}"
         finding_id = _compute_stable_finding_id(
-            cfg.policy_version,
-            cfg.algorithm_version,
-            cfg.config_version,
-            ordered_refs,
-            status,
-            output_value,
+            policy_version=cfg.policy_version,
+            algorithm_version=cfg.algorithm_version,
+            config_version=cfg.config_version,
+            input_refs=ordered_refs,
+            organism_code=profile_a.organism_code,
+            status=status,
+            comparable_antibiotics=(),
+            matching_antibiotics=(),
+            differing_antibiotics=(),
+            untested_or_unknown_antibiotics=(),
+            similarity_score=None,
+            similarity_precision=cfg.similarity_precision,
+            output_value=output_value,
         )
         return ProfileSimilarityFinding(
             finding_id=finding_id,
@@ -85,20 +130,28 @@ def compute_profile_similarity(
             output_value=output_value,
         )
 
-    # 2. Organism compatibility check
+    # 2. Strict organism compatibility check
     if cfg.strict_organism_match and profile_a.organism_code != profile_b.organism_code:
         status = ProfileSimilarityStatus.INCOMPATIBLE_ORGANISM
+        sorted_orgs = sorted([profile_a.organism_code, profile_b.organism_code])
         output_value = (
-            f"status=INCOMPATIBLE_ORGANISM;org_a={profile_a.organism_code};"
-            f"org_b={profile_b.organism_code}"
+            f"status=INCOMPATIBLE_ORGANISM;org_a={sorted_orgs[0]};"
+            f"org_b={sorted_orgs[1]}"
         )
         finding_id = _compute_stable_finding_id(
-            cfg.policy_version,
-            cfg.algorithm_version,
-            cfg.config_version,
-            ordered_refs,
-            status,
-            output_value,
+            policy_version=cfg.policy_version,
+            algorithm_version=cfg.algorithm_version,
+            config_version=cfg.config_version,
+            input_refs=ordered_refs,
+            organism_code=None,
+            status=status,
+            comparable_antibiotics=(),
+            matching_antibiotics=(),
+            differing_antibiotics=(),
+            untested_or_unknown_antibiotics=(),
+            similarity_score=None,
+            similarity_precision=cfg.similarity_precision,
+            output_value=output_value,
         )
         return ProfileSimilarityFinding(
             finding_id=finding_id,
@@ -138,12 +191,19 @@ def compute_profile_similarity(
             f"min_required={cfg.min_comparable_antibiotics}"
         )
         finding_id = _compute_stable_finding_id(
-            cfg.policy_version,
-            cfg.algorithm_version,
-            cfg.config_version,
-            ordered_refs,
-            status,
-            output_value,
+            policy_version=cfg.policy_version,
+            algorithm_version=cfg.algorithm_version,
+            config_version=cfg.config_version,
+            input_refs=ordered_refs,
+            organism_code=shared_organism,
+            status=status,
+            comparable_antibiotics=comparable_antibiotics,
+            matching_antibiotics=(),
+            differing_antibiotics=(),
+            untested_or_unknown_antibiotics=untested_or_unknown,
+            similarity_score=None,
+            similarity_precision=cfg.similarity_precision,
+            output_value=output_value,
         )
         return ProfileSimilarityFinding(
             finding_id=finding_id,
@@ -179,18 +239,26 @@ def compute_profile_similarity(
         len(matching) / len(comparable_antibiotics), cfg.similarity_precision
     )
     status = ProfileSimilarityStatus.SUCCESS
+    formatted_score = f"{similarity_score:.{cfg.similarity_precision}f}"
     output_value = (
-        f"similarity={similarity_score:.4f};matching={len(matching)};"
+        f"similarity={formatted_score};matching={len(matching)};"
         f"shared={len(comparable_antibiotics)}"
     )
 
     finding_id = _compute_stable_finding_id(
-        cfg.policy_version,
-        cfg.algorithm_version,
-        cfg.config_version,
-        ordered_refs,
-        status,
-        output_value,
+        policy_version=cfg.policy_version,
+        algorithm_version=cfg.algorithm_version,
+        config_version=cfg.config_version,
+        input_refs=ordered_refs,
+        organism_code=shared_organism,
+        status=status,
+        comparable_antibiotics=comparable_antibiotics,
+        matching_antibiotics=matching,
+        differing_antibiotics=differing,
+        untested_or_unknown_antibiotics=untested_or_unknown,
+        similarity_score=similarity_score,
+        similarity_precision=cfg.similarity_precision,
+        output_value=output_value,
     )
 
     return ProfileSimilarityFinding(
@@ -229,23 +297,28 @@ def compare_isolate_collection(
 ) -> tuple[ProfileSimilarityFinding, ...]:
     """Deterministically compute all pairwise profile similarities for an isolate collection.
 
-    - De-duplicates identical isolate objects by isolate_id.
+    - Consumes canonical isolates.
+    - Idempotently collapses exact value-identical duplicate records with the same isolate_id.
+    - Fails closed (raises ValueError) if conflicting records share the same isolate_id.
     - Sorts records by isolate_id so input order does not affect output.
     - Generates non-reflexive combinations of 2 (i < j).
     - Returns findings ordered deterministically by input_refs.
     """
     cfg = config if config is not None else ProfileSimilarityConfig()
 
-    # Deduplicate by isolate_id while preserving first occurrence
-    seen_ids: set[str] = set()
-    unique_isolates: list[CanonicalIsolate] = []
+    seen_isolates: dict[str, CanonicalIsolate] = {}
     for iso in isolates:
-        if iso.isolate_id not in seen_ids:
-            seen_ids.add(iso.isolate_id)
-            unique_isolates.append(iso)
+        if iso.isolate_id in seen_isolates:
+            existing = seen_isolates[iso.isolate_id]
+            if existing != iso:
+                raise ValueError(
+                    f"Conflicting CanonicalIsolate records for {iso.isolate_id!r} in collection; "
+                    "conflicting duplicate inputs must fail closed"
+                )
+            continue
+        seen_isolates[iso.isolate_id] = iso
 
-    # Sort isolates deterministically by isolate_id
-    sorted_isolates = sorted(unique_isolates, key=lambda x: x.isolate_id)
+    sorted_isolates = sorted(seen_isolates.values(), key=lambda x: x.isolate_id)
 
     findings: list[ProfileSimilarityFinding] = []
     n = len(sorted_isolates)

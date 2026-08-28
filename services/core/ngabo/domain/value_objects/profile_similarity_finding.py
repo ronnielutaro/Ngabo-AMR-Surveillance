@@ -63,6 +63,24 @@ class ProfileSimilarityFinding:
                 f"input_refs must be sorted lexicographically; got {self.input_refs!r}"
             )
 
+        if self.isolate_id_a != self.input_refs[0] or self.isolate_id_b != self.input_refs[1]:
+            raise ValueError(
+                f"isolate_id_a ({self.isolate_id_a!r}) and isolate_id_b ({self.isolate_id_b!r}) "
+                f"must match input_refs ({self.input_refs!r})"
+            )
+
+        for attr_name in (
+            "comparable_antibiotics",
+            "matching_antibiotics",
+            "differing_antibiotics",
+            "untested_or_unknown_antibiotics",
+        ):
+            val = getattr(self, attr_name)
+            if not isinstance(val, tuple):
+                raise TypeError(f"{attr_name} must be a tuple; got {val!r}")
+            if val != tuple(sorted(val)):
+                raise ValueError(f"{attr_name} must be sorted lexicographically; got {val!r}")
+
         if not isinstance(self.status, ProfileSimilarityStatus):
             raise TypeError(f"Invalid status {self.status!r}; expected ProfileSimilarityStatus")
 
@@ -77,12 +95,15 @@ class ProfileSimilarityFinding:
                 )
             if not self.comparable_antibiotics:
                 raise ValueError("comparable_antibiotics cannot be empty when status is SUCCESS")
-            if (
-                len(self.matching_antibiotics) + len(self.differing_antibiotics)
-                != len(self.comparable_antibiotics)
-            ):
+            set_matching = set(self.matching_antibiotics)
+            set_differing = set(self.differing_antibiotics)
+            set_comparable = set(self.comparable_antibiotics)
+            if not set_matching.isdisjoint(set_differing):
+                raise ValueError("matching_antibiotics and differing_antibiotics must be disjoint")
+            if set_matching.union(set_differing) != set_comparable:
                 raise ValueError(
-                    "matching_antibiotics + differing_antibiotics must equal comparable_antibiotics"
+                    "matching_antibiotics + differing_antibiotics must exactly partition "
+                    "comparable_antibiotics"
                 )
         else:
             if self.similarity_score is not None:

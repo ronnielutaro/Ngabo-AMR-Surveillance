@@ -43,6 +43,11 @@ class ProfileSimilarityConfig:
             raise ValueError("min_comparable_antibiotics must be an integer >= 1")
         if not isinstance(self.strict_organism_match, bool):
             raise TypeError("strict_organism_match must be a boolean")
+        if not self.strict_organism_match:
+            raise ValueError(
+                "strict_organism_match=False is not permitted; v0.1 policy strictly enforces "
+                "organism compatibility"
+            )
         if (
             not isinstance(self.similarity_precision, int)
             or isinstance(self.similarity_precision, bool)
