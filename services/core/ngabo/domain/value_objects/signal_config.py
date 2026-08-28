@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import date, timedelta
 
@@ -44,6 +45,23 @@ class SignalConfig:
     baseline_saturation_multiplier: float = GOVERNED_BASELINE_SATURATION_MULTIPLIER
 
     def __post_init__(self) -> None:
+        for name, val in (
+            ("trigger_threshold", self.trigger_threshold),
+            ("configured_synthetic_baseline_count", self.configured_synthetic_baseline_count),
+            ("w_phenotype", self.w_phenotype),
+            ("w_location", self.w_location),
+            ("w_temporal", self.w_temporal),
+            ("w_baseline", self.w_baseline),
+            ("baseline_saturation_multiplier", self.baseline_saturation_multiplier),
+        ):
+            if not isinstance(val, float) or isinstance(val, bool) or not math.isfinite(val):
+                raise ValueError(f"{name} must be a finite float; got {val!r}")
+
+        if not (0.0 <= self.trigger_threshold <= 1.0):
+            raise ValueError(
+                f"trigger_threshold must be within [0.0, 1.0]; got {self.trigger_threshold}"
+            )
+
         if self.policy_version != GOVERNED_SIGNAL_POLICY_VERSION:
             raise ValueError(
                 f"Unsupported policy_version {self.policy_version!r}; "

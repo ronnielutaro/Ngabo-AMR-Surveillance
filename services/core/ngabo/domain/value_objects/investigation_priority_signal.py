@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import date
 
@@ -10,6 +11,7 @@ from ngabo.domain.value_objects.proof_references import (
     DeterministicFindingReference,
     _require_opaque_id,
 )
+from ngabo.domain.value_objects.signal_config import SignalConfig
 
 
 @dataclass(frozen=True)
@@ -33,8 +35,8 @@ class SignalComponents:
         ):
             if not isinstance(val, float) or isinstance(val, bool):
                 raise TypeError(f"{name} must be a float; got {type(val).__name__}")
-            if not (0.0 <= val <= 1.0):
-                raise ValueError(f"{name} must be within [0.0, 1.0]; got {val}")
+            if not math.isfinite(val) or not (0.0 <= val <= 1.0):
+                raise ValueError(f"{name} must be finite and within [0.0, 1.0]; got {val}")
 
 
 @dataclass(frozen=True)
@@ -65,6 +67,7 @@ class InvestigationPrioritySignal:
     supporting_finding_refs: tuple[str, ...]
     supporting_isolate_refs: tuple[str, ...]
     output_value: str
+    policy_config: SignalConfig
 
     def __post_init__(self) -> None:
         _require_opaque_id(self.signal_id, "signal ID")
@@ -104,15 +107,38 @@ class InvestigationPrioritySignal:
             cls_name = type(self.components).__name__
             raise TypeError(f"components must be a SignalComponents instance; got {cls_name}")
 
+        if not isinstance(self.policy_config, SignalConfig):
+            cls_name = type(self.policy_config).__name__
+            raise TypeError(f"policy_config must be a SignalConfig instance; got {cls_name}")
+
         if not isinstance(self.signal_score, float) or isinstance(self.signal_score, bool):
             raise TypeError("signal_score must be a float")
-        if not (0.0 <= self.signal_score <= 1.0):
-            raise ValueError(f"signal_score must be within [0.0, 1.0]; got {self.signal_score}")
+        if not math.isfinite(self.signal_score) or not (0.0 <= self.signal_score <= 1.0):
+            raise ValueError(
+                f"signal_score must be finite and within [0.0, 1.0]; got {self.signal_score}"
+            )
 
         if not isinstance(self.trigger_threshold, float) or isinstance(
             self.trigger_threshold, bool
         ):
             raise TypeError("trigger_threshold must be a float")
+        if not math.isfinite(self.trigger_threshold) or not (0.0 <= self.trigger_threshold <= 1.0):
+            raise ValueError(
+                f"trigger_threshold must be finite and within [0.0, 1.0]; "
+                f"got {self.trigger_threshold}"
+            )
+
+        if self.policy_config.trigger_threshold != self.trigger_threshold:
+            raise ValueError(
+                f"trigger_threshold ({self.trigger_threshold}) does not match "
+                f"policy_config.trigger_threshold ({self.policy_config.trigger_threshold})"
+            )
+        if self.policy_config.policy_version != self.policy_version:
+            raise ValueError("policy_version does not match policy_config.policy_version")
+        if self.policy_config.config_version != self.config_version:
+            raise ValueError("config_version does not match policy_config.config_version")
+        if self.policy_config.algorithm_version != self.algorithm_version:
+            raise ValueError("algorithm_version does not match policy_config.algorithm_version")
 
         if not isinstance(self.status, SignalStatus):
             raise TypeError(f"Invalid status {self.status!r}; expected SignalStatus")
@@ -138,8 +164,11 @@ class InvestigationPrioritySignal:
             _require_opaque_id(ref, "supporting isolate reference")
 
         if self.status == SignalStatus.TRIGGERED:
-            if self.ward_organism_count < 3:
-                raise ValueError("TRIGGERED signal status requires ward_organism_count >= 3")
+            if self.ward_organism_count < self.policy_config.min_candidate_count:
+                raise ValueError(
+                    f"TRIGGERED signal status requires ward_organism_count >= "
+                    f"{self.policy_config.min_candidate_count}"
+                )
             if self.signal_score < self.trigger_threshold:
                 raise ValueError(
                     "TRIGGERED signal status requires signal_score >= trigger_threshold"
@@ -148,6 +177,63 @@ class InvestigationPrioritySignal:
                 raise ValueError(
                     "TRIGGERED signal status requires reason=SignalReason.HIGH_PRIORITY_CLUSTER"
                 )
+
+    @property
+    def w_phenotype(self) -> float:
+        """Governed weight for phenotype similarity component."""
+        return self.policy_config.w_phenotype
+
+    @property
+    def w_location(self) -> float:
+        """Governed weight for location concentration component."""
+        return self.policy_config.w_location
+
+    @property
+    def w_temporal(self) -> float:
+        """Governed weight for temporal accumulation component."""
+        return self.policy_config.w_temporal
+
+    @property
+    def w_baseline(self) -> float:
+        """Governed weight for baseline excess component."""
+        return self.policy_config.w_baseline
+
+    @property
+    def min_candidate_count(self) -> int:
+        """Governed minimum cohort size gate."""
+        return self.policy_config.min_candidate_count
+
+    @property
+    def configured_synthetic_baseline_count(self) -> float:
+        """Governed synthetic baseline reference count."""
+        return self.policy_config.configured_synthetic_baseline_count
+
+    @property
+    def baseline_saturation_multiplier(self) -> float:
+        """Governed baseline saturation multiplier."""
+        return self.policy_config.baseline_saturation_multiplier
+
+    @property
+    def precision(self) -> int:
+        """Governed decimal rounding precision."""
+        return self.policy_config.precision
+
+    def recompute_score(self) -> float:
+        """Deterministically recompute composite score from persisted components and config."""
+        raw = (
+            self.policy_config.w_phenotype * self.components.c_phenotype
+            + self.policy_config.w_location * self.components.c_location
+            + self.policy_config.w_temporal * self.components.c_temporal
+            + self.policy_config.w_baseline * self.components.c_baseline
+        )
+        return min(1.0, max(0.0, round(raw, self.policy_config.precision)))
+
+    def verify_trigger_decision(self) -> bool:
+        """Deterministically verify whether this candidate satisfies the trigger policy."""
+        return (
+            self.signal_score >= self.policy_config.trigger_threshold
+            and self.ward_organism_count >= self.policy_config.min_candidate_count
+        )
 
     def to_finding_reference(self) -> DeterministicFindingReference:
         """Convert signal candidate to a DeterministicFindingReference for reasoning claims."""
