@@ -142,6 +142,90 @@ class OrchestrateCanonicalImport:
         # Step 4: CSV parsing & canonical validation inside exception boundary
         try:
             parsed = self._parser(csv_text)
+
+            # Harden ParsedSourceResult boundary: complete structural contract validation
+            has_required_attrs = (
+                hasattr(parsed, "success")
+                and hasattr(parsed, "batch")
+                and hasattr(parsed, "errors")
+            )
+            if not has_required_attrs:
+                return CanonicalImportResult(
+                    success=False,
+                    disposition=ImportOutcomeDisposition.FAILED,
+                    source_key=command.source_key,
+                    raw_digest=raw_digest,
+                    watermark=None,
+                    batch=None,
+                    exact_duplicates=(),
+                    errors=(
+                        ImportErrorDetail(
+                            code=ImportErrorCode.PARSER_FAILURE,
+                            message="Injected parser returned invalid result object",
+                        ),
+                    ),
+                )
+
+            valid_structure = (
+                isinstance(parsed.success, bool)
+                and isinstance(parsed.errors, (Sequence, tuple, list))
+                and not isinstance(parsed.errors, (str, bytes, bytearray))
+                and (
+                    parsed.batch is None
+                    or isinstance(parsed.batch, CanonicalImportBatch)
+                )
+            )
+            if not valid_structure:
+                return CanonicalImportResult(
+                    success=False,
+                    disposition=ImportOutcomeDisposition.FAILED,
+                    source_key=command.source_key,
+                    raw_digest=raw_digest,
+                    watermark=None,
+                    batch=None,
+                    exact_duplicates=(),
+                    errors=(
+                        ImportErrorDetail(
+                            code=ImportErrorCode.PARSER_FAILURE,
+                            message="Injected parser returned invalid result object",
+                        ),
+                    ),
+                )
+
+            if parsed.success:
+                if not isinstance(parsed.batch, CanonicalImportBatch) or parsed.errors:
+                    return CanonicalImportResult(
+                        success=False,
+                        disposition=ImportOutcomeDisposition.FAILED,
+                        source_key=command.source_key,
+                        raw_digest=raw_digest,
+                        watermark=None,
+                        batch=None,
+                        exact_duplicates=(),
+                        errors=(
+                            ImportErrorDetail(
+                                code=ImportErrorCode.PARSER_FAILURE,
+                                message="Injected parser returned invalid result object",
+                            ),
+                        ),
+                    )
+            else:
+                if parsed.batch is not None or not parsed.errors:
+                    return CanonicalImportResult(
+                        success=False,
+                        disposition=ImportOutcomeDisposition.FAILED,
+                        source_key=command.source_key,
+                        raw_digest=raw_digest,
+                        watermark=None,
+                        batch=None,
+                        exact_duplicates=(),
+                        errors=(
+                            ImportErrorDetail(
+                                code=ImportErrorCode.PARSER_FAILURE,
+                                message="Injected parser returned invalid result object",
+                            ),
+                        ),
+                    )
         except Exception as exc:
             logger.warning("Parser port raised unexpected exception: %s", exc)
             return CanonicalImportResult(
@@ -156,30 +240,6 @@ class OrchestrateCanonicalImport:
                     ImportErrorDetail(
                         code=ImportErrorCode.PARSER_FAILURE,
                         message=f"Parser failed with unexpected exception: {exc}",
-                    ),
-                ),
-            )
-
-        # Harden ParsedSourceResult boundary
-        if (
-            not hasattr(parsed, "success")
-            or not isinstance(parsed.success, bool)
-            or not hasattr(parsed, "errors")
-            or not isinstance(parsed.errors, (Sequence, tuple, list))
-            or (parsed.batch is not None and not isinstance(parsed.batch, CanonicalImportBatch))
-        ):
-            return CanonicalImportResult(
-                success=False,
-                disposition=ImportOutcomeDisposition.FAILED,
-                source_key=command.source_key,
-                raw_digest=raw_digest,
-                watermark=None,
-                batch=None,
-                exact_duplicates=(),
-                errors=(
-                    ImportErrorDetail(
-                        code=ImportErrorCode.PARSER_FAILURE,
-                        message="Injected parser returned invalid result object",
                     ),
                 ),
             )

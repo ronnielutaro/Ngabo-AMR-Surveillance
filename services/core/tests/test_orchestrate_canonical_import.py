@@ -510,6 +510,78 @@ class TestParserFailures:
         assert res.raw_digest is not None
         assert res.errors[0].code == ImportErrorCode.PARSER_FAILURE
         assert "invalid result object" in res.errors[0].message
+        assert len(repo.accept_calls) == 0
+
+    def test_injected_parser_missing_batch_attribute_fails_closed(self) -> None:
+        class MissingBatchResult:
+            success = True
+            errors = ()
+            # deliberately no batch attribute
+
+        def malformed_parser(source: str) -> Any:
+            return MissingBatchResult()
+
+        loader = InMemorySourceLoader({"data": SAMPLE_VALID_CSV.encode("utf-8")})
+        repo = InMemorySourceReplayRepository()
+        use_case = OrchestrateCanonicalImport(loader, repo, malformed_parser)
+
+        cmd = ImportCanonicalSourceCommand("src_missing_batch", "data")
+        res = use_case(cmd)
+
+        assert res.success is False
+        assert res.disposition == ImportOutcomeDisposition.FAILED
+        assert res.errors[0].code == ImportErrorCode.PARSER_FAILURE
+        assert "invalid result object" in res.errors[0].message
+        assert res.raw_digest is not None
+        assert res.batch is None
+        assert res.watermark is None
+        assert len(repo.accept_calls) == 0
+
+    def test_injected_parser_with_wrong_batch_type_fails_closed(self) -> None:
+        class WrongBatchTypeResult:
+            success = True
+            batch = "not-a-batch"
+            errors = ()
+
+        def malformed_parser(source: str) -> Any:
+            return WrongBatchTypeResult()
+
+        loader = InMemorySourceLoader({"data": SAMPLE_VALID_CSV.encode("utf-8")})
+        repo = InMemorySourceReplayRepository()
+        use_case = OrchestrateCanonicalImport(loader, repo, malformed_parser)
+
+        cmd = ImportCanonicalSourceCommand("src_wrong_batch", "data")
+        res = use_case(cmd)
+
+        assert res.success is False
+        assert res.disposition == ImportOutcomeDisposition.FAILED
+        assert res.errors[0].code == ImportErrorCode.PARSER_FAILURE
+        assert res.batch is None
+        assert res.watermark is None
+        assert len(repo.accept_calls) == 0
+
+    def test_injected_parser_with_string_errors_sequence_fails_closed(self) -> None:
+        class StringErrorsResult:
+            success = False
+            batch = None
+            errors = "not-a-real-error-sequence"
+
+        def malformed_parser(source: str) -> Any:
+            return StringErrorsResult()
+
+        loader = InMemorySourceLoader({"data": SAMPLE_VALID_CSV.encode("utf-8")})
+        repo = InMemorySourceReplayRepository()
+        use_case = OrchestrateCanonicalImport(loader, repo, malformed_parser)
+
+        cmd = ImportCanonicalSourceCommand("src_string_errors", "data")
+        res = use_case(cmd)
+
+        assert res.success is False
+        assert res.disposition == ImportOutcomeDisposition.FAILED
+        assert res.errors[0].code == ImportErrorCode.PARSER_FAILURE
+        assert res.batch is None
+        assert res.watermark is None
+        assert len(repo.accept_calls) == 0
 
     def test_no_parser_row_silently_disappears(self) -> None:
         hdr = (
