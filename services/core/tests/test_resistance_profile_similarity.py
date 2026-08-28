@@ -16,8 +16,15 @@ from ngabo.domain.enums.profile_similarity_status import ProfileSimilarityStatus
 from ngabo.domain.services.resistance_profile_similarity import (
     compare_canonical_isolates,
     compare_isolate_collection,
+    compute_profile_similarity,
 )
 from ngabo.domain.value_objects.profile_similarity_config import (
+    PROFILE_SIM_ALGORITHM_VERSION,
+    PROFILE_SIM_CONFIG_VERSION,
+    PROFILE_SIM_MIN_COMPARABLE,
+    PROFILE_SIM_POLICY_VERSION,
+    PROFILE_SIM_PRECISION,
+    PROFILE_SIM_STRICT_ORGANISM,
     ProfileSimilarityConfig,
 )
 from ngabo.domain.value_objects.profile_similarity_finding import (
@@ -123,18 +130,26 @@ class TestSimilarityCalculations:
         iso_a = _make_isolate("ISO-001", ast_dict=ast_a)
         iso_b = _make_isolate("ISO-002", ast_dict=ast_b)
 
+        # 2 shared known antibiotics (CIP, CRO) fails closed as INSUFFICIENT_DATA (min=3)
         finding = compare_canonical_isolates(iso_a, iso_b)
         assert finding.status == ProfileSimilarityStatus.INSUFFICIENT_DATA
         assert finding.similarity_score is None
         assert finding.comparable_antibiotics == ("CIP", "CRO")
         assert "min_required=3" in finding.output_value
 
-        # With min_comparable=2, comparison succeeds on the 2 shared antibiotics
-        cfg = ProfileSimilarityConfig(min_comparable_antibiotics=2)
-        finding_2 = compare_canonical_isolates(iso_a, iso_b, cfg)
-        assert finding_2.status == ProfileSimilarityStatus.SUCCESS
-        assert finding_2.similarity_score == 1.0
-        assert finding_2.comparable_antibiotics == ("CIP", "CRO")
+        # 3 shared known antibiotics under governed policy succeeds
+        ast_c = {
+            "AMK": Interpretation.SUSCEPTIBLE,
+            "CAZ": Interpretation.RESISTANT,
+            "CIP": Interpretation.RESISTANT,
+            "CRO": Interpretation.RESISTANT,
+            "MEM": Interpretation.RESISTANT,
+        }
+        iso_c = _make_isolate("ISO-003", ast_dict=ast_c)
+        finding_3 = compare_canonical_isolates(iso_b, iso_c)
+        assert finding_3.status == ProfileSimilarityStatus.SUCCESS
+        assert finding_3.similarity_score == 1.0
+        assert finding_3.comparable_antibiotics == ("CIP", "CRO", "MEM")
 
     def test_disjoint_panels_yield_insufficient_data(self) -> None:
         ast_a = {
@@ -315,6 +330,85 @@ class TestBiologicalAndSymmetricInvariants:
         with pytest.raises(ValueError, match="Conflicting CanonicalIsolate records for 'ISO-001'"):
             compare_isolate_collection([iso_1, iso_1_conflict])
 
+    def test_direct_pair_exact_record_yields_identical_inputs(self) -> None:
+        iso_1 = _make_isolate("ISO-001")
+        finding = compare_canonical_isolates(iso_1, iso_1)
+        assert finding.status == ProfileSimilarityStatus.IDENTICAL_INPUTS
+        assert finding.similarity_score is None
+        assert finding.output_value == "status=IDENTICAL_INPUTS;isolate_id=ISO-001"
+
+    def test_direct_pair_same_id_changed_ast_fails_closed(self) -> None:
+        iso_1 = _make_isolate("ISO-001")
+        iso_1_conflict = _make_isolate(
+            "ISO-001",
+            ast_dict={
+                "AMK": Interpretation.RESISTANT,
+                "CAZ": Interpretation.SUSCEPTIBLE,
+                "CIP": Interpretation.SUSCEPTIBLE,
+            },
+        )
+        with pytest.raises(ValueError, match="Conflicting CanonicalIsolate records for 'ISO-001'"):
+            compare_canonical_isolates(iso_1, iso_1_conflict)
+
+    def test_direct_pair_same_id_changed_ward_fails_closed(self) -> None:
+        iso_1 = _make_isolate("ISO-001")
+        iso_1_conflict = CanonicalIsolate(
+            isolate_id=iso_1.isolate_id,
+            collection_date=iso_1.collection_date,
+            organism_code=iso_1.organism_code,
+            organism_name=iso_1.organism_name,
+            facility_id=iso_1.facility_id,
+            lab_id=iso_1.lab_id,
+            ward="SYNTH-WARD-B",
+            specimen_type=iso_1.specimen_type,
+            patient_token=iso_1.patient_token,
+            source_import_id=iso_1.source_import_id,
+            ast_results=iso_1.ast_results,
+        )
+        with pytest.raises(ValueError, match="Conflicting CanonicalIsolate records for 'ISO-001'"):
+            compare_canonical_isolates(iso_1, iso_1_conflict)
+
+    def test_direct_pair_same_id_changed_collection_date_fails_closed(self) -> None:
+        iso_1 = _make_isolate("ISO-001")
+        iso_1_conflict = CanonicalIsolate(
+            isolate_id=iso_1.isolate_id,
+            collection_date=date(2026, 8, 18),
+            organism_code=iso_1.organism_code,
+            organism_name=iso_1.organism_name,
+            facility_id=iso_1.facility_id,
+            lab_id=iso_1.lab_id,
+            ward=iso_1.ward,
+            specimen_type=iso_1.specimen_type,
+            patient_token=iso_1.patient_token,
+            source_import_id=iso_1.source_import_id,
+            ast_results=iso_1.ast_results,
+        )
+        with pytest.raises(ValueError, match="Conflicting CanonicalIsolate records for 'ISO-001'"):
+            compare_canonical_isolates(iso_1, iso_1_conflict)
+
+    def test_compute_profile_similarity_conflicting_profiles_fails_closed(self) -> None:
+        iso_1 = _make_isolate("ISO-001")
+        iso_1_conflict = _make_isolate(
+            "ISO-001",
+            ast_dict={
+                "AMK": Interpretation.RESISTANT,
+                "CAZ": Interpretation.SUSCEPTIBLE,
+                "CIP": Interpretation.SUSCEPTIBLE,
+            },
+        )
+        prof_1 = ResistanceProfile.from_canonical_isolate(iso_1)
+        prof_2 = ResistanceProfile.from_canonical_isolate(iso_1_conflict)
+        with pytest.raises(ValueError, match="Conflicting ResistanceProfile records for 'ISO-001'"):
+            compute_profile_similarity(prof_1, prof_2)
+
+    def test_compute_profile_similarity_identical_profiles_yields_identical_inputs(self) -> None:
+        iso_1 = _make_isolate("ISO-001")
+        prof_1 = ResistanceProfile.from_canonical_isolate(iso_1)
+        finding = compute_profile_similarity(prof_1, prof_1)
+        assert finding.status == ProfileSimilarityStatus.IDENTICAL_INPUTS
+        assert finding.similarity_score is None
+        assert finding.output_value == "status=IDENTICAL_INPUTS;isolate_id=ISO-001"
+
 
 # ============================================================================
 # 3. Determinism, Versioning, and ID Stability
@@ -413,35 +507,6 @@ class TestDeterminismAndVersioning:
         assert finding_1.matching_antibiotics != finding_2.matching_antibiotics
         assert finding_1.finding_id != finding_2.finding_id
 
-    def test_version_or_config_change_produces_distinguishable_finding_id(self) -> None:
-        iso_a = _make_isolate("ISO-031")
-        iso_b = _make_isolate("ISO-034")
-
-        cfg1 = ProfileSimilarityConfig(config_version="min3-strict-org-v1")
-        cfg2 = ProfileSimilarityConfig(
-            config_version="min4-strict-org-v2", min_comparable_antibiotics=4
-        )
-
-        finding_v1 = compare_canonical_isolates(iso_a, iso_b, cfg1)
-        finding_v2 = compare_canonical_isolates(iso_a, iso_b, cfg2)
-
-        assert finding_v1.finding_id != finding_v2.finding_id
-        assert finding_v1.config_version == "min3-strict-org-v1"
-        assert finding_v2.config_version == "min4-strict-org-v2"
-
-    def test_precision_config_governs_output_and_finding_id(self) -> None:
-        iso_a = _make_isolate("ISO-031")
-        iso_b = _make_isolate("ISO-034")
-
-        cfg_p2 = ProfileSimilarityConfig(similarity_precision=2)
-        cfg_p4 = ProfileSimilarityConfig(similarity_precision=4)
-
-        f_p2 = compare_canonical_isolates(iso_a, iso_b, cfg_p2)
-        f_p4 = compare_canonical_isolates(iso_a, iso_b, cfg_p4)
-
-        assert f_p2.output_value == "similarity=1.00;matching=6;shared=6"
-        assert f_p4.output_value == "similarity=1.0000;matching=6;shared=6"
-        assert f_p2.finding_id != f_p4.finding_id
 
     def test_pinned_literal_golden_finding_id(self) -> None:
         iso_a = _make_isolate("ISO-031")
@@ -569,19 +634,62 @@ class TestProofCarryingReferenceCompatibility:
 
 class TestValueObjectInvariants:
     def test_config_invariants(self) -> None:
-        with pytest.raises(ValueError, match="algorithm_version"):
-            ProfileSimilarityConfig(algorithm_version="")
+        # Default exact config succeeds with governed ADR 0010 constants
+        cfg = ProfileSimilarityConfig()
+        assert cfg.policy_version == PROFILE_SIM_POLICY_VERSION == "ngabo-profile-sim-v1"
+        assert cfg.algorithm_version == PROFILE_SIM_ALGORITHM_VERSION == "exact-ratio-v1"
+        assert cfg.config_version == PROFILE_SIM_CONFIG_VERSION == "min3-strict-org-v1"
+        assert cfg.min_comparable_antibiotics == PROFILE_SIM_MIN_COMPARABLE == 3
+        assert cfg.strict_organism_match == PROFILE_SIM_STRICT_ORGANISM is True
+        assert cfg.similarity_precision == PROFILE_SIM_PRECISION == 4
 
-        with pytest.raises(ValueError, match="config_version"):
-            ProfileSimilarityConfig(config_version=" ")
+        # Min comparable regressions
+        with pytest.raises(ValueError, match="Unsupported min_comparable_antibiotics 2"):
+            ProfileSimilarityConfig(min_comparable_antibiotics=2)
 
-        with pytest.raises(ValueError, match="min_comparable_antibiotics"):
+        with pytest.raises(ValueError, match="Unsupported min_comparable_antibiotics 4"):
+            ProfileSimilarityConfig(min_comparable_antibiotics=4)
+
+        with pytest.raises(ValueError, match="Unsupported min_comparable_antibiotics 0"):
             ProfileSimilarityConfig(min_comparable_antibiotics=0)
 
-        with pytest.raises(TypeError, match="strict_organism_match"):
+        with pytest.raises(TypeError, match="min_comparable_antibiotics must be an integer"):
+            ProfileSimilarityConfig(min_comparable_antibiotics="3")  # type: ignore[arg-type]
+
+        # Precision regressions
+        with pytest.raises(ValueError, match="Unsupported similarity_precision 2"):
+            ProfileSimilarityConfig(similarity_precision=2)
+
+        with pytest.raises(ValueError, match="Unsupported similarity_precision 6"):
+            ProfileSimilarityConfig(similarity_precision=6)
+
+        with pytest.raises(TypeError, match="similarity_precision must be an integer"):
+            ProfileSimilarityConfig(similarity_precision="4")  # type: ignore[arg-type]
+
+        # Version string regressions
+        with pytest.raises(ValueError, match="Unsupported config_version 'min4-strict-org-v2'"):
+            ProfileSimilarityConfig(config_version="min4-strict-org-v2")
+
+        with pytest.raises(ValueError, match="Unsupported policy_version 'ngabo-profile-sim-v2'"):
+            ProfileSimilarityConfig(policy_version="ngabo-profile-sim-v2")
+
+        with pytest.raises(ValueError, match="Unsupported algorithm_version 'jaccard-v1'"):
+            ProfileSimilarityConfig(algorithm_version="jaccard-v1")
+
+        with pytest.raises(ValueError, match="Unsupported algorithm_version ''"):
+            ProfileSimilarityConfig(algorithm_version="")
+
+        with pytest.raises(ValueError, match="Unsupported config_version ' '"):
+            ProfileSimilarityConfig(config_version=" ")
+
+        with pytest.raises(TypeError, match="policy_version must be a string"):
+            ProfileSimilarityConfig(policy_version=123)  # type: ignore[arg-type]
+
+        # Strict organism match regressions
+        with pytest.raises(TypeError, match="strict_organism_match must be a boolean"):
             ProfileSimilarityConfig(strict_organism_match="yes")  # type: ignore[arg-type]
 
-        with pytest.raises(ValueError, match="strict_organism_match=False is not permitted"):
+        with pytest.raises(ValueError, match="strict_organism_match must be True"):
             ProfileSimilarityConfig(strict_organism_match=False)
 
     def test_resistance_profile_immutability(self) -> None:

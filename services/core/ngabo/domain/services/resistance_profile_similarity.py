@@ -95,6 +95,11 @@ def compute_profile_similarity(
 
     # 1. Self-comparison guard
     if profile_a.isolate_id == profile_b.isolate_id:
+        if profile_a != profile_b:
+            raise ValueError(
+                f"Conflicting ResistanceProfile records for {profile_a.isolate_id!r}; "
+                "conflicting same-ID profiles must fail closed"
+            )
         status = ProfileSimilarityStatus.IDENTICAL_INPUTS
         output_value = f"status=IDENTICAL_INPUTS;isolate_id={profile_a.isolate_id}"
         finding_id = _compute_stable_finding_id(
@@ -285,7 +290,15 @@ def compare_canonical_isolates(
     isolate_b: CanonicalIsolate,
     config: ProfileSimilarityConfig | None = None,
 ) -> ProfileSimilarityFinding:
-    """Compare two CanonicalIsolates directly by deriving their ResistanceProfiles."""
+    """Compare two CanonicalIsolates directly by deriving their ResistanceProfiles.
+
+    Fails closed if records share the same isolate_id but differ in any attribute.
+    """
+    if isolate_a.isolate_id == isolate_b.isolate_id and isolate_a != isolate_b:
+        raise ValueError(
+            f"Conflicting CanonicalIsolate records for {isolate_a.isolate_id!r}; "
+            "conflicting same-ID records must fail closed"
+        )
     prof_a = ResistanceProfile.from_canonical_isolate(isolate_a)
     prof_b = ResistanceProfile.from_canonical_isolate(isolate_b)
     return compute_profile_similarity(prof_a, prof_b, config)
