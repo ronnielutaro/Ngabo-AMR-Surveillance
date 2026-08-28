@@ -18,6 +18,7 @@ from ngabo.domain.entities.canonical_import_batch import CanonicalImportBatch
 from ngabo.domain.entities.canonical_isolate import (
     ANTIBIOTIC_CODE_PATTERN,
     ISOLATE_ID_PATTERN,
+    SYNTHETIC_ID_PATTERN,
     CanonicalIsolate,
 )
 from ngabo.domain.enums.interpretation import Interpretation
@@ -221,6 +222,7 @@ class TestCanonicalIsolate:
     def test_patterns_match_fixture_shapes(self) -> None:
         assert ISOLATE_ID_PATTERN.fullmatch("ISO-012")
         assert ANTIBIOTIC_CODE_PATTERN.fullmatch("AMK")
+        assert SYNTHETIC_ID_PATTERN.fullmatch("SYNTH-FACILITY-001")
 
 
 class TestCanonicalImportBatch:
