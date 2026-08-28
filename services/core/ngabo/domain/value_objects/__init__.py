@@ -5,6 +5,8 @@ Must never import frameworks, cloud SDKs, AI SDKs, or outer Ngabo layers
 for the identity/version primitives (M1B.1), Issue #27 for the autonomy
 decision contract (M1B.3), Issue #28 for the proof-carrying claim and
 proof-reference contracts (M1B.4), Issue #29 for the claim-verification
-error and report contracts (M1B.5), and Issue #38 for the
-import-validation error and report contracts (M2.1).
+error and report contracts (M1B.5), Issue #38 for the
+import-validation error and report contracts (M2.1), and Issue #40
+for the source digest, duplicate record finding, and import deduplication
+error and report contracts (M2.3).
 """
