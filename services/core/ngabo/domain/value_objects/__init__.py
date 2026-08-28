@@ -11,5 +11,6 @@ for the source digest, duplicate record finding, and import deduplication
 error and report contracts (M2.3), Issue #45 for the resistance profile,
 profile similarity configuration, and similarity finding contracts (M2.5),
 and Issue #46 for concentration configuration, temporal concentration
-finding, and location concentration finding contracts (M2.6).
+finding, and location concentration finding contracts (M2.6), and Issue #47
+for signal configuration, signal components, and investigation-priority signal contracts (M2.7).
 """

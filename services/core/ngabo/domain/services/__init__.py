@@ -7,6 +7,7 @@ deterministic canonical import-boundary validation added in M2.1,
 Issue #40 for deterministic source identity, artifact digest, canonical
 watermarking, and import deduplication added in M2.3, Issue #45
 for deterministic resistance profile similarity evaluation added in M2.5,
-and Issue #46 for deterministic temporal and location concentration
-analysis added in M2.6.
+Issue #46 for deterministic temporal and location concentration
+analysis added in M2.6, and Issue #47 for deterministic baseline comparison
+and investigation-priority scoring added in M2.7.
 """
