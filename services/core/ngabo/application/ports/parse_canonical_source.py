@@ -22,7 +22,13 @@ class ParsedSourceError(Protocol):
     def row_number(self) -> int | None: ...
 
     @property
+    def record_index(self) -> int | None: ...
+
+    @property
     def record_id(self) -> str | None: ...
+
+    @property
+    def code(self) -> object: ...
 
 
 @runtime_checkable

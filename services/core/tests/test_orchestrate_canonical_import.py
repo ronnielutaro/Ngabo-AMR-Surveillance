@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from pathlib import Path
+from types import MappingProxyType
+from typing import Any
 
 import pytest
 
@@ -12,6 +15,7 @@ from ngabo.application.commands.import_canonical_source_command import (
 )
 from ngabo.application.enums.import_error_code import ImportErrorCode
 from ngabo.application.enums.import_outcome_disposition import ImportOutcomeDisposition
+from ngabo.application.ports.parse_canonical_source import ParsedSourceResult
 from ngabo.application.use_cases.orchestrate_canonical_import import (
     OrchestrateCanonicalImport,
 )
@@ -19,6 +23,7 @@ from ngabo.application.value_objects.canonical_import_result import (
     CanonicalImportResult,
 )
 from ngabo.application.value_objects.import_error_detail import ImportErrorDetail
+from ngabo.domain.entities.ast_observation import AstObservation
 from ngabo.domain.entities.canonical_import_batch import CanonicalImportBatch
 from ngabo.domain.entities.canonical_isolate import CanonicalIsolate
 from ngabo.domain.enums.interpretation import Interpretation
@@ -66,20 +71,48 @@ class InMemorySourceLoader:
 
 
 class InMemorySourceReplayRepository:
-    """In-memory replay repository fake for querying and recording watermarks."""
+    """In-memory replay repository fake with atomic accept_watermark semantics."""
 
     def __init__(
         self, initial_watermarks: dict[str, SourceWatermark] | None = None
     ) -> None:
         self._watermarks: dict[str, SourceWatermark] = dict(initial_watermarks or {})
+        self.accept_calls: list[tuple[str, SourceWatermark]] = []
 
-    def get_previous_watermark(self, source_key: str) -> SourceWatermark | None:
+    def accept_watermark(
+        self, source_key: str, current: SourceWatermark
+    ) -> SourceWatermark | None:
+        """Atomically read previous watermark, record current, and return previous."""
+        self.accept_calls.append((source_key, current))
+        previous = self._watermarks.get(source_key)
+        self._watermarks[source_key] = current
+        return previous
+
+    def get_stored_watermark(self, source_key: str) -> SourceWatermark | None:
+        """Helper to inspect repository state during tests."""
         return self._watermarks.get(source_key)
 
-    def record_accepted_watermark(
-        self, source_key: str, watermark: SourceWatermark
-    ) -> None:
-        self._watermarks[source_key] = watermark
+
+def _make_dummy_batch() -> CanonicalImportBatch:
+    return CanonicalImportBatch(
+        (
+            CanonicalIsolate(
+                isolate_id="ISO-001",
+                collection_date=date(2026, 8, 16),
+                organism_code="eco",
+                organism_name="Escherichia coli",
+                facility_id="SYNTH-FACILITY-001",
+                lab_id="SYNTH-LAB-001",
+                ward="SYNTH-WARD-A",
+                specimen_type="blood",
+                patient_token="SYNTH-CASE-001",
+                source_import_id="SYNTH-IMPORT-001",
+                ast_results=MappingProxyType(
+                    {"AMK": AstObservation(Interpretation.SUSCEPTIBLE)}
+                ),
+            ),
+        )
+    )
 
 
 # ============================================================================
@@ -145,6 +178,16 @@ class TestHeroCanonicalImport:
             }
             assert actual_ast == expected_ast
 
+        # Verified repository stored the accepted watermark
+        assert repo.get_stored_watermark("hero_source") == result.watermark
+
+        # Second invocation of unchanged hero automatically produces EXACT_REPLAY
+        second_result = use_case.execute(command)
+        assert second_result.success is True
+        assert second_result.disposition == ImportOutcomeDisposition.EXACT_REPLAY
+        assert second_result.watermark == result.watermark
+        assert second_result.raw_digest == result.raw_digest
+
 
 # ============================================================================
 # 2. First Import, Exact Replay, and Material Change Tests
@@ -165,8 +208,9 @@ class TestReplayOutcomes:
         assert res.batch is not None
         assert len(res.batch.records) == 1
         assert res.watermark is not None
+        assert repo.get_stored_watermark("source_1") == res.watermark
 
-    def test_exact_replay_when_prior_watermark_matches_current(self) -> None:
+    def test_exact_replay_automatic_without_manual_seeding(self) -> None:
         csv_bytes = SAMPLE_VALID_CSV.encode("utf-8")
         loader = InMemorySourceLoader({"data_a": csv_bytes})
         repo = InMemorySourceReplayRepository()
@@ -175,12 +219,10 @@ class TestReplayOutcomes:
         cmd = ImportCanonicalSourceCommand("source_1", "data_a")
         first_res = use_case(cmd)
         assert first_res.success is True
+        assert first_res.disposition == ImportOutcomeDisposition.FIRST_IMPORT
         assert first_res.watermark is not None
 
-        # Seed repository with the accepted watermark
-        repo.record_accepted_watermark("source_1", first_res.watermark)
-
-        # Second invocation produces EXACT_REPLAY
+        # Second invocation of unchanged source automatically produces EXACT_REPLAY
         replay_res = use_case(cmd)
         assert replay_res.success is True
         assert replay_res.disposition == ImportOutcomeDisposition.EXACT_REPLAY
@@ -188,23 +230,45 @@ class TestReplayOutcomes:
         assert replay_res.batch == first_res.batch
         assert replay_res.raw_digest == first_res.raw_digest
         assert replay_res.errors == ()
+        assert len(repo.accept_calls) == 2
 
-    def test_material_change_when_prior_watermark_differs(self) -> None:
-        csv_bytes = SAMPLE_VALID_CSV.encode("utf-8")
-        loader = InMemorySourceLoader({"data_a": csv_bytes})
-        # Prior watermark is for a different source state
-        prior_wm = SourceWatermark("ngabo-source-v1:sha256:" + "0" * 64)
-        repo = InMemorySourceReplayRepository({"source_1": prior_wm})
-
+    def test_material_change_advances_baseline_and_leads_to_exact_replay(self) -> None:
+        csv_bytes_1 = SAMPLE_VALID_CSV.encode("utf-8")
+        csv_bytes_2 = (
+            b"ISOLATE_ID,COLLECTION_DATE,ORGANISM_CODE,ORGANISM_NAME,"
+            b"FACILITY_ID,LAB_ID,WARD,SPECIMEN_TYPE,PATIENT_TOKEN,SOURCE_IMPORT_ID,AMK\n"
+            b"ISO-002,2026-08-16,eco,Escherichia coli,"
+            b"SYNTH-FACILITY-001,SYNTH-LAB-001,SYNTH-WARD-A,blood,SYNTH-CASE-002,SYNTH-IMPORT-001,R\n"
+        )
+        loader = InMemorySourceLoader({"data_a": csv_bytes_1})
+        repo = InMemorySourceReplayRepository()
         use_case = OrchestrateCanonicalImport(loader, repo, parse_whonet_csv)
-        cmd = ImportCanonicalSourceCommand("source_1", "data_a")
-        res = use_case(cmd)
 
-        assert res.success is True
-        assert res.disposition == ImportOutcomeDisposition.MATERIAL_CHANGE
-        assert res.watermark is not None
-        assert res.watermark != prior_wm
-        assert res.batch is not None
+        cmd = ImportCanonicalSourceCommand("source_1", "data_a")
+
+        # Call 1: W1 -> FIRST_IMPORT
+        res1 = use_case(cmd)
+        assert res1.success is True
+        assert res1.disposition == ImportOutcomeDisposition.FIRST_IMPORT
+        assert res1.watermark is not None
+        assert repo.get_stored_watermark("source_1") == res1.watermark
+
+        # Call 2: Source content changes to W2 -> MATERIAL_CHANGE
+        loader.add_source("data_a", csv_bytes_2)
+        res2 = use_case(cmd)
+        assert res2.success is True
+        assert res2.disposition == ImportOutcomeDisposition.MATERIAL_CHANGE
+        assert res2.watermark is not None
+        assert res2.watermark != res1.watermark
+        assert repo.get_stored_watermark("source_1") == res2.watermark
+
+        # Call 3: Source unchanged W2 -> EXACT_REPLAY
+        res3 = use_case(cmd)
+        assert res3.success is True
+        assert res3.disposition == ImportOutcomeDisposition.EXACT_REPLAY
+        assert res3.watermark == res2.watermark
+        assert repo.get_stored_watermark("source_1") == res2.watermark
+        assert len(repo.accept_calls) == 3
 
 
 # ============================================================================
@@ -239,7 +303,9 @@ class TestDuplicateRecordHandling:
         assert res.exact_duplicates[0].original_index == 0
         assert res.exact_duplicates[0].duplicate_indices == (1,)
 
-    def test_conflicting_duplicate_records_fail_closed(self) -> None:
+    def test_conflicting_duplicate_records_fail_closed_without_modifying_repo(
+        self,
+    ) -> None:
         csv_with_conflict = (
             "ISOLATE_ID,COLLECTION_DATE,ORGANISM_CODE,ORGANISM_NAME,"
             "FACILITY_ID,LAB_ID,WARD,SPECIMEN_TYPE,PATIENT_TOKEN,SOURCE_IMPORT_ID,AMK\n"
@@ -265,6 +331,10 @@ class TestDuplicateRecordHandling:
         assert res.errors[0].isolate_id == "ISO-001"
         assert "ast_results" in res.errors[0].differing_fields
 
+        # Conflicting duplicates fail before repo acceptance
+        assert len(repo.accept_calls) == 0
+        assert repo.get_stored_watermark("source_conflict") is None
+
 
 # ============================================================================
 # 4. Raw Source & UTF-8 Decode Failures Tests
@@ -283,7 +353,9 @@ class TestRawSourceAndDecode:
         assert res.raw_digest is not None
         assert str(res.raw_digest).startswith("sha256:")
 
-    def test_invalid_utf8_fails_closed_preserving_raw_digest(self) -> None:
+    def test_invalid_utf8_fails_closed_preserving_raw_digest_without_repo_call(
+        self,
+    ) -> None:
         bad_utf8 = b"\xff\xfe\x00\x00malformed_bytes"
         loader = InMemorySourceLoader({"bad_utf8": bad_utf8})
         repo = InMemorySourceReplayRepository()
@@ -300,6 +372,7 @@ class TestRawSourceAndDecode:
         assert len(res.errors) == 1
         assert res.errors[0].code == ImportErrorCode.UTF8_DECODE_ERROR
         assert "not valid UTF-8" in res.errors[0].message
+        assert len(repo.accept_calls) == 0
 
 
 # ============================================================================
@@ -326,8 +399,11 @@ class TestParserFailures:
         assert res.raw_digest is not None
         assert len(res.errors) > 0
         assert any(e.code == ImportErrorCode.PARSER_FAILURE for e in res.errors)
+        assert len(repo.accept_calls) == 0
 
-    def test_invalid_synthetic_id_fails_closed(self) -> None:
+    def test_invalid_synthetic_id_preserves_error_code_and_record_index(
+        self,
+    ) -> None:
         bad_synth_id_csv = (
             b"ISOLATE_ID,COLLECTION_DATE,ORGANISM_CODE,ORGANISM_NAME,"
             b"FACILITY_ID,LAB_ID,WARD,SPECIMEN_TYPE,PATIENT_TOKEN,SOURCE_IMPORT_ID,AMK\n"
@@ -347,8 +423,93 @@ class TestParserFailures:
         assert res.watermark is None
         assert res.raw_digest is not None
         assert len(res.errors) == 1
+        err = res.errors[0]
+        assert err.code == ImportErrorCode.PARSER_FAILURE
+        assert err.source_code == "INVALID_SYNTHETIC_ID"
+        assert err.record_index == 0
+        assert err.line_number == 2
+        assert err.field == "FACILITY_ID"
+        assert "SYNTH-" in err.message
+        assert len(repo.accept_calls) == 0
+
+    def test_canonical_validation_error_maps_to_canonical_validation_failure(
+        self,
+    ) -> None:
+        class FakeParserError:
+            def __init__(self) -> None:
+                self.code = "CANONICAL_VALIDATION_ERROR"
+                self.detail = "Invalid date format"
+                self.column = "collection_date"
+                self.row_number = 2
+                self.record_index = 0
+                self.record_id = "ISO-001"
+
+        class FakeParserResult:
+            def __init__(self) -> None:
+                self.success = False
+                self.batch = None
+                self.errors = (FakeParserError(),)
+
+        def mock_parser(source: str) -> ParsedSourceResult:
+            return FakeParserResult()
+
+        loader = InMemorySourceLoader({"data": SAMPLE_VALID_CSV.encode("utf-8")})
+        repo = InMemorySourceReplayRepository()
+        use_case = OrchestrateCanonicalImport(loader, repo, mock_parser)
+
+        cmd = ImportCanonicalSourceCommand("src_cve", "data")
+        res = use_case(cmd)
+
+        assert res.success is False
+        assert res.disposition == ImportOutcomeDisposition.FAILED
+        assert len(res.errors) == 1
+        err = res.errors[0]
+        assert err.code == ImportErrorCode.CANONICAL_VALIDATION_FAILURE
+        assert err.source_code == "CANONICAL_VALIDATION_ERROR"
+        assert err.field == "collection_date"
+        assert err.line_number == 2
+        assert err.record_index == 0
+        assert err.isolate_id == "ISO-001"
+
+    def test_parser_exception_fails_closed_preserving_raw_digest(self) -> None:
+        def throwing_parser(source: str) -> ParsedSourceResult:
+            raise RuntimeError("Parser engine crashed unexpectedly")
+
+        loader = InMemorySourceLoader({"data": SAMPLE_VALID_CSV.encode("utf-8")})
+        repo = InMemorySourceReplayRepository()
+        use_case = OrchestrateCanonicalImport(loader, repo, throwing_parser)
+
+        cmd = ImportCanonicalSourceCommand("src_crash", "data")
+        res = use_case(cmd)
+
+        assert res.success is False
+        assert res.disposition == ImportOutcomeDisposition.FAILED
+        assert res.raw_digest is not None
+        assert res.batch is None
+        assert res.watermark is None
+        assert len(res.errors) == 1
         assert res.errors[0].code == ImportErrorCode.PARSER_FAILURE
-        assert "SYNTH-" in res.errors[0].message
+        assert "Parser engine crashed unexpectedly" in res.errors[0].message
+        assert len(repo.accept_calls) == 0
+
+    def test_injected_parser_returning_invalid_result_object_fails_closed(
+        self,
+    ) -> None:
+        def invalid_parser(source: str) -> Any:
+            return "not-a-result-object"
+
+        loader = InMemorySourceLoader({"data": SAMPLE_VALID_CSV.encode("utf-8")})
+        repo = InMemorySourceReplayRepository()
+        use_case = OrchestrateCanonicalImport(loader, repo, invalid_parser)
+
+        cmd = ImportCanonicalSourceCommand("src_bad_parser", "data")
+        res = use_case(cmd)
+
+        assert res.success is False
+        assert res.disposition == ImportOutcomeDisposition.FAILED
+        assert res.raw_digest is not None
+        assert res.errors[0].code == ImportErrorCode.PARSER_FAILURE
+        assert "invalid result object" in res.errors[0].message
 
     def test_no_parser_row_silently_disappears(self) -> None:
         hdr = (
@@ -420,17 +581,14 @@ class TestPortFailures:
         assert res.raw_digest is None
         assert res.errors[0].code == ImportErrorCode.SOURCE_READ_ERROR
 
-    def test_repository_read_failure_returns_repository_error_preserving_raw_digest(
+    def test_repository_acceptance_failure_returns_repository_error_preserving_raw_digest(
         self,
     ) -> None:
         class FailingReplayRepo:
-            def get_previous_watermark(self, source_key: str) -> SourceWatermark | None:
+            def accept_watermark(
+                self, source_key: str, current: SourceWatermark
+            ) -> SourceWatermark | None:
                 raise RuntimeError("Database connection timed out")
-
-            def record_accepted_watermark(
-                self, source_key: str, watermark: SourceWatermark
-            ) -> None:
-                pass
 
         loader = InMemorySourceLoader({"data": SAMPLE_VALID_CSV.encode("utf-8")})
         use_case = OrchestrateCanonicalImport(loader, FailingReplayRepo(), parse_whonet_csv)
@@ -447,37 +605,32 @@ class TestPortFailures:
         assert res.errors[0].code == ImportErrorCode.REPOSITORY_ERROR
         assert "Database connection timed out" in res.errors[0].message
 
+    def test_invalid_repository_return_type_fails_closed(self) -> None:
+        class CorruptReplayRepo:
+            def accept_watermark(
+                self, source_key: str, current: SourceWatermark
+            ) -> Any:
+                return "corrupt-watermark-string"
+
+        loader = InMemorySourceLoader({"data": SAMPLE_VALID_CSV.encode("utf-8")})
+        use_case = OrchestrateCanonicalImport(loader, CorruptReplayRepo(), parse_whonet_csv)
+
+        cmd = ImportCanonicalSourceCommand("src_corrupt_repo", "data")
+        res = use_case(cmd)
+
+        assert res.success is False
+        assert res.disposition == ImportOutcomeDisposition.FAILED
+        assert res.raw_digest is not None
+        assert res.batch is None
+        assert res.watermark is None
+        assert len(res.errors) == 1
+        assert res.errors[0].code == ImportErrorCode.REPOSITORY_ERROR
+        assert "Invalid repository return type" in res.errors[0].message
+
 
 # ============================================================================
 # 7. Invariants, Immutability, and Determinism Tests
 # ============================================================================
-
-
-def _make_dummy_batch() -> CanonicalImportBatch:
-    from datetime import date
-    from types import MappingProxyType
-
-    from ngabo.domain.entities.ast_observation import AstObservation
-
-    return CanonicalImportBatch(
-        (
-            CanonicalIsolate(
-                isolate_id="ISO-001",
-                collection_date=date(2026, 8, 16),
-                organism_code="eco",
-                organism_name="Escherichia coli",
-                facility_id="SYNTH-FACILITY-001",
-                lab_id="SYNTH-LAB-001",
-                ward="SYNTH-WARD-A",
-                specimen_type="blood",
-                patient_token="SYNTH-CASE-001",
-                source_import_id="SYNTH-IMPORT-001",
-                ast_results=MappingProxyType(
-                    {"AMK": AstObservation(Interpretation.SUSCEPTIBLE)}
-                ),
-            ),
-        )
-    )
 
 
 class TestInvariantsAndDeterminism:
@@ -592,6 +745,20 @@ class TestInvariantsAndDeterminism:
                 indices=(-1,),
             )
 
+        with pytest.raises(ValueError, match="expected non-negative integer"):
+            ImportErrorDetail(
+                code=ImportErrorCode.SOURCE_READ_ERROR,
+                message="err",
+                record_index=-1,
+            )
+
+        with pytest.raises(ValueError, match="expected positive integer"):
+            ImportErrorDetail(
+                code=ImportErrorCode.SOURCE_READ_ERROR,
+                message="err",
+                line_number=0,
+            )
+
         with pytest.raises(TypeError, match="expected tuple of strings"):
             ImportErrorDetail(
                 code=ImportErrorCode.SOURCE_READ_ERROR,
@@ -606,6 +773,13 @@ class TestInvariantsAndDeterminism:
                 differing_fields=("",),
             )
 
+        with pytest.raises(ValueError, match="source_code must be a non-empty string"):
+            ImportErrorDetail(
+                code=ImportErrorCode.SOURCE_READ_ERROR,
+                message="err",
+                source_code="",
+            )
+
     def test_repeated_same_command_and_same_fake_state_produces_equal_result(
         self,
     ) -> None:
@@ -615,11 +789,37 @@ class TestInvariantsAndDeterminism:
         use_case = OrchestrateCanonicalImport(loader, repo, parse_whonet_csv)
 
         cmd = ImportCanonicalSourceCommand("source_key_det", "loc_1")
+        # Call 1 -> FIRST_IMPORT
         res_1 = use_case.execute(cmd)
-        res_2 = use_case.execute(cmd)
+        assert res_1.disposition == ImportOutcomeDisposition.FIRST_IMPORT
 
-        assert res_1 == res_2
-        assert res_1.disposition == res_2.disposition
-        assert res_1.watermark == res_2.watermark
-        assert res_1.raw_digest == res_2.raw_digest
-        assert res_1.batch == res_2.batch
+        # Call 2 -> EXACT_REPLAY
+        res_2 = use_case.execute(cmd)
+        assert res_2.disposition == ImportOutcomeDisposition.EXACT_REPLAY
+
+        # Call 3 -> EXACT_REPLAY (idempotent result)
+        res_3 = use_case.execute(cmd)
+        assert res_2 == res_3
+        assert res_2.disposition == res_3.disposition
+        assert res_2.watermark == res_3.watermark
+        assert res_2.raw_digest == res_3.raw_digest
+        assert res_2.batch == res_3.batch
+
+    def test_atomic_replay_port_contract_simulation(self) -> None:
+        """Simulate two concurrent first deliveries using the atomic accept_watermark method.
+
+        In a transactional store, accept_watermark executes atomically under concurrency:
+        - Exactly one call observes previous is None -> FIRST_IMPORT
+        - The other call observes previous is W1 -> EXACT_REPLAY
+        Both callers observe valid deterministic outcomes without duplicate ingestion work.
+        """
+        wm = SourceWatermark("ngabo-source-v1:sha256:" + "e" * 64)
+        repo = InMemorySourceReplayRepository()
+
+        # Delivery A
+        prev_a = repo.accept_watermark("source_concurrent", wm)
+        # Delivery B
+        prev_b = repo.accept_watermark("source_concurrent", wm)
+
+        assert prev_a is None  # Winner of race
+        assert prev_b == wm  # Follower observed already-accepted state

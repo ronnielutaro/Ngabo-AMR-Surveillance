@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 
 from ngabo.application.commands.import_canonical_source_command import (
     ImportCanonicalSourceCommand,
@@ -16,8 +17,10 @@ from ngabo.application.value_objects.canonical_import_result import (
     CanonicalImportResult,
 )
 from ngabo.application.value_objects.import_error_detail import ImportErrorDetail
+from ngabo.domain.entities.canonical_import_batch import CanonicalImportBatch
 from ngabo.domain.services.import_deduplication import deduplicate_canonical_batch
 from ngabo.domain.services.source_identity import compute_raw_source_digest
+from ngabo.domain.value_objects.source_watermark import SourceWatermark
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +36,7 @@ class OrchestrateCanonicalImport:
     ) -> None:
         if not callable(source_loader):
             raise TypeError(f"Invalid source_loader {source_loader!r}; expected callable")
-        if not hasattr(replay_repo, "get_previous_watermark"):
+        if not hasattr(replay_repo, "accept_watermark"):
             raise TypeError(
                 f"Invalid replay_repo {replay_repo!r}; expected SourceReplayRepository"
             )
@@ -53,11 +56,14 @@ class OrchestrateCanonicalImport:
         3. Decode raw bytes strictly as UTF-8 (``bytes(raw_bytes).decode('utf-8')``).
            Fails closed with ``UTF8_DECODE_ERROR`` (raw_digest preserved).
         4. Parse CSV & validate canonical records via ``parser(csv_text)``.
-           Fails closed with ``PARSER_FAILURE`` (raw_digest preserved).
+           Fails closed with ``PARSER_FAILURE`` or ``CANONICAL_VALIDATION_FAILURE``
+           (raw_digest preserved).
         5. Deduplicate batch & compute source watermark via ``deduplicate_canonical_batch(batch)``.
            Fails closed with ``CONFLICTING_DUPLICATE_RECORD`` (raw_digest preserved).
-        6. Query previous watermark from ``replay_repo.get_previous_watermark(command.source_key)``.
-           Fails closed with ``REPOSITORY_ERROR`` if repository read fails (raw_digest preserved).
+        6. Atomically record current watermark and retrieve previous watermark via
+           ``replay_repo.accept_watermark(command.source_key, watermark)``.
+           Fails closed with ``REPOSITORY_ERROR`` if repository fails or returns invalid type
+           (raw_digest preserved).
         7. Determine disposition:
            - ``FIRST_IMPORT`` if previous watermark is None;
            - ``EXACT_REPLAY`` if previous watermark equals current watermark;
@@ -133,19 +139,11 @@ class OrchestrateCanonicalImport:
                 ),
             )
 
-        # Step 4: CSV parsing & canonical validation
-        parsed = self._parser(csv_text)
-        if not parsed.success or parsed.batch is None:
-            parser_errors = tuple(
-                ImportErrorDetail(
-                    code=ImportErrorCode.PARSER_FAILURE,
-                    message=err.detail or "CSV parsing or canonical validation failed",
-                    field=err.column,
-                    line_number=err.row_number,
-                    isolate_id=err.record_id,
-                )
-                for err in parsed.errors
-            )
+        # Step 4: CSV parsing & canonical validation inside exception boundary
+        try:
+            parsed = self._parser(csv_text)
+        except Exception as exc:
+            logger.warning("Parser port raised unexpected exception: %s", exc)
             return CanonicalImportResult(
                 success=False,
                 disposition=ImportOutcomeDisposition.FAILED,
@@ -154,7 +152,75 @@ class OrchestrateCanonicalImport:
                 watermark=None,
                 batch=None,
                 exact_duplicates=(),
-                errors=parser_errors
+                errors=(
+                    ImportErrorDetail(
+                        code=ImportErrorCode.PARSER_FAILURE,
+                        message=f"Parser failed with unexpected exception: {exc}",
+                    ),
+                ),
+            )
+
+        # Harden ParsedSourceResult boundary
+        if (
+            not hasattr(parsed, "success")
+            or not isinstance(parsed.success, bool)
+            or not hasattr(parsed, "errors")
+            or not isinstance(parsed.errors, (Sequence, tuple, list))
+            or (parsed.batch is not None and not isinstance(parsed.batch, CanonicalImportBatch))
+        ):
+            return CanonicalImportResult(
+                success=False,
+                disposition=ImportOutcomeDisposition.FAILED,
+                source_key=command.source_key,
+                raw_digest=raw_digest,
+                watermark=None,
+                batch=None,
+                exact_duplicates=(),
+                errors=(
+                    ImportErrorDetail(
+                        code=ImportErrorCode.PARSER_FAILURE,
+                        message="Injected parser returned invalid result object",
+                    ),
+                ),
+            )
+
+        if not parsed.success or parsed.batch is None:
+            parser_errors = []
+            for err in parsed.errors:
+                err_code_str = (
+                    str(err.code)
+                    if hasattr(err, "code") and err.code is not None
+                    else None
+                )
+                if err_code_str == "CANONICAL_VALIDATION_ERROR":
+                    app_code = ImportErrorCode.CANONICAL_VALIDATION_FAILURE
+                else:
+                    app_code = ImportErrorCode.PARSER_FAILURE
+
+                parser_errors.append(
+                    ImportErrorDetail(
+                        code=app_code,
+                        message=(
+                            getattr(err, "detail", None)
+                            or "CSV parsing or canonical validation failed"
+                        ),
+                        field=getattr(err, "column", None),
+                        line_number=getattr(err, "row_number", None),
+                        record_index=getattr(err, "record_index", None),
+                        isolate_id=getattr(err, "record_id", None),
+                        source_code=err_code_str,
+                    )
+                )
+
+            return CanonicalImportResult(
+                success=False,
+                disposition=ImportOutcomeDisposition.FAILED,
+                source_key=command.source_key,
+                raw_digest=raw_digest,
+                watermark=None,
+                batch=None,
+                exact_duplicates=(),
+                errors=tuple(parser_errors)
                 if parser_errors
                 else (
                     ImportErrorDetail(
@@ -188,10 +254,16 @@ class OrchestrateCanonicalImport:
                 errors=conflict_errors,
             )
 
-        # Step 6: Query previous watermark from replay repository
+        # Step 6: Atomic replay acceptance in repository
         try:
-            previous_watermark = self._replay_repo.get_previous_watermark(command.source_key)
+            previous_watermark = self._replay_repo.accept_watermark(
+                command.source_key,
+                dedup_report.watermark,
+            )
         except Exception as exc:
+            logger.warning(
+                "Repository acceptance failed for %s: %s", command.source_key, exc
+            )
             return CanonicalImportResult(
                 success=False,
                 disposition=ImportOutcomeDisposition.FAILED,
@@ -203,7 +275,30 @@ class OrchestrateCanonicalImport:
                 errors=(
                     ImportErrorDetail(
                         code=ImportErrorCode.REPOSITORY_ERROR,
-                        message=f"Failed to query previous watermark: {exc}",
+                        message=f"Failed to record/query watermark in repository: {exc}",
+                    ),
+                ),
+            )
+
+        # Fail-closed validation on repository return type
+        if previous_watermark is not None and not isinstance(
+            previous_watermark, SourceWatermark
+        ):
+            return CanonicalImportResult(
+                success=False,
+                disposition=ImportOutcomeDisposition.FAILED,
+                source_key=command.source_key,
+                raw_digest=raw_digest,
+                watermark=None,
+                batch=None,
+                exact_duplicates=dedup_report.exact_duplicates,
+                errors=(
+                    ImportErrorDetail(
+                        code=ImportErrorCode.REPOSITORY_ERROR,
+                        message=(
+                            f"Invalid repository return type {type(previous_watermark)!r}; "
+                            "expected SourceWatermark | None"
+                        ),
                     ),
                 ),
             )
