@@ -69,8 +69,8 @@ def compute_profile_similarity(
 ) -> ProfileSimilarityFinding:
     """Calculate the deterministic resistance profile similarity between two isolates.
 
-    Follows the proposed v0.1 prototype similarity policy (pending explicit maintainer
-    approval; see docs/DATA_SAFETY_EVALUATION.md for background):
+    Follows the Ngabo v0.1 maintainer-approved prototype policy (see ADR 0010
+    and docs/DATA_SAFETY_EVALUATION.md for background):
     1. Symmetric pair ordering: input_refs is always sorted lexicographically by isolate ID.
     2. Self-comparison guard: identical isolate IDs yield IDENTICAL_INPUTS (similarity is None).
     3. Strict organism compatibility: differing organism codes yield INCOMPATIBLE_ORGANISM
