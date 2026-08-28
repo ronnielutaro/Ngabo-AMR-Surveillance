@@ -95,45 +95,37 @@ class TemporalConcentrationFinding:
         if not isinstance(self.status, ConcentrationStatus):
             raise TypeError(f"Invalid status {self.status!r}; expected ConcentrationStatus")
 
-        if self.reason is not None and not isinstance(self.reason, ConcentrationReason):
-            raise TypeError(f"Invalid reason {self.reason!r}; expected ConcentrationReason")
+        if self.status != ConcentrationStatus.SUCCESS:
+            raise ValueError(
+                "TemporalConcentrationFinding only supports ConcentrationStatus.SUCCESS in v0.1 "
+                "(retrospective-count-v1 has no denominator)"
+            )
 
-        if self.status == ConcentrationStatus.SUCCESS:
-            if self.facility_organism_count == 0:
-                raise ValueError("SUCCESS status requires facility_organism_count > 0")
-            if type(self.observed_min_date) is not date:
-                raise TypeError("observed_min_date must be an exact datetime.date on SUCCESS")
-            if type(self.observed_max_date) is not date:
-                raise TypeError("observed_max_date must be an exact datetime.date on SUCCESS")
-            if not (
-                self.window_start
-                <= self.observed_min_date
-                <= self.observed_max_date
-                <= self.window_end
-            ):
-                raise ValueError(
-                    f"Observed date span [{self.observed_min_date}, {self.observed_max_date}] "
-                    f"must fall within window [{self.window_start}, {self.window_end}]"
-                )
-            expected_span = (self.observed_max_date - self.observed_min_date).days + 1
-            if self.observed_span_days != expected_span:
-                raise ValueError(
-                    f"observed_span_days ({self.observed_span_days}) does not match "
-                    f"calculated span ({expected_span})"
-                )
-            if self.reason is not None:
-                raise ValueError("reason must be None on SUCCESS status")
-        else:
-            if self.facility_organism_count != 0:
-                raise ValueError("INSUFFICIENT_DATA status requires facility_organism_count == 0")
-            if (
-                self.observed_min_date is not None
-                or self.observed_max_date is not None
-                or self.observed_span_days is not None
-            ):
-                raise ValueError(
-                    "Observed date metrics must be None when status is INSUFFICIENT_DATA"
-                )
+        if self.reason is not None:
+            raise ValueError("reason must be None on TemporalConcentrationFinding")
+
+        if self.facility_organism_count == 0:
+            raise ValueError("SUCCESS status requires facility_organism_count > 0")
+        if type(self.observed_min_date) is not date:
+            raise TypeError("observed_min_date must be an exact datetime.date on SUCCESS")
+        if type(self.observed_max_date) is not date:
+            raise TypeError("observed_max_date must be an exact datetime.date on SUCCESS")
+        if not (
+            self.window_start
+            <= self.observed_min_date
+            <= self.observed_max_date
+            <= self.window_end
+        ):
+            raise ValueError(
+                f"Observed date span [{self.observed_min_date}, {self.observed_max_date}] "
+                f"must fall within window [{self.window_start}, {self.window_end}]"
+            )
+        expected_span = (self.observed_max_date - self.observed_min_date).days + 1
+        if self.observed_span_days != expected_span:
+            raise ValueError(
+                f"observed_span_days ({self.observed_span_days}) does not match "
+                f"calculated span ({expected_span})"
+            )
 
     def to_finding_reference(self) -> DeterministicFindingReference:
         """Convert finding directly to a DeterministicFindingReference for reasoning claims."""

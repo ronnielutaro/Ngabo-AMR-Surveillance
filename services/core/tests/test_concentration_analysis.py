@@ -20,7 +20,6 @@ from ngabo.domain.services.concentration_analysis import (
     compute_location_concentration_findings,
     compute_temporal_concentration_findings,
     evaluate_location_cohort,
-    evaluate_temporal_cohort,
 )
 from ngabo.domain.value_objects.concentration_config import (
     GOVERNED_CONFIG_VERSION,
@@ -233,16 +232,6 @@ class TestTemporalConcentration:
         assert (findings[0].organism_code, findings[0].facility_id) == ("eco", "FAC-1")
         assert (findings[1].organism_code, findings[1].facility_id) == ("kle", "FAC-1")
         assert (findings[2].organism_code, findings[2].facility_id) == ("kle", "FAC-2")
-
-    def test_empty_cohort_evaluation_yields_insufficient_data(self) -> None:
-        window_end = date(2026, 8, 18)
-        finding = evaluate_temporal_cohort("kle", "FAC-999", [], window_end)
-        assert finding.status == ConcentrationStatus.INSUFFICIENT_DATA
-        assert finding.reason == ConcentrationReason.EMPTY_DENOMINATOR
-        assert finding.facility_organism_count == 0
-        assert finding.observed_span_days is None
-        assert finding.input_refs == ()
-        assert "status=INSUFFICIENT_DATA;reason=EMPTY_DENOMINATOR" in finding.output_value
 
 
 # ============================================================================
@@ -574,7 +563,258 @@ class TestClosedPolicyConfiguration:
 
 
 # ============================================================================
-# 7. Hero Cluster Golden Tests
+# 7. Closed Policy Config Resolver Bypass Regressions (Section 3)
+# ============================================================================
+
+
+class _SubclassOverridingWindow(ConcentrationConfig):
+    """Subclass attempting to alter window duration while inheriting valid metadata."""
+
+    def calculate_window_start(self, window_end: date) -> date:
+        from datetime import timedelta
+
+        return window_end - timedelta(days=13)  # 14-day window
+
+
+class _DuckConfigWindowDays14:
+    """Duck-typed config object presenting valid versions but 14-day window."""
+
+    def __init__(self) -> None:
+        self.policy_version = GOVERNED_POLICY_VERSION
+        self.config_version = GOVERNED_CONFIG_VERSION
+        self.temporal_algorithm_version = GOVERNED_TEMPORAL_ALGORITHM_VERSION
+        self.location_algorithm_version = GOVERNED_LOCATION_ALGORITHM_VERSION
+        self.window_days = 14
+        self.precision = GOVERNED_PRECISION
+
+    def calculate_window_start(self, window_end: date) -> date:
+        from datetime import timedelta
+
+        return window_end - timedelta(days=13)
+
+
+class _DuckConfigPrecision2:
+    """Duck-typed config object presenting valid versions but precision=2."""
+
+    def __init__(self) -> None:
+        self.policy_version = GOVERNED_POLICY_VERSION
+        self.config_version = GOVERNED_CONFIG_VERSION
+        self.temporal_algorithm_version = GOVERNED_TEMPORAL_ALGORITHM_VERSION
+        self.location_algorithm_version = GOVERNED_LOCATION_ALGORITHM_VERSION
+        self.window_days = GOVERNED_WINDOW_DAYS
+        self.precision = 2
+
+    def calculate_window_start(self, window_end: date) -> date:
+        from datetime import timedelta
+
+        return window_end - timedelta(days=6)
+
+
+_EXPECTED_CONFIG_ERROR = "config must be an exact validated ConcentrationConfig"
+
+
+class TestClosedPolicyConfigResolverBypassRegressions:
+    def test_none_config_succeeds_with_governed_default(self) -> None:
+        window_end = date(2026, 8, 18)
+        iso = _make_isolate("ISO-001")
+        t_findings = compute_temporal_concentration_findings([iso], window_end, config=None)
+        l_findings = compute_location_concentration_findings([iso], window_end, config=None)
+        c_finding = evaluate_location_cohort(
+            "kle", "SYNTH-FACILITY-001", "SYNTH-WARD-A", [iso], window_end, config=None
+        )
+        assert len(t_findings) == 1
+        assert len(l_findings) == 1
+        assert c_finding.status == ConcentrationStatus.SUCCESS
+
+    def test_exact_config_instance_succeeds(self) -> None:
+        window_end = date(2026, 8, 18)
+        iso = _make_isolate("ISO-001")
+        exact_cfg = ConcentrationConfig()
+        t_findings = compute_temporal_concentration_findings([iso], window_end, config=exact_cfg)
+        l_findings = compute_location_concentration_findings([iso], window_end, config=exact_cfg)
+        c_finding = evaluate_location_cohort(
+            "kle", "SYNTH-FACILITY-001", "SYNTH-WARD-A", [iso], window_end, config=exact_cfg
+        )
+        assert len(t_findings) == 1
+        assert len(l_findings) == 1
+        assert c_finding.status == ConcentrationStatus.SUCCESS
+
+    def test_subclass_overriding_window_start_raises_type_error(self) -> None:
+        window_end = date(2026, 8, 18)
+        subclass_cfg = _SubclassOverridingWindow()
+        with pytest.raises(TypeError, match=_EXPECTED_CONFIG_ERROR):
+            compute_temporal_concentration_findings([], window_end, config=subclass_cfg)
+
+        with pytest.raises(TypeError, match=_EXPECTED_CONFIG_ERROR):
+            compute_location_concentration_findings([], window_end, config=subclass_cfg)
+
+        with pytest.raises(TypeError, match=_EXPECTED_CONFIG_ERROR):
+            evaluate_location_cohort("kle", "FAC-1", "WARD-A", [], window_end, config=subclass_cfg)
+
+    def test_duck_config_window_days_14_raises_type_error(self) -> None:
+        window_end = date(2026, 8, 18)
+        duck_cfg = _DuckConfigWindowDays14()
+        with pytest.raises(TypeError, match=_EXPECTED_CONFIG_ERROR):
+            compute_temporal_concentration_findings(
+                [], window_end, config=duck_cfg  # type: ignore[arg-type]
+            )
+
+    def test_duck_config_precision_2_raises_type_error(self) -> None:
+        window_end = date(2026, 8, 18)
+        duck_cfg = _DuckConfigPrecision2()
+        with pytest.raises(TypeError, match=_EXPECTED_CONFIG_ERROR):
+            compute_location_concentration_findings(
+                [], window_end, config=duck_cfg  # type: ignore[arg-type]
+            )
+
+    def test_dict_config_raises_type_error(self) -> None:
+        window_end = date(2026, 8, 18)
+        dict_cfg = {
+            "policy_version": GOVERNED_POLICY_VERSION,
+            "config_version": GOVERNED_CONFIG_VERSION,
+            "window_days": GOVERNED_WINDOW_DAYS,
+            "precision": GOVERNED_PRECISION,
+        }
+        with pytest.raises(TypeError, match=_EXPECTED_CONFIG_ERROR):
+            compute_temporal_concentration_findings(
+                [], window_end, config=dict_cfg  # type: ignore[arg-type]
+            )
+
+    def test_arbitrary_object_raises_type_error(self) -> None:
+        window_end = date(2026, 8, 18)
+        with pytest.raises(TypeError, match=_EXPECTED_CONFIG_ERROR):
+            compute_temporal_concentration_findings(
+                [], window_end, config=object()  # type: ignore[arg-type]
+            )
+
+    def test_empty_compute_temporal_collection_with_spoof_config_raises_type_error(self) -> None:
+        window_end = date(2026, 8, 18)
+        spoof = _SubclassOverridingWindow()
+        # Even with empty isolate list, spoofed config must be rejected before checking collection
+        with pytest.raises(TypeError, match=_EXPECTED_CONFIG_ERROR):
+            compute_temporal_concentration_findings([], window_end, config=spoof)
+
+    def test_empty_compute_location_collection_with_spoof_config_raises_type_error(self) -> None:
+        window_end = date(2026, 8, 18)
+        spoof = _SubclassOverridingWindow()
+        with pytest.raises(TypeError, match=_EXPECTED_CONFIG_ERROR):
+            compute_location_concentration_findings([], window_end, config=spoof)
+
+    def test_evaluate_location_cohort_with_spoof_config_raises_type_error(self) -> None:
+        window_end = date(2026, 8, 18)
+        spoof = _SubclassOverridingWindow()
+        with pytest.raises(TypeError, match=_EXPECTED_CONFIG_ERROR):
+            evaluate_location_cohort("kle", "FAC-1", "WARD-A", [], window_end, config=spoof)
+
+
+# ============================================================================
+# 8. Insufficient-Data Reason Invariants (Section 5)
+# ============================================================================
+
+
+class TestInsufficientDataReasonInvariants:
+    def test_location_finding_insufficient_data_requires_empty_denominator_reason(self) -> None:
+        # INSUFFICIENT_DATA without reason must fail closed
+        with pytest.raises(
+            ValueError,
+            match="INSUFFICIENT_DATA status requires reason=ConcentrationReason.EMPTY_DENOMINATOR",
+        ):
+            LocationConcentrationFinding(
+                finding_id="lconc-test",
+                policy_version=GOVERNED_POLICY_VERSION,
+                algorithm_version=GOVERNED_LOCATION_ALGORITHM_VERSION,
+                config_version=GOVERNED_CONFIG_VERSION,
+                organism_code="kle",
+                facility_id="FAC-1",
+                ward="WARD-A",
+                window_start=date(2026, 8, 12),
+                window_end=date(2026, 8, 18),
+                ward_organism_count=0,
+                facility_organism_count=0,
+                location_concentration_ratio=None,
+                ward_input_refs=(),
+                facility_window_input_refs=(),
+                input_refs=(),
+                status=ConcentrationStatus.INSUFFICIENT_DATA,
+                reason=None,
+                output_value="status=INSUFFICIENT_DATA",
+            )
+
+    def test_location_finding_success_rejects_reason(self) -> None:
+        with pytest.raises(ValueError, match="reason must be None on SUCCESS status"):
+            LocationConcentrationFinding(
+                finding_id="lconc-test",
+                policy_version=GOVERNED_POLICY_VERSION,
+                algorithm_version=GOVERNED_LOCATION_ALGORITHM_VERSION,
+                config_version=GOVERNED_CONFIG_VERSION,
+                organism_code="kle",
+                facility_id="FAC-1",
+                ward="WARD-A",
+                window_start=date(2026, 8, 12),
+                window_end=date(2026, 8, 18),
+                ward_organism_count=1,
+                facility_organism_count=1,
+                location_concentration_ratio=1.0,
+                ward_input_refs=("ISO-001",),
+                facility_window_input_refs=("ISO-001",),
+                input_refs=("ISO-001",),
+                status=ConcentrationStatus.SUCCESS,
+                reason=ConcentrationReason.EMPTY_DENOMINATOR,
+                output_value="ward_share=1.0000;ward_count=1;facility_count=1;ward=WARD-A",
+            )
+
+    def test_temporal_finding_rejects_insufficient_data_status(self) -> None:
+        # Section 4: Temporal concentration has no denominator; INSUFFICIENT_DATA is invalid
+        with pytest.raises(
+            ValueError,
+            match="TemporalConcentrationFinding only supports ConcentrationStatus.SUCCESS in v0.1",
+        ):
+            TemporalConcentrationFinding(
+                finding_id="tconc-test",
+                policy_version=GOVERNED_POLICY_VERSION,
+                algorithm_version=GOVERNED_TEMPORAL_ALGORITHM_VERSION,
+                config_version=GOVERNED_CONFIG_VERSION,
+                organism_code="kle",
+                facility_id="FAC-1",
+                window_start=date(2026, 8, 12),
+                window_end=date(2026, 8, 18),
+                facility_organism_count=0,
+                input_refs=(),
+                observed_min_date=None,
+                observed_max_date=None,
+                observed_span_days=None,
+                status=ConcentrationStatus.INSUFFICIENT_DATA,
+                reason=None,
+                output_value="status=INSUFFICIENT_DATA",
+            )
+
+    def test_temporal_finding_rejects_reason(self) -> None:
+        with pytest.raises(
+            ValueError,
+            match="reason must be None on TemporalConcentrationFinding",
+        ):
+            TemporalConcentrationFinding(
+                finding_id="tconc-test",
+                policy_version=GOVERNED_POLICY_VERSION,
+                algorithm_version=GOVERNED_TEMPORAL_ALGORITHM_VERSION,
+                config_version=GOVERNED_CONFIG_VERSION,
+                organism_code="kle",
+                facility_id="FAC-1",
+                window_start=date(2026, 8, 12),
+                window_end=date(2026, 8, 18),
+                facility_organism_count=1,
+                input_refs=("ISO-001",),
+                observed_min_date=date(2026, 8, 15),
+                observed_max_date=date(2026, 8, 15),
+                observed_span_days=1,
+                status=ConcentrationStatus.SUCCESS,
+                reason=ConcentrationReason.EMPTY_DENOMINATOR,
+                output_value="temporal_count=1;span_days=1;window_days=7",
+            )
+
+
+# ============================================================================
+# 9. Hero Cluster Golden Tests
 # ============================================================================
 
 

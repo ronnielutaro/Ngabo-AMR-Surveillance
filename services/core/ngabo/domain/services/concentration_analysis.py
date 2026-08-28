@@ -21,6 +21,19 @@ from ngabo.domain.value_objects.temporal_concentration_finding import (
 )
 
 
+def _resolve_governed_config(
+    config: ConcentrationConfig | None,
+) -> ConcentrationConfig:
+    """Return the closed governed config or fail closed on any non-governed input."""
+    if config is None:
+        return ConcentrationConfig()
+
+    if type(config) is not ConcentrationConfig:
+        raise TypeError("config must be an exact validated ConcentrationConfig")
+
+    return config
+
+
 def _deduplicate_and_validate_isolates(
     isolates: Sequence[CanonicalIsolate],
 ) -> list[CanonicalIsolate]:
@@ -150,7 +163,7 @@ def compute_temporal_concentration_findings(
     4. Computes descriptive count, observed span days, and lexicographical input_refs.
     5. Issue #46 produces factual measurements; it does NOT enforce an investigation threshold.
     """
-    cfg = config if config is not None else ConcentrationConfig()
+    cfg = _resolve_governed_config(config)
     if type(window_end) is not date:
         raise TypeError(
             f"window_end must be an exact datetime.date; got {type(window_end).__name__}"
@@ -236,7 +249,7 @@ def compute_location_concentration_findings(
     5. Proof authority: authoritative input_refs includes ALL facility window records because
        every denominator record materially affects the computed ratio.
     """
-    cfg = config if config is not None else ConcentrationConfig()
+    cfg = _resolve_governed_config(config)
     if type(window_end) is not date:
         raise TypeError(
             f"window_end must be an exact datetime.date; got {type(window_end).__name__}"
@@ -322,118 +335,6 @@ def compute_location_concentration_findings(
     return tuple(findings)
 
 
-def evaluate_temporal_cohort(
-    organism_code: str,
-    facility_id: str,
-    isolates: Sequence[CanonicalIsolate],
-    window_end: date,
-    config: ConcentrationConfig | None = None,
-) -> TemporalConcentrationFinding:
-    """Evaluate temporal concentration for a specific (organism, facility) cohort.
-
-    If zero isolates exist in the window, returns an INSUFFICIENT_DATA finding with
-    reason EMPTY_DENOMINATOR.
-    """
-    cfg = config if config is not None else ConcentrationConfig()
-    if type(window_end) is not date:
-        raise TypeError(
-            f"window_end must be an exact datetime.date; got {type(window_end).__name__}"
-        )
-    window_start = cfg.calculate_window_start(window_end)
-
-    unique_isolates = _deduplicate_and_validate_isolates(isolates)
-    cohort = [
-        iso
-        for iso in unique_isolates
-        if iso.organism_code == organism_code
-        and iso.facility_id == facility_id
-        and window_start <= iso.collection_date <= window_end
-    ]
-    cohort.sort(key=lambda x: x.isolate_id)
-
-    count = len(cohort)
-    if count == 0:
-        status = ConcentrationStatus.INSUFFICIENT_DATA
-        reason = ConcentrationReason.EMPTY_DENOMINATOR
-        output_value = "status=INSUFFICIENT_DATA;reason=EMPTY_DENOMINATOR;temporal_count=0"
-        finding_id = _compute_temporal_finding_id(
-            policy_version=cfg.policy_version,
-            algorithm_version=cfg.temporal_algorithm_version,
-            config_version=cfg.config_version,
-            window_start=window_start,
-            window_end=window_end,
-            organism_code=organism_code,
-            facility_id=facility_id,
-            input_refs=(),
-            facility_organism_count=0,
-            observed_min_date=None,
-            observed_max_date=None,
-            observed_span_days=None,
-            status=status,
-            output_value=output_value,
-        )
-        return TemporalConcentrationFinding(
-            finding_id=finding_id,
-            policy_version=cfg.policy_version,
-            algorithm_version=cfg.temporal_algorithm_version,
-            config_version=cfg.config_version,
-            organism_code=organism_code,
-            facility_id=facility_id,
-            window_start=window_start,
-            window_end=window_end,
-            facility_organism_count=0,
-            input_refs=(),
-            observed_min_date=None,
-            observed_max_date=None,
-            observed_span_days=None,
-            status=status,
-            reason=reason,
-            output_value=output_value,
-        )
-
-    input_refs = tuple(iso.isolate_id for iso in cohort)
-    min_date = min(iso.collection_date for iso in cohort)
-    max_date = max(iso.collection_date for iso in cohort)
-    span_days = (max_date - min_date).days + 1
-    output_value = f"temporal_count={count};span_days={span_days};window_days={cfg.window_days}"
-    status = ConcentrationStatus.SUCCESS
-
-    finding_id = _compute_temporal_finding_id(
-        policy_version=cfg.policy_version,
-        algorithm_version=cfg.temporal_algorithm_version,
-        config_version=cfg.config_version,
-        window_start=window_start,
-        window_end=window_end,
-        organism_code=organism_code,
-        facility_id=facility_id,
-        input_refs=input_refs,
-        facility_organism_count=count,
-        observed_min_date=min_date,
-        observed_max_date=max_date,
-        observed_span_days=span_days,
-        status=status,
-        output_value=output_value,
-    )
-
-    return TemporalConcentrationFinding(
-        finding_id=finding_id,
-        policy_version=cfg.policy_version,
-        algorithm_version=cfg.temporal_algorithm_version,
-        config_version=cfg.config_version,
-        organism_code=organism_code,
-        facility_id=facility_id,
-        window_start=window_start,
-        window_end=window_end,
-        facility_organism_count=count,
-        input_refs=input_refs,
-        observed_min_date=min_date,
-        observed_max_date=max_date,
-        observed_span_days=span_days,
-        status=status,
-        output_value=output_value,
-    )
-
-
 def evaluate_location_cohort(
     organism_code: str,
     facility_id: str,
@@ -447,7 +348,7 @@ def evaluate_location_cohort(
     If zero isolates exist in the facility window, returns an INSUFFICIENT_DATA finding
     with reason EMPTY_DENOMINATOR.
     """
-    cfg = config if config is not None else ConcentrationConfig()
+    cfg = _resolve_governed_config(config)
     if type(window_end) is not date:
         raise TypeError(
             f"window_end must be an exact datetime.date; got {type(window_end).__name__}"

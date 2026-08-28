@@ -158,6 +158,10 @@ class LocationConcentrationFinding:
                 raise ValueError("INSUFFICIENT_DATA status requires facility_organism_count == 0")
             if self.location_concentration_ratio is not None:
                 raise ValueError("location_concentration_ratio must be None on INSUFFICIENT_DATA")
+            if self.reason != ConcentrationReason.EMPTY_DENOMINATOR:
+                raise ValueError(
+                    "INSUFFICIENT_DATA status requires reason=ConcentrationReason.EMPTY_DENOMINATOR"
+                )
 
     def to_finding_reference(self) -> DeterministicFindingReference:
         """Convert finding directly to a DeterministicFindingReference for reasoning claims."""
