@@ -52,15 +52,27 @@ def certify_hero(
     use_case: CertifyOfflineHero | None = None,
 ) -> OfflineHeroCertificationResult:
     """Run offline hero certification using default or explicit CSV input."""
-    resolved_path: str | None = None
+    logical_loc: str | None = None
     if csv_path is not None:
         resolved_path = str(Path(csv_path).resolve())
+        if Path(resolved_path).name == "canonical_hero.csv":
+            logical_loc = "data/synthetic/canonical_hero.csv"
+        else:
+            try:
+                repo_root = _resolve_repo_root()
+                rel = Path(resolved_path).relative_to(repo_root)
+                logical_loc = rel.as_posix()
+            except ValueError:
+                logical_loc = Path(resolved_path).name
     else:
         default_csv = _resolve_repo_root() / "data" / "synthetic" / "canonical_hero.csv"
-        if default_csv.is_file():
-            resolved_path = str(default_csv)
+        resolved_path = str(default_csv)
+        logical_loc = "data/synthetic/canonical_hero.csv"
 
-    cmd = CertifyOfflineHeroCommand(source_location=resolved_path)
+    cmd = CertifyOfflineHeroCommand(
+        source_location=resolved_path,
+        logical_source_id=logical_loc,
+    )
     runner = use_case or create_offline_hero_use_case()
     return runner.execute(cmd)
 
@@ -91,16 +103,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not args.quiet:
         print(result.to_json())
 
-    is_hero_valid = result.verify_hero_expectations()
-    if not is_hero_valid:
-        if not result.certified:
-            sys.stderr.write("ERROR: Certification failed during deterministic execution.\n")
+    if not result.certified:
+        if not result.execution_succeeded:
+            sys.stderr.write("ERROR: Pipeline execution failed during deterministic processing.\n")
             for err in result.errors:
                 sys.stderr.write(f"  - {err}\n")
         else:
             sys.stderr.write(
-                f"ERROR: Hero expectations violated: signal_count={result.signal_count}, "
-                f"signal_id={result.hero_signal_id}, score={result.hero_signal_score}.\n"
+                f"ERROR: Execution succeeded but canonical hero release criteria were not met: "
+                f"signal_count={result.signal_count}, signal_id={result.hero_signal_id}, "
+                f"score={result.hero_signal_score}.\n"
             )
         return 1
 

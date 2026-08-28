@@ -30,7 +30,16 @@ from ngabo.domain.value_objects.investigation_priority_signal import (
     SignalComponents,
     compute_composite_score,
 )
+from ngabo.domain.value_objects.location_concentration_finding import (
+    LocationConcentrationFinding,
+)
+from ngabo.domain.value_objects.profile_similarity_finding import (
+    ProfileSimilarityFinding,
+)
 from ngabo.domain.value_objects.signal_config import SignalConfig
+from ngabo.domain.value_objects.temporal_concentration_finding import (
+    TemporalConcentrationFinding,
+)
 
 
 @dataclass(frozen=True)
@@ -375,10 +384,14 @@ def evaluate_cohort_signal(
 
     # Trigger rule: signal_score >= trigger_threshold AND ward_organism_count >= 3
     if signal_score >= cfg.trigger_threshold and ward_organism_count >= cfg.min_candidate_count:
-        supporting_findings = sorted(
-            [temp_finding.finding_id, loc_finding.finding_id]
-            + [f.finding_id for f in pairwise_findings]
+        raw_findings: list[
+            ProfileSimilarityFinding | TemporalConcentrationFinding | LocationConcentrationFinding
+        ] = [temp_finding, loc_finding, *pairwise_findings]
+        finding_objs = sorted(
+            raw_findings,
+            key=lambda f: f.finding_id,
         )
+        supporting_findings = [f.finding_id for f in finding_objs]
         supporting_isolates = tuple(iso.isolate_id for iso in ward_isolates)
 
         output_val = (
@@ -442,6 +455,7 @@ def evaluate_cohort_signal(
             supporting_isolate_refs=supporting_isolates,
             output_value=output_val,
             policy_config=cfg,
+            supporting_findings=tuple(finding_objs),
         )
 
         return SignalEvaluationResult(

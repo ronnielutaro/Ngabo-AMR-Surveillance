@@ -7,11 +7,23 @@ from dataclasses import dataclass
 from datetime import date
 
 from ngabo.domain.enums.signal_status import SignalReason, SignalStatus
+from ngabo.domain.value_objects.deterministic_finding_evidence import (
+    DeterministicFindingEvidence,
+)
+from ngabo.domain.value_objects.location_concentration_finding import (
+    LocationConcentrationFinding,
+)
+from ngabo.domain.value_objects.profile_similarity_finding import (
+    ProfileSimilarityFinding,
+)
 from ngabo.domain.value_objects.proof_references import (
     DeterministicFindingReference,
     _require_opaque_id,
 )
 from ngabo.domain.value_objects.signal_config import SignalConfig
+from ngabo.domain.value_objects.temporal_concentration_finding import (
+    TemporalConcentrationFinding,
+)
 
 
 @dataclass(frozen=True)
@@ -92,6 +104,10 @@ class InvestigationPrioritySignal:
     supporting_isolate_refs: tuple[str, ...]
     output_value: str
     policy_config: SignalConfig
+    supporting_findings: tuple[
+        ProfileSimilarityFinding | TemporalConcentrationFinding | LocationConcentrationFinding,
+        ...,
+    ] = ()
 
     def __post_init__(self) -> None:
         _require_opaque_id(self.signal_id, "signal ID")
@@ -220,6 +236,16 @@ class InvestigationPrioritySignal:
         for ref in self.supporting_isolate_refs:
             _require_opaque_id(ref, "supporting isolate reference")
 
+        if not isinstance(self.supporting_findings, tuple):
+            raise TypeError("supporting_findings must be a tuple")
+        if self.supporting_findings:
+            f_ids = tuple(f.finding_id for f in self.supporting_findings)
+            if f_ids != self.supporting_finding_refs:
+                raise ValueError(
+                    f"supporting_findings IDs {f_ids!r} do not match "
+                    f"supporting_finding_refs {self.supporting_finding_refs!r}"
+                )
+
     @property
     def w_phenotype(self) -> float:
         """Governed weight for phenotype similarity component."""
@@ -279,3 +305,27 @@ class InvestigationPrioritySignal:
             input_refs=self.supporting_finding_refs,
             output_value=self.output_value,
         )
+
+    def to_finding_evidence(self) -> tuple[DeterministicFindingEvidence, ...]:
+        """Expose machine-verifiable evidence for referenced deterministic findings."""
+        evidence: list[DeterministicFindingEvidence] = []
+        for f in self.supporting_findings:
+            f_type = "UNKNOWN"
+            if isinstance(f, ProfileSimilarityFinding):
+                f_type = "PROFILE_SIMILARITY"
+            elif isinstance(f, TemporalConcentrationFinding):
+                f_type = "TEMPORAL_CONCENTRATION"
+            elif isinstance(f, LocationConcentrationFinding):
+                f_type = "LOCATION_CONCENTRATION"
+            evidence.append(
+                DeterministicFindingEvidence(
+                    finding_id=f.finding_id,
+                    finding_type=f_type,
+                    policy_version=f.policy_version,
+                    algorithm_version=f.algorithm_version,
+                    config_version=f.config_version,
+                    input_refs=f.input_refs,
+                )
+            )
+        return tuple(evidence)
+

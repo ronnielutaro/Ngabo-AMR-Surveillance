@@ -13,6 +13,13 @@ from typing import Any
 
 from ngabo.application.enums.import_outcome_disposition import ImportOutcomeDisposition
 from ngabo.domain.enums.signal_status import SignalReason, SignalStatus
+from ngabo.domain.events.investigation_priority_signal_event import (
+    DEFAULT_SIGNAL_EVENT_CONTRACT_VERSION,
+    InvestigationPrioritySignalEvent,
+)
+from ngabo.domain.value_objects.deterministic_finding_evidence import (
+    DeterministicFindingEvidence,
+)
 from ngabo.domain.value_objects.investigation_priority_signal import (
     InvestigationPrioritySignal,
 )
@@ -31,29 +38,54 @@ GOVERNED_HERO_COMPONENTS = {
     "c_temporal": 1.0,
     "c_baseline": 1.0,
 }
+GOVERNED_HERO_IMPORTED_RECORD_IDS = (
+    "ISO-012",
+    "ISO-027",
+    "ISO-031",
+    "ISO-034",
+    "ISO-039",
+    "ISO-052",
+    "ISO-063",
+    "ISO-071",
+)
 PRIMARY_INVARIANT_NOTICE = (
     "INVESTIGATION_PRIORITY_SIGNAL only; never an outbreak declaration, "
     "diagnosis, model confidence, or clinical decision."
 )
+DEFAULT_LOGICAL_HERO_LOCATOR = "data/synthetic/canonical_hero.csv"
 
 
 @dataclass(frozen=True)
 class OfflineHeroCertificationResult:
-    """Immutable, machine-verifiable offline release gate certification result."""
+    """Immutable, machine-verifiable offline release gate certification result.
 
+    Distinguishes deterministic execution success (execution_succeeded) from
+    canonical hero release certification (certified).
+    """
+
+    execution_succeeded: bool
     certified: bool
     input_location: str
     raw_source_digest: str | None
     source_watermark: str | None
     import_disposition: ImportOutcomeDisposition | None
     imported_record_count: int
+    imported_record_ids: tuple[str, ...]
     exact_duplicate_count: int
     signal_count: int
     signals: tuple[InvestigationPrioritySignal, ...]
     policy_version: str
     config_version: str
     algorithm_version: str
+    event: InvestigationPrioritySignalEvent | None = None
+    event_id: str | None = None
+    event_contract_version: str = DEFAULT_SIGNAL_EVENT_CONTRACT_VERSION
+    finding_evidence: tuple[DeterministicFindingEvidence, ...] = ()
     errors: tuple[str, ...] = ()
+    model_required: bool = False
+    network_required: bool = False
+    cloud_required: bool = False
+    human_intervention_required: bool = False
     autonomous_external_actions: int = 0
     model_calls: int = 0
     network_calls: int = 0
@@ -63,6 +95,40 @@ class OfflineHeroCertificationResult:
     clarifications: int = 0
     approvals: int = 0
     primary_invariant: str = PRIMARY_INVARIANT_NOTICE
+
+    def __post_init__(self) -> None:
+        if self.imported_record_count != len(self.imported_record_ids):
+            raise ValueError(
+                f"imported_record_count ({self.imported_record_count}) must match "
+                f"imported_record_ids length ({len(self.imported_record_ids)})"
+            )
+        if self.signal_count != len(self.signals):
+            raise ValueError(
+                f"signal_count ({self.signal_count}) must match "
+                f"signals length ({len(self.signals)})"
+            )
+
+        if not self.execution_succeeded and self.certified:
+            raise ValueError("certified cannot be True when execution_succeeded is False")
+
+        if self.certified:
+            if not self.execution_succeeded:
+                raise ValueError("certified requires execution_succeeded=True")
+            if self.errors:
+                raise ValueError("certified requires errors to be empty")
+            if not self.verify_hero_expectations():
+                raise ValueError("certified requires all canonical hero expectations to pass")
+
+        if self.event is not None:
+            if self.event_id != self.event.event_id:
+                raise ValueError(
+                    f"event_id ({self.event_id}) must match event.event_id ({self.event.event_id})"
+                )
+            if self.signals and self.event.signal_id != self.signals[0].signal_id:
+                raise ValueError(
+                    f"event.signal_id ({self.event.signal_id}) must match "
+                    f"signal.signal_id ({self.signals[0].signal_id})"
+                )
 
     @property
     def hero_signal(self) -> InvestigationPrioritySignal | None:
@@ -98,7 +164,7 @@ class OfflineHeroCertificationResult:
 
     def verify_hero_expectations(self) -> bool:
         """Verify that this result satisfies all canonical hero release invariants."""
-        if not self.certified:
+        if not self.execution_succeeded:
             return False
         if self.signal_count != 1 or self.hero_signal is None:
             return False
@@ -121,9 +187,22 @@ class OfflineHeroCertificationResult:
             return False
         if self.source_watermark != GOVERNED_HERO_WATERMARK:
             return False
+        if self.imported_record_count != 8:
+            return False
+        if self.imported_record_ids != GOVERNED_HERO_IMPORTED_RECORD_IDS:
+            return False
+        if self.event is None or not self.event.event_id.startswith("evt-"):
+            return False
         if self.import_disposition not in (
             ImportOutcomeDisposition.FIRST_IMPORT,
             ImportOutcomeDisposition.EXACT_REPLAY,
+        ):
+            return False
+        if (
+            self.model_required
+            or self.network_required
+            or self.cloud_required
+            or self.human_intervention_required
         ):
             return False
         return not (
@@ -142,7 +221,8 @@ class OfflineHeroCertificationResult:
         sig = self.hero_signal
         cert_data: dict[str, Any] = {
             "certified": self.certified,
-            "input_valid": self.certified and len(self.errors) == 0,
+            "execution_succeeded": self.execution_succeeded,
+            "input_valid": self.execution_succeeded and len(self.errors) == 0,
             "deterministic_import": self.import_disposition in (
                 ImportOutcomeDisposition.FIRST_IMPORT,
                 ImportOutcomeDisposition.EXACT_REPLAY,
@@ -154,6 +234,7 @@ class OfflineHeroCertificationResult:
                 self.import_disposition.value if self.import_disposition else None
             ),
             "imported_record_count": self.imported_record_count,
+            "imported_record_ids": list(self.imported_record_ids),
             "exact_duplicate_count": self.exact_duplicate_count,
             "signal_count": self.signal_count,
             "signal_id": self.hero_signal_id,
@@ -161,9 +242,17 @@ class OfflineHeroCertificationResult:
             "components": self.hero_components,
             "supporting_finding_refs": list(sig.supporting_finding_refs) if sig else [],
             "supporting_isolate_refs": list(sig.supporting_isolate_refs) if sig else [],
+            "finding_evidence": [f.to_dict() for f in self.finding_evidence],
+            "event": self.event.to_dict() if self.event else None,
+            "event_id": self.event_id,
             "policy_version": self.policy_version,
             "config_version": self.config_version,
             "algorithm_version": self.algorithm_version,
+            "event_contract_version": self.event_contract_version,
+            "model_required": self.model_required,
+            "network_required": self.network_required,
+            "cloud_required": self.cloud_required,
+            "human_intervention_required": self.human_intervention_required,
             "autonomous_external_actions": self.autonomous_external_actions,
             "model_calls": self.model_calls,
             "network_calls": self.network_calls,
