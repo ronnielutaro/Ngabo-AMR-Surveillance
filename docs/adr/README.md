@@ -13,6 +13,7 @@ Current ADRs:
 - `0007-zero-human-safe-coordination.md` — zero-human Taskmaster hero via bounded A1 safe coordination rather than autonomous clinical/official action
 - `0008-autonomous-action-outbox.md` — transactional action-intent/outbox and idempotent external-effect execution
 - `0009-proof-carrying-reasoning.md` — machine-verifiable evidence/reference contracts for model-generated claims before autonomous action
+- `0010-v0.1-resistance-profile-similarity-policy.md` — v0.1 maintainer-approved resistance-profile similarity policy and non-clinical prototype boundaries
 
 ## Supersession Note
 
