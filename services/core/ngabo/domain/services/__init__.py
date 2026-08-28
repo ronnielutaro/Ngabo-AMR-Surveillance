@@ -5,6 +5,8 @@ Must never import frameworks, cloud SDKs, AI SDKs, or outer Ngabo layers
 for the incident transition policy added in M1B.2, Issue #38 for the
 deterministic canonical import-boundary validation added in M2.1,
 Issue #40 for deterministic source identity, artifact digest, canonical
-watermarking, and import deduplication added in M2.3, and Issue #45
-for deterministic resistance profile similarity evaluation added in M2.5.
+watermarking, and import deduplication added in M2.3, Issue #45
+for deterministic resistance profile similarity evaluation added in M2.5,
+and Issue #46 for deterministic temporal and location concentration
+analysis added in M2.6.
 """
