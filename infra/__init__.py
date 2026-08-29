@@ -1,0 +1,1 @@
+"""Ngabo infrastructure package."""

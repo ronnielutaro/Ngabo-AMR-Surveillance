@@ -1,0 +1,180 @@
+{
+  "contract_version": "ngabo-cloud-foundation-v1",
+  "issue": "86",
+  "topology": {
+    "model": "single-project-with-environment-prefixes",
+    "canonical_project_id": "ngabo-amr-2026",
+    "project_present": true,
+    "environments": [
+      "dev",
+      "judge",
+      "shared"
+    ],
+    "primary_region": "us-central1",
+    "firestore_location": "us-central1",
+    "project_labels": {
+      "app": "ngabo",
+      "environment": "shared",
+      "lifecycle": "hackathon",
+      "managed-by": "ngabo-bootstrap",
+      "owner": "ngabo-maintainer"
+    }
+  },
+  "billing_boundary": {
+    "status": "ELIGIBLE_AND_ACTIVATED",
+    "program": "Google Cloud Free Trial ($300 USD / 90 days)",
+    "expiry_date": "2026-11-28",
+    "billing_linked": true,
+    "billing_matches_intended": true,
+    "billing_account": "[REDACTED_MAINTAINER_BILLING_ACCOUNT]",
+    "out_of_pocket_limit_usd": 0,
+    "auto_upgrade_to_paid": false
+  },
+  "api_allowlist": {
+    "required_apis_count": 14,
+    "required_apis_enabled": true,
+    "missing_required_apis": [],
+    "required_apis": [
+      "cloudresourcemanager.googleapis.com",
+      "serviceusage.googleapis.com",
+      "billingbudgets.googleapis.com",
+      "artifactregistry.googleapis.com",
+      "run.googleapis.com",
+      "firestore.googleapis.com",
+      "pubsub.googleapis.com",
+      "storage.googleapis.com",
+      "secretmanager.googleapis.com",
+      "cloudbuild.googleapis.com",
+      "logging.googleapis.com",
+      "monitoring.googleapis.com",
+      "iam.googleapis.com",
+      "iamcredentials.googleapis.com"
+    ],
+    "total_enabled_apis_count": 34,
+    "additional_enabled_apis_count": 20,
+    "additional_enabled_apis": [
+      "analyticshub.googleapis.com",
+      "bigquery.googleapis.com",
+      "bigqueryconnection.googleapis.com",
+      "bigquerydatapolicy.googleapis.com",
+      "bigquerydatatransfer.googleapis.com",
+      "bigquerymigration.googleapis.com",
+      "bigqueryreservation.googleapis.com",
+      "bigquerystorage.googleapis.com",
+      "cloudapis.googleapis.com",
+      "cloudtrace.googleapis.com",
+      "containerregistry.googleapis.com",
+      "dataform.googleapis.com",
+      "dataplex.googleapis.com",
+      "datastore.googleapis.com",
+      "firebaserules.googleapis.com",
+      "servicemanagement.googleapis.com",
+      "sql-component.googleapis.com",
+      "storage-api.googleapis.com",
+      "storage-component.googleapis.com",
+      "telemetry.googleapis.com"
+    ],
+    "required_count": 14,
+    "all_required_enabled": true,
+    "apis": [
+      "cloudresourcemanager.googleapis.com",
+      "serviceusage.googleapis.com",
+      "billingbudgets.googleapis.com",
+      "artifactregistry.googleapis.com",
+      "run.googleapis.com",
+      "firestore.googleapis.com",
+      "pubsub.googleapis.com",
+      "storage.googleapis.com",
+      "secretmanager.googleapis.com",
+      "cloudbuild.googleapis.com",
+      "logging.googleapis.com",
+      "monitoring.googleapis.com",
+      "iam.googleapis.com",
+      "iamcredentials.googleapis.com"
+    ]
+  },
+  "resources": {
+    "artifact_registry": {
+      "name": "ngabo-artifacts",
+      "format": "docker",
+      "location": "us-central1",
+      "status": "PROVISIONED",
+      "labels": {
+        "app": "ngabo",
+        "environment": "shared",
+        "lifecycle": "hackathon",
+        "managed-by": "ngabo-bootstrap",
+        "owner": "ngabo-maintainer"
+      }
+    },
+    "budget_monitor": {
+      "display_name": "ngabo-free-trial-budget",
+      "budget_amount_usd": 300.0,
+      "time_period": {
+        "start_date": "2026-08-29",
+        "end_date": "2026-11-28"
+      },
+      "credit_treatment": "exclude-all-credits",
+      "status": "PROVISIONED",
+      "thresholds": [
+        {
+          "percent": 0.5,
+          "basis": "current-spend"
+        },
+        {
+          "percent": 0.9,
+          "basis": "current-spend"
+        },
+        {
+          "percent": 0.9667,
+          "basis": "current-spend"
+        },
+        {
+          "percent": 1.0,
+          "basis": "current-spend"
+        }
+      ]
+    }
+  },
+  "resource_classification": {
+    "gcp_project": "CREATE_NOW",
+    "billing_link": "CREATE_NOW",
+    "api_enablement": "CREATE_NOW",
+    "artifact_registry": "CREATE_NOW",
+    "billing_budget_alerts": "CREATE_NOW",
+    "cloud_run_api": "ENABLE_API_ONLY",
+    "secret_manager_api": "ENABLE_API_ONLY",
+    "cloud_build_api": "ENABLE_API_ONLY",
+    "firestore_api": "ENABLE_API_ONLY",
+    "pubsub_api": "ENABLE_API_ONLY",
+    "storage_api": "ENABLE_API_ONLY",
+    "iam_and_wif": "DEFER",
+    "container_images": "DEFER",
+    "cloud_run_services": "DEFER"
+  },
+  "governed_caps_contract": {
+    "cloud_run": {
+      "min_instances": 0,
+      "max_instances": 2,
+      "timeout_seconds": 60,
+      "cpu": "1",
+      "memory": "512Mi",
+      "concurrency": 80,
+      "scale_to_zero_required": true
+    },
+    "storage_lifecycle": {
+      "lifecycle_rule": "Delete objects older than 7 days",
+      "storage_class": "STANDARD",
+      "public_access_prevention": "enforced"
+    }
+  },
+  "verification_results": {
+    "validation_passed": true,
+    "teardown_rehearsal_passed": true,
+    "teardown_mode": "PLAN_ONLY",
+    "destructive_actions_executed": false,
+    "cessation_verification_executed": false,
+    "cessation_verification_required_on_real_teardown": true,
+    "privacy_audit_status": "EXTERNAL_REVIEW_REQUIRED"
+  }
+}
