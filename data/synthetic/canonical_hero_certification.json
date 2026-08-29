@@ -1,0 +1,152 @@
+{
+  "hero_certification": {
+    "certified": true,
+    "execution_succeeded": true,
+    "input_valid": true,
+    "deterministic_import": true,
+    "input_location": "data/synthetic/canonical_hero.csv",
+    "raw_source_digest": "sha256:6b6bbc9a8d1f0e44419aee4ed4bdd073d965bab7507961307dcd051b4dae926b",
+    "source_watermark": "ngabo-source-v1:sha256:b1b00a5938f2515c77cf144ec4bf5731bcaa9406265996941818f914567cd94c",
+    "import_disposition": "FIRST_IMPORT",
+    "imported_record_count": 8,
+    "imported_record_ids": [
+      "ISO-012",
+      "ISO-027",
+      "ISO-031",
+      "ISO-034",
+      "ISO-039",
+      "ISO-052",
+      "ISO-063",
+      "ISO-071"
+    ],
+    "exact_duplicate_count": 0,
+    "signal_count": 1,
+    "signal_id": "sig-c4180061263e7207",
+    "signal_score": 0.9375,
+    "components": {
+      "c_phenotype": 1.0,
+      "c_location": 0.75,
+      "c_temporal": 1.0,
+      "c_baseline": 1.0
+    },
+    "supporting_finding_refs": [
+      "lconc-1d3ff528db1484f0",
+      "psim-8ce3cf934d3d8eb2",
+      "psim-a18b030a20a5f1b1",
+      "psim-cde2a3614f7f873d",
+      "tconc-ed312ddb0844c9ca"
+    ],
+    "supporting_isolate_refs": [
+      "ISO-031",
+      "ISO-034",
+      "ISO-039"
+    ],
+    "finding_evidence": [
+      {
+        "finding_id": "lconc-1d3ff528db1484f0",
+        "finding_type": "LOCATION_CONCENTRATION",
+        "policy_version": "ngabo-concentration-v1",
+        "algorithm_version": "ward-share-v1",
+        "config_version": "win7d-org-facility-ward-v1",
+        "input_refs": [
+          "ISO-027",
+          "ISO-031",
+          "ISO-034",
+          "ISO-039"
+        ]
+      },
+      {
+        "finding_id": "psim-8ce3cf934d3d8eb2",
+        "finding_type": "PROFILE_SIMILARITY",
+        "policy_version": "ngabo-profile-sim-v1",
+        "algorithm_version": "exact-ratio-v1",
+        "config_version": "min3-strict-org-v1",
+        "input_refs": [
+          "ISO-034",
+          "ISO-039"
+        ]
+      },
+      {
+        "finding_id": "psim-a18b030a20a5f1b1",
+        "finding_type": "PROFILE_SIMILARITY",
+        "policy_version": "ngabo-profile-sim-v1",
+        "algorithm_version": "exact-ratio-v1",
+        "config_version": "min3-strict-org-v1",
+        "input_refs": [
+          "ISO-031",
+          "ISO-039"
+        ]
+      },
+      {
+        "finding_id": "psim-cde2a3614f7f873d",
+        "finding_type": "PROFILE_SIMILARITY",
+        "policy_version": "ngabo-profile-sim-v1",
+        "algorithm_version": "exact-ratio-v1",
+        "config_version": "min3-strict-org-v1",
+        "input_refs": [
+          "ISO-031",
+          "ISO-034"
+        ]
+      },
+      {
+        "finding_id": "tconc-ed312ddb0844c9ca",
+        "finding_type": "TEMPORAL_CONCENTRATION",
+        "policy_version": "ngabo-concentration-v1",
+        "algorithm_version": "retrospective-count-v1",
+        "config_version": "win7d-org-facility-ward-v1",
+        "input_refs": [
+          "ISO-027",
+          "ISO-031",
+          "ISO-034",
+          "ISO-039"
+        ]
+      }
+    ],
+    "event": {
+      "event_id": "evt-a44635c546dfc667",
+      "event_type": "INVESTIGATION_PRIORITY_SIGNAL",
+      "contract_version": "ngabo-signal-event-v1",
+      "signal_id": "sig-c4180061263e7207",
+      "source_watermark": "ngabo-source-v1:sha256:b1b00a5938f2515c77cf144ec4bf5731bcaa9406265996941818f914567cd94c",
+      "facility_id": "SYNTH-FACILITY-001",
+      "ward": "SYNTH-WARD-A",
+      "organism_code": "kle",
+      "window_start": "2026-08-12",
+      "window_end": "2026-08-18",
+      "signal_score": 0.9375,
+      "policy_version": "ngabo-signal-v1",
+      "config_version": "signal-win7d-org-facility-ward-v1",
+      "algorithm_version": "composite-priority-v1",
+      "supporting_finding_refs": [
+        "lconc-1d3ff528db1484f0",
+        "psim-8ce3cf934d3d8eb2",
+        "psim-a18b030a20a5f1b1",
+        "psim-cde2a3614f7f873d",
+        "tconc-ed312ddb0844c9ca"
+      ],
+      "supporting_isolate_refs": [
+        "ISO-031",
+        "ISO-034",
+        "ISO-039"
+      ]
+    },
+    "event_id": "evt-a44635c546dfc667",
+    "policy_version": "ngabo-signal-v1",
+    "config_version": "signal-win7d-org-facility-ward-v1",
+    "algorithm_version": "composite-priority-v1",
+    "event_contract_version": "ngabo-signal-event-v1",
+    "model_required": false,
+    "network_required": false,
+    "cloud_required": false,
+    "human_intervention_required": false,
+    "autonomous_external_actions": 0,
+    "model_calls": 0,
+    "network_calls": 0,
+    "cloud_calls": 0,
+    "human_prompts": 0,
+    "human_interventions": 0,
+    "clarifications": 0,
+    "approvals": 0,
+    "primary_invariant": "INVESTIGATION_PRIORITY_SIGNAL only; never an outbreak declaration, diagnosis, model confidence, or clinical decision."
+  }
+}
