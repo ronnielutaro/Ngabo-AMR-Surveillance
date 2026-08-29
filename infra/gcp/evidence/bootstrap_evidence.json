@@ -1,20 +1,31 @@
 {
   "contract_version": "ngabo-cloud-foundation-v1",
   "issue": "86",
-  "timestamp": "2026-08-29T01:38:00Z",
   "topology": {
     "model": "single-project-with-environment-prefixes",
     "canonical_project_id": "ngabo-amr-2026",
     "project_present": true,
-    "environments": ["dev", "judge", "shared"],
+    "environments": [
+      "dev",
+      "judge",
+      "shared"
+    ],
     "primary_region": "us-central1",
-    "firestore_location": "nam5"
+    "firestore_location": "us-central1",
+    "project_labels": {
+      "app": "ngabo",
+      "environment": "shared",
+      "lifecycle": "hackathon",
+      "managed-by": "ngabo-bootstrap",
+      "owner": "ngabo-maintainer"
+    }
   },
   "billing_boundary": {
     "status": "ELIGIBLE_AND_ACTIVATED",
     "program": "Google Cloud Free Trial ($300 USD / 90 days)",
     "expiry_date": "2026-11-28",
     "billing_linked": true,
+    "billing_matches_intended": true,
     "billing_account": "[REDACTED_MAINTAINER_BILLING_ACCOUNT]",
     "out_of_pocket_limit_usd": 0,
     "auto_upgrade_to_paid": false
@@ -47,19 +58,38 @@
       "status": "PROVISIONED",
       "labels": {
         "app": "ngabo",
+        "environment": "shared",
+        "lifecycle": "hackathon",
         "managed-by": "ngabo-bootstrap",
-        "lifecycle": "hackathon"
+        "owner": "ngabo-maintainer"
       }
     },
     "budget_monitor": {
       "display_name": "ngabo-free-trial-budget",
       "budget_amount_usd": 300.0,
+      "time_period": {
+        "start_date": "2026-08-29",
+        "end_date": "2026-11-28"
+      },
+      "credit_treatment": "exclude-all-credits",
       "status": "PROVISIONED",
       "thresholds": [
-        {"percent": 0.5, "basis": "current-spend"},
-        {"percent": 0.9, "basis": "current-spend"},
-        {"percent": 1.0, "basis": "current-spend"},
-        {"percent": 1.0, "basis": "forecasted-spend"}
+        {
+          "percent": 0.5,
+          "basis": "current-spend"
+        },
+        {
+          "percent": 0.9,
+          "basis": "current-spend"
+        },
+        {
+          "percent": 0.9667,
+          "basis": "current-spend"
+        },
+        {
+          "percent": 1.0,
+          "basis": "current-spend"
+        }
       ]
     }
   },
@@ -75,9 +105,9 @@
     "firestore_api": "ENABLE_API_ONLY",
     "pubsub_api": "ENABLE_API_ONLY",
     "storage_api": "ENABLE_API_ONLY",
-    "iam_and_wif": "DEFER (Issue #87)",
-    "container_images": "DEFER (Issue #89)",
-    "cloud_run_services": "DEFER (Issue #90)"
+    "iam_and_wif": "DEFER",
+    "container_images": "DEFER",
+    "cloud_run_services": "DEFER"
   },
   "governed_caps_contract": {
     "cloud_run": {
@@ -96,11 +126,12 @@
     }
   },
   "verification_results": {
-    "plan_verified": true,
-    "first_apply_passed": true,
-    "second_apply_idempotent_noop": true,
     "validation_passed": true,
     "teardown_rehearsal_passed": true,
+    "teardown_mode": "PLAN_ONLY",
+    "destructive_actions_executed": false,
+    "cessation_verification_executed": false,
+    "cessation_verification_required_on_real_teardown": true,
     "privacy_audit_clean": true
   }
 }

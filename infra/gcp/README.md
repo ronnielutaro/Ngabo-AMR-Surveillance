@@ -13,6 +13,7 @@ This document provides the operational runbook and architecture specification fo
   - `OUT_OF_POCKET_LIMIT_USD = 0` (Strict zero-cash spend)
   - `AUTO_UPGRADE_TO_PAID = false`
   - Free Trial program boundary: `$300.00 USD / 90 days` (Expires November 28, 2026)
+  - **Important**: The Cloud Billing budget alert is a notification monitor and **NOT a hard spending cap**. The maintainer Free Trial credits console remains the authoritative source for remaining promotional credits.
 
 ---
 
@@ -30,10 +31,12 @@ Ngabo uses **ONE dedicated Google Cloud project** (`ngabo-amr-2026` or configure
 All regional services are deployed in `us-central1`.
 
 **Rationale**:
-- **Full Capability**: Complete regional availability for Cloud Run, Artifact Registry, Firestore Native, Cloud Storage, Pub/Sub, Secret Manager, and Cloud Build.
-- **Free Tier Eligibility**: Default location for Google Cloud Free Tier quotas (e.g. Standard Storage).
-- **Latency & AI Compatibility**: Broadest feature parity and lowest latency for Google Agent Development Kit (ADK) and Vertex/Gemini endpoints.
-- **Zero Cross-Region Egress**: Keeping all compute, storage, and registries within `us-central1` eliminates inter-region networking charges.
+- **Full Service Availability**: Complete regional availability for Cloud Run, Artifact Registry, Firestore Native, Cloud Storage, Pub/Sub, Secret Manager, and Cloud Build.
+- **Reference Pricing & Free Tier**: Default location for Google Cloud Free Tier quotas (e.g., Cloud Storage Standard tier and Cloud Run invocation tiers).
+- **Regional Co-location**: Co-locating eligible regional compute and storage resources reduces avoidable inter-region data transfer. Future Gemini/Vertex model endpoint placement remains owned by Issue #49.
+
+### 2.3 Firestore Location Contract: `us-central1`
+When Firestore is provisioned in future issues, it will use the regional location **`us-central1`**, directly co-located with application compute and container storage, avoiding multi-region replication latency and cost overheads. Database creation remains strictly **DEFERRED**.
 
 ---
 
@@ -44,10 +47,10 @@ Every foundation component is strictly classified to preserve boundaries with do
 | Resource / Service | Classification | Owning Issue | Scope & Notes |
 |---|---|---|---|
 | **GCP Project** | `CREATE_NOW` | #86 | Creates canonical project boundary (`ngabo-amr-2026`). |
-| **Billing Link** | `CREATE_NOW` | #86 | Links project to active Free Trial billing account. |
+| **Billing Link** | `CREATE_NOW` | #86 | Links project to verified Free Trial billing account. |
 | **API Allow-list** | `CREATE_NOW` | #86 | Enables the 14 allow-listed Google Cloud APIs. |
 | **Artifact Registry** | `CREATE_NOW` | #86 | Provisions Docker repository `ngabo-artifacts` (`us-central1`). |
-| **Billing Budget Alerts** | `CREATE_NOW` | #86 | Configures budget monitor alerts at $150, $270, and $300 thresholds. |
+| **Billing Budget Alerts** | `CREATE_NOW` | #86 | Configures budget monitor alerts at $150, $270, $290, and $300 thresholds over the Free Trial window. |
 | **Cloud Run API** | `ENABLE_API_ONLY` | #86 | Enables `run.googleapis.com`. Service deployment belongs to #90. |
 | **Secret Manager API** | `ENABLE_API_ONLY` | #86 | Enables `secretmanager.googleapis.com`. Secret contracts belong to #87. |
 | **Cloud Build API** | `ENABLE_API_ONLY` | #86 | Enables `cloudbuild.googleapis.com`. Build workflows belong to #88/#89. |
@@ -63,19 +66,32 @@ Every foundation component is strictly classified to preserve boundaries with do
 ## 4. Governed Resource Constraints
 
 ### 4.1 Labels
-All resources that support labels must carry:
+All foundation resources must carry the standard label set:
 - `app = ngabo`
 - `managed-by = ngabo-bootstrap`
 - `lifecycle = hackathon`
-- `environment = dev | judge | shared`
+- `environment = shared` (or `dev` / `judge` for environment-specific resources)
+- `owner = ngabo-maintainer`
 
-### 4.2 Cloud Run Caps Contract (for #90+)
+### 4.2 Free Trial Budget Contract
+- **Scope**: Filtered specifically to the canonical Ngabo project (`projects/ngabo-amr-2026`).
+- **Amount**: `$300.00 USD`.
+- **Time Window**: Custom period from Free Trial activation (`2026-08-29`) to expiration (`2026-11-28`).
+- **Credit Treatment**: `EXCLUDE_ALL_CREDITS` so promotional Free Trial credits do not conceal underlying resource consumption from alert rules.
+- **Threshold Rules**:
+  - `50%` ($150.00) Current Spend
+  - `90%` ($270.00) Current Spend
+  - `96.67%` (~$290.00) Current Spend (Early warning boundary before $10 teardown reserve)
+  - `100%` ($300.00) Current Spend
+  *(Note: The Billing Budgets API does not permit forecasted-spend rules on custom-period budgets).*
+
+### 4.3 Cloud Run Caps Contract (for #90+)
 - `min-instances = 0` (Strict scale-to-zero; no idle billable instances)
 - `max-instances = 2` (Tight concurrency cap)
 - `timeout = 60s` (Bounded request duration)
 - `cpu = 1`, `memory = 512Mi`
 
-### 4.3 Storage Lifecycle Contract
+### 4.4 Storage Lifecycle Contract
 - Default lifecycle rule: Automatically delete ephemeral build/test objects older than 7 days.
 - Public access prevention: `enforced`.
 
@@ -100,8 +116,8 @@ python infra/gcp/bootstrap.py plan
 python infra/gcp/bootstrap.py plan --format=json
 ```
 
-#### 2. Apply (Idempotent Provisioning)
-Provisions missing foundation resources and verifies zero-drift on repeated runs:
+#### 2. Apply (Idempotent Provisioning & Reconciliation)
+Provisions missing foundation resources, reconciles mutable label/budget drift, and verifies zero-drift on repeated runs:
 ```bash
 python infra/gcp/bootstrap.py apply
 ```
@@ -120,13 +136,17 @@ python infra/gcp/bootstrap.py teardown --dry-run
 
 ---
 
-## 6. Teardown Lifecycle Policy
+## 6. Teardown Lifecycle & Rehearsal Semantics
 
-In alignment with [`docs/CLOUD_COST_AND_TEARDOWN_POLICY.md`](../../docs/CLOUD_COST_AND_TEARDOWN_POLICY.md) §5:
-1. **Teardown Order**:
-   - Delete container images and Artifact Registry repository.
+The `teardown --dry-run` command performs a **plan-only rehearsal** (`teardown_mode = PLAN_ONLY`). It does **not** execute destructive operations, does **not** disable billing, and does **not** initiate project deletion.
+
+When a **real** teardown is explicitly authorized by the maintainer:
+1. **Teardown Sequence**:
+   - Delete container images and Artifact Registry repository (`ngabo-artifacts`).
    - Remove Billing Budget alert from the billing account.
-   - Unlink billing account from the project.
+   - Unlink billing account from the project (`gcloud billing projects unlink`).
    - Submit project shutdown request (`gcloud projects delete`).
-2. **Asynchronous Deletion**: Project deletion initiates Google Cloud's 30-day recovery and resource purge lifecycle (`DELETE_REQUESTED`).
-3. **Cessation Verification**: Verifies `billingEnabled: false` and confirms no billable traffic or workloads persist.
+2. **Cessation Verification**:
+   - Verify `billingEnabled: false`.
+   - Confirm project lifecycle state transitions to `DELETE_REQUESTED`.
+   - Verify zero billable active workloads remain.

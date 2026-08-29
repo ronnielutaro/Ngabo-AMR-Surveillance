@@ -10,6 +10,7 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import Any
 
 
 class ResourceClassification(StrEnum):
@@ -27,8 +28,17 @@ class ResourceClassification(StrEnum):
 
 DEFAULT_PROJECT_ID = "ngabo-amr-2026"
 DEFAULT_PROJECT_NAME = "Ngabo AMR Surveillance"
+
+# Primary Region Selection:
+# us-central1 was selected for broad required-service availability, Cloud Run reference
+# pricing/free-tier economics, Artifact Registry/compute co-location, and compatibility
+# with the current regional foundation. Future Gemini/Vertex endpoint placement remains
+# owned by #49. Co-locating eligible regional resources reduces avoidable inter-region transfer.
 PRIMARY_REGION = "us-central1"
-FIRESTORE_LOCATION = "nam5"
+
+# Firestore location: us-central1 regional location co-located with compute/storage,
+# avoiding multi-region replication latency and unnecessary cost. Database creation is deferred.
+FIRESTORE_LOCATION = "us-central1"
 
 ENVIRONMENTS = ("dev", "judge", "shared")
 
@@ -39,11 +49,15 @@ ENVIRONMENTS = ("dev", "judge", "shared")
 APP_LABEL = "ngabo"
 MANAGED_BY_LABEL = "ngabo-bootstrap"
 LIFECYCLE_LABEL = "hackathon"
+ENVIRONMENT_LABEL = "shared"
+OWNER_LABEL = "ngabo-maintainer"
 
 STANDARD_LABELS: dict[str, str] = {
     "app": APP_LABEL,
     "managed-by": MANAGED_BY_LABEL,
     "lifecycle": LIFECYCLE_LABEL,
+    "environment": ENVIRONMENT_LABEL,
+    "owner": OWNER_LABEL,
 }
 
 # ---------------------------------------------------------------------------
@@ -73,17 +87,22 @@ REQUIRED_APIS: tuple[str, ...] = (
 
 ARTIFACT_REGISTRY_REPO = "ngabo-artifacts"
 ARTIFACT_REGISTRY_FORMAT = "docker"
-ARTIFACT_REGISTRY_DESCRIPTION = (
-    "Ngabo container image repository for core and web services"
-)
+ARTIFACT_REGISTRY_DESCRIPTION = "Ngabo container image repository for core and web services"
 
+# Free Trial Budget Alert Contract
+# Note: Google Cloud Billing Budgets API explicitly disallows forecasted-spend thresholds
+# when a customPeriod (start-date and end-date) is configured. Therefore, all threshold rules
+# use current-spend basis across the 90-day Free Trial window.
 BUDGET_DISPLAY_NAME = "ngabo-free-trial-budget"
 BUDGET_AMOUNT_USD = 300.0
-BUDGET_THRESHOLDS = (
+BUDGET_START_DATE = "2026-08-29"
+BUDGET_END_DATE = "2026-11-28"
+BUDGET_CREDIT_TREATMENT = "exclude-all-credits"  # API value: "EXCLUDE_ALL_CREDITS"
+BUDGET_THRESHOLDS: tuple[dict[str, Any], ...] = (
     {"percent": 0.5, "basis": "current-spend"},
     {"percent": 0.9, "basis": "current-spend"},
+    {"percent": 0.9667, "basis": "current-spend"},  # ~$290 / $300: alerts on $10 teardown margin
     {"percent": 1.0, "basis": "current-spend"},
-    {"percent": 1.0, "basis": "forecasted-spend"},
 )
 
 # Governed Cloud Run caps contract for future issues (#90+)
@@ -191,9 +210,7 @@ class GcpBootstrapConfig:
         resolved_project_id = project_id or os.environ.get(
             "NGABO_GCP_PROJECT_ID", DEFAULT_PROJECT_ID
         )
-        resolved_billing_account = billing_account or os.environ.get(
-            "NGABO_GCP_BILLING_ACCOUNT"
-        )
+        resolved_billing_account = billing_account or os.environ.get("NGABO_GCP_BILLING_ACCOUNT")
         resolved_region = region or os.environ.get("NGABO_GCP_REGION", PRIMARY_REGION)
 
         return cls(
