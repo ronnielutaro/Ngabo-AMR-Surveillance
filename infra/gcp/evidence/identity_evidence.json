@@ -1,0 +1,217 @@
+{
+  "contract_version": "ngabo-cloud-identity-v1.1",
+  "issue": "87",
+  "topology": {
+    "canonical_project_id": "ngabo-amr-2026",
+    "project_number": "907313480935",
+    "primary_region": "us-central1",
+    "wif_location": "global"
+  },
+  "service_accounts": {
+    "expected": {
+      "ngabo-deployer": {
+        "email": "ngabo-deployer@ngabo-amr-2026.iam.gserviceaccount.com",
+        "display_name": "Ngabo CI/CD Deployment Identity",
+        "user_managed_key_count": 0
+      },
+      "ngabo-core-runtime": {
+        "email": "ngabo-core-runtime@ngabo-amr-2026.iam.gserviceaccount.com",
+        "display_name": "Ngabo Core Backend Runtime Identity",
+        "user_managed_key_count": 0
+      },
+      "ngabo-web-runtime": {
+        "email": "ngabo-web-runtime@ngabo-amr-2026.iam.gserviceaccount.com",
+        "display_name": "Ngabo Web Frontend Runtime Identity",
+        "user_managed_key_count": 0
+      }
+    },
+    "observed": {
+      "ngabo-deployer": {
+        "email": "ngabo-deployer@ngabo-amr-2026.iam.gserviceaccount.com",
+        "exists": true,
+        "user_managed_key_count": 0
+      },
+      "ngabo-core-runtime": {
+        "email": "ngabo-core-runtime@ngabo-amr-2026.iam.gserviceaccount.com",
+        "exists": true,
+        "user_managed_key_count": 0
+      },
+      "ngabo-web-runtime": {
+        "email": "ngabo-web-runtime@ngabo-amr-2026.iam.gserviceaccount.com",
+        "exists": true,
+        "user_managed_key_count": 0
+      }
+    },
+    "verified": true,
+    "deferred": {
+      "event-publisher": "Deferred until the signal-event publishing architecture is implemented and a distinct runtime boundary is justified.",
+      "acknowledger": "Deferred until external-action / machine-ack architecture is implemented and a separately assumable identity is justified."
+    }
+  },
+  "workload_identity_federation": {
+    "expected": {
+      "pool_id": "ngabo-github",
+      "provider_id": "ngabo-repo",
+      "issuer": "https://token.actions.githubusercontent.com",
+      "repository_id": "1333677446",
+      "repository_owner_id": "29591720",
+      "allowed_ref": "refs/heads/develop",
+      "allowed_environment": "dev",
+      "attribute_mapping": {
+        "google.subject": "assertion.sub",
+        "attribute.repository_id": "assertion.repository_id",
+        "attribute.repository_owner_id": "assertion.repository_owner_id",
+        "attribute.ref": "assertion.ref",
+        "attribute.environment": "assertion.environment",
+        "attribute.workflow_ref": "assertion.workflow_ref"
+      },
+      "attribute_condition": "assertion.repository_id == \"1333677446\" && assertion.repository_owner_id == \"29591720\" && assertion.ref == \"refs/heads/develop\" && assertion.environment == \"dev\"",
+      "authorized_principal_set": "principalSet://iam.googleapis.com/projects/907313480935/locations/global/workloadIdentityPools/ngabo-github/attribute.repository_id/1333677446"
+    },
+    "observed": {
+      "pool_exists": true,
+      "provider_state": "ACTIVE",
+      "provider_issuer": "https://token.actions.githubusercontent.com",
+      "attribute_mapping": {
+        "attribute.environment": "assertion.environment",
+        "attribute.ref": "assertion.ref",
+        "attribute.repository_id": "assertion.repository_id",
+        "attribute.repository_owner_id": "assertion.repository_owner_id",
+        "attribute.workflow_ref": "assertion.workflow_ref",
+        "google.subject": "assertion.sub"
+      },
+      "attribute_condition": "assertion.repository_id == \"1333677446\" && assertion.repository_owner_id == \"29591720\" && assertion.ref == \"refs/heads/develop\" && assertion.environment == \"dev\"",
+      "actual_wif_members": [
+        "principalSet://iam.googleapis.com/projects/907313480935/locations/global/workloadIdentityPools/ngabo-github/attribute.repository_id/1333677446"
+      ]
+    },
+    "verified": true
+  },
+  "github_integration": {
+    "expected": {
+      "environment": "dev",
+      "deployment_branch_policy": [
+        "develop"
+      ],
+      "custom_branch_policies": true
+    },
+    "observed": {
+      "environment_present": true,
+      "custom_branch_policies": true,
+      "branch_policies": [
+        "develop"
+      ]
+    },
+    "verified": true,
+    "auth_proof_workflow": {
+      "file": ".github/workflows/wif-auth-proof.yml",
+      "trigger": "workflow_dispatch",
+      "environment": "dev",
+      "permissions": {
+        "contents": "read",
+        "id-token": "write"
+      },
+      "pinned_actions": {
+        "actions/checkout": {
+          "version": "v7.0.1",
+          "commit_sha": "3d3c42e5aac5ba805825da76410c181273ba90b1"
+        },
+        "google-github-actions/auth": {
+          "version": "v3.0.0",
+          "commit_sha": "7c6bc770dae815cd3e89ee6cdf493a5fab2cc093"
+        },
+        "google-github-actions/setup-gcloud": {
+          "version": "v3.0.1",
+          "commit_sha": "aa5489c8933f4cc7a4f7d45035b3b1440c9c10db"
+        }
+      }
+    }
+  },
+  "iam_contracts": {
+    "expected": {
+      "deployer_project_roles": [],
+      "deployer_ar_roles": [
+        "roles/artifactregistry.reader"
+      ],
+      "deployer_act_as_targets": [
+        "ngabo-core-runtime",
+        "ngabo-web-runtime"
+      ],
+      "core_runtime_roles": [],
+      "web_runtime_roles": [],
+      "prohibited_basic_roles": [
+        "roles/owner",
+        "roles/editor",
+        "roles/viewer",
+        "roles/iam.securityAdmin",
+        "roles/iam.serviceAccountAdmin",
+        "roles/secretmanager.admin"
+      ],
+      "cloud_run_developer_authority": "DEFERRED_TO_#90"
+    },
+    "observed": {
+      "deployer_project_roles": [],
+      "deployer_ar_roles": [
+        "roles/artifactregistry.reader"
+      ]
+    },
+    "verified": true
+  },
+  "secret_manager_contracts": [
+    {
+      "name_pattern": "ngabo-dev-*",
+      "environment": "dev",
+      "owner_workload": "ngabo-core",
+      "authorized_readers": [
+        "ngabo-core-runtime"
+      ],
+      "rotation_trigger": "Manual via maintainer / 90-day cadence",
+      "missing_secret_behavior": "Startup fails fast with explicit missing-secret error; no fallback",
+      "invalid_version_behavior": "Startup fails fast with explicit invalid-version error; no fallback",
+      "teardown_behavior": "Destroy secret versions and delete secret container upon environment teardown",
+      "physical_secrets_created": false
+    },
+    {
+      "name_pattern": "ngabo-judge-*",
+      "environment": "judge",
+      "owner_workload": "ngabo-core",
+      "authorized_readers": [
+        "ngabo-core-runtime"
+      ],
+      "rotation_trigger": "Manual via maintainer / release-freeze cadence",
+      "missing_secret_behavior": "Startup fails fast with explicit missing-secret error; no fallback",
+      "invalid_version_behavior": "Startup fails fast with explicit invalid-version error; no fallback",
+      "teardown_behavior": "Destroy secret versions and delete secret container upon environment teardown",
+      "physical_secrets_created": false
+    }
+  ],
+  "verification_results": {
+    "validation_passed": true,
+    "checks": {
+      "service_accounts_present": true,
+      "user_managed_keys_zero": true,
+      "wif_pool_valid": true,
+      "wif_provider_valid": true,
+      "deployer_roles_match_allowlist": true,
+      "deployer_ar_roles_match_allowlist": true,
+      "runtime_roles_match_allowlist": true,
+      "prohibited_basic_roles_absent": true,
+      "project_wide_secret_accessor_absent": true,
+      "deployer_act_as_valid": true,
+      "wif_impersonation_exact": true,
+      "github_env_valid": true
+    },
+    "teardown_rehearsal_passed": true,
+    "destructive_actions_executed": false,
+    "cessation_verification_executed": false,
+    "cessation_verification_required_on_real_teardown": true,
+    "positive_wif_proof_status": "PENDING_POST_MERGE",
+    "runtime_payload_access": "DEFERRED_UNTIL_FIRST_REAL_SECRET_VERSION",
+    "privacy_audit_status": "EXTERNAL_REVIEW_REQUIRED",
+    "secret_probe_mode": "IAM_POLICY_BOUNDARY",
+    "core_runtime_resource_scoped_accessor_binding": "PRESENT",
+    "web_runtime_resource_scoped_accessor_binding": "ABSENT",
+    "deployer_resource_scoped_accessor_binding": "ABSENT",
+    "project_wide_secret_accessor": "ABSENT"
+  }
+}

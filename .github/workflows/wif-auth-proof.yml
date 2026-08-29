@@ -1,0 +1,42 @@
+name: WIF Auth Proof
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  wif-proof:
+    name: Prove GitHub OIDC to GCP WIF Impersonation
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: Checkout repository
+        # Pinned to actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Authenticate to Google Cloud via Workload Identity Federation
+        id: gcp-auth
+        # Pinned to google-github-actions/auth v3.0.0
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        with:
+          workload_identity_provider: projects/907313480935/locations/global/workloadIdentityPools/ngabo-github/providers/ngabo-repo
+          service_account: ngabo-deployer@ngabo-amr-2026.iam.gserviceaccount.com
+
+      - name: Set up Google Cloud SDK
+        # Pinned to google-github-actions/setup-gcloud v3.0.1
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
+
+      - name: Verify Effective GCP Identity (Non-mutating Assertion)
+        run: |
+          echo "=== Verifying Active gcloud Authentication ==="
+          ACTIVE_ACCOUNT=$(gcloud auth list --filter=status:ACTIVE --format="value(account)")
+          EXPECTED_ACCOUNT="ngabo-deployer@ngabo-amr-2026.iam.gserviceaccount.com"
+          echo "Active Account: ${ACTIVE_ACCOUNT}"
+          if [ "${ACTIVE_ACCOUNT}" != "${EXPECTED_ACCOUNT}" ]; then
+            echo "ERROR: Active account '${ACTIVE_ACCOUNT}' does not match expected '${EXPECTED_ACCOUNT}'" >&2
+            exit 1
+          fi
+          echo "SUCCESS: Keyless OIDC WIF impersonation verified for ${ACTIVE_ACCOUNT}"

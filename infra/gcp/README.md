@@ -150,3 +150,74 @@ When a **real** teardown is explicitly authorized by the maintainer:
    - Verify `billingEnabled: false`.
    - Confirm project lifecycle state transitions to `DELETE_REQUESTED`.
    - Verify zero billable active workloads remain.
+
+---
+
+## 7. Identity & Workload Identity Federation Runbook (Issue #87)
+
+The identity management script is located at [`infra/gcp/identity.py`](file:///d:/code/Ngabo-Antimicrobial-Resistance-Surveillance/infra/gcp/identity.py).
+
+### 7.1 Identity Topology & Least Privilege Contracts
+
+1. **`ngabo-deployer`**:
+   - **Role**: Dedicated deployment service identity used exclusively by GitHub Actions delivery workflows.
+   - **Allowed Project Roles**: **None** (`roles/run.developer` is explicitly deferred to Issue #90 to maintain strict least privilege).
+   - **Allowed Resource Roles**: `roles/artifactregistry.reader` on repository `ngabo-artifacts`.
+   - **Allowed actAs Targets**: `roles/iam.serviceAccountUser` on `ngabo-core-runtime` and `ngabo-web-runtime` only.
+   - **Impersonation**: Keyless OIDC federated via Workload Identity Pool `ngabo-github` and Provider `ngabo-repo`.
+   - **User-Managed Keys**: **0** (strictly prohibited).
+
+2. **`ngabo-core-runtime` & `ngabo-web-runtime`**:
+   - **Role**: Dedicated runtime service identities for future Cloud Run services.
+   - **Project Roles**: **None** (zero speculative project-level roles at initial foundation).
+   - **User-Managed Keys**: **0** (strictly prohibited).
+
+3. **Deferred Identities**:
+   - `event-publisher` and `acknowledger` are explicitly deferred until their actual deployable runtimes are implemented.
+
+### 7.2 Workload Identity Federation (WIF) Trust Contract
+
+- **Pool ID**: `ngabo-github`
+- **Provider ID**: `ngabo-repo`
+- **Issuer**: `https://token.actions.githubusercontent.com`
+- **Immutable Numeric Claims**:
+  - `attribute.repository_id = assertion.repository_id` (`1333677446`)
+  - `attribute.repository_owner_id = assertion.repository_owner_id` (`29591720`)
+- **Attribute Condition**:
+  ```cel
+  assertion.repository_id == "1333677446" && assertion.repository_owner_id == "29591720" && assertion.ref == "refs/heads/develop" && assertion.environment == "dev"
+  ```
+- **GitHub Environment Restriction**:
+  - Environment: `dev` (restricted to deployment branch `develop`).
+- **Pinned Proof Actions**:
+  - `actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1` (`v7.0.1`)
+  - `google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093` (`v3.0.0`)
+  - `google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db` (`v3.0.1`)
+
+### 7.3 Identity CLI Commands
+
+```bash
+# Evaluate live identity, WIF, and GitHub environment state against contract
+python infra/gcp/identity.py plan
+
+# Idempotently provision service accounts, WIF pool/provider, and IAM bindings
+python infra/gcp/identity.py apply
+
+# Validate that all service accounts exist with 0 keys, WIF matches contract, and no unapproved roles exist
+python infra/gcp/identity.py validate
+
+# Run bounded ephemeral synthetic Secret Manager policy probe
+python infra/gcp/identity.py secret-probe
+
+# Perform plan-only identity teardown rehearsal
+python infra/gcp/identity.py teardown --dry-run
+```
+
+---
+
+## 8. Secret Manager Governance Contract (Issue #87)
+
+- **Naming Convention**: `ngabo-dev-<purpose>` and `ngabo-judge-<purpose>`
+- **Access Policy**: Resource-scoped `roles/secretmanager.secretAccessor` granted only to owning runtime identities (`ngabo-core-runtime`). Deployer does not receive secret payload access. Project-wide wildcard `roles/secretmanager.secretAccessor` is strictly prohibited.
+- **Missing-Secret Policy**: Required secrets must fail fast on application startup with an explicit missing-secret error; silent fallbacks, mock values, and payload logging are forbidden.
+- **Physical Secret Boundary**: Zero production secret values are populated in source control or infrastructure code in Issue #87.
