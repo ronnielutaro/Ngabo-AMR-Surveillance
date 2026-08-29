@@ -516,6 +516,20 @@ class GcpIdentityManager:
                     f"Grant '{role}' to '{deployer_email}' on repository '{ARTIFACT_REGISTRY_REPO}'"
                 )
 
+        # Revoke obsolete repository-scoped Artifact Registry roles no longer in
+        # the allow-list (e.g. the #87-era reader replaced by writer in #89), so
+        # the deployer's effective AR authority exactly matches the contract.
+        for binding in ar_bindings:
+            role = binding.get("role")
+            if (
+                isinstance(role, str)
+                and role not in DEPLOYER_ARTIFACT_REGISTRY_ROLES
+                and deployer_member in binding.get("members", [])
+            ):
+                planned_actions.append(
+                    f"Revoke '{role}' from '{deployer_email}' on repository '{ARTIFACT_REGISTRY_REPO}'"
+                )
+
         # 6. Service Account User (actAs) Bindings
         # Deployer must have NO project-level serviceAccountUser
         has_proj_actas = any(
@@ -760,6 +774,32 @@ class GcpIdentityManager:
                 self._log(
                     f"[apply] Artifact Registry role '{role}' already granted (idempotent no-op)."
                 )
+
+        # Revoke obsolete repository-scoped Artifact Registry roles no longer in
+        # the allow-list, keeping the deployer's effective authority exact.
+        for binding in ar_bindings:
+            role = binding.get("role")
+            if (
+                isinstance(role, str)
+                and role not in DEPLOYER_ARTIFACT_REGISTRY_ROLES
+                and deployer_member in binding.get("members", [])
+            ):
+                self._log(
+                    f"[apply] Revoking '{role}' from '{deployer_email}' on repository '{ARTIFACT_REGISTRY_REPO}'..."
+                )
+                run_gcloud_command(
+                    [
+                        "artifacts",
+                        "repositories",
+                        "remove-iam-policy-binding",
+                        ARTIFACT_REGISTRY_REPO,
+                        f"--location={self.config.region}",
+                        f"--project={self.config.project_id}",
+                        f"--member={deployer_member}",
+                        f"--role={role}",
+                    ]
+                )
+                operations.append(f"Revoked '{role}' on '{ARTIFACT_REGISTRY_REPO}'")
 
         # 6. Service Account User (actAs) Bindings on runtime service accounts
         for target_sa in DEPLOYER_ACT_AS_TARGETS:

@@ -57,7 +57,7 @@ VALID_PROJECT_BINDINGS: list[dict[str, Any]] = []
 
 VALID_AR_BINDINGS = [
     {
-        "role": "roles/artifactregistry.reader",
+        "role": "roles/artifactregistry.writer",
         "members": [f"serviceAccount:{DEPLOYER_SA_NAME}@{SAMPLE_PROJECT_ID}.iam.gserviceaccount.com"],
     }
 ]
@@ -307,6 +307,30 @@ def test_validate_fails_on_unapproved_deployer_project_role() -> None:
     assert res["passed"] is False
     assert res["checks"]["deployer_roles_match_allowlist"] is False
     assert any("Deployer project roles" in f for f in res["failures"])
+
+
+def test_plan_revokes_obsolete_artifact_registry_reader() -> None:
+    """Issue #89: the #87-era reader must be planned for revocation when the
+    allow-list transitions to repository-scoped writer, keeping the deployer's
+    effective Artifact Registry authority exact."""
+    mgr = create_converged_manager()
+    legacy_ar_bindings = [
+        {
+            "role": "roles/artifactregistry.reader",
+            "members": [f"serviceAccount:{DEPLOYER_SA_NAME}@{SAMPLE_PROJECT_ID}.iam.gserviceaccount.com"],
+        }
+    ]
+    mgr.inspector.get_artifact_registry_iam_bindings = MagicMock(  # type: ignore[method-assign]
+        return_value=legacy_ar_bindings
+    )
+    plan = mgr.plan()
+    assert plan["is_converged"] is False
+    assert any(
+        "Grant 'roles/artifactregistry.writer'" in a for a in plan["planned_actions"]
+    )
+    assert any(
+        "Revoke 'roles/artifactregistry.reader'" in a for a in plan["planned_actions"]
+    )
 
 
 def test_validate_fails_on_extra_artifact_registry_role() -> None:

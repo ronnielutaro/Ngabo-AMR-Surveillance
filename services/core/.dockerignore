@@ -1,0 +1,36 @@
+# ngabo-core build context exclusions (Issue #89)
+# The build context is services/core; keep it to locked build inputs only.
+
+# Python / package tooling
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# Environment / secrets / credentials
+.env
+.env.*
+!.env.example
+*.json-key
+*credentials*.json
+*service-account*.json
+gha-creds-*.json
+
+# Test / dev artifacts not required for the wheel
+tests/
+.coveragerc
+coverage.xml
+htmlcov/
+
+# Git / IDE / OS
+.git/
+.gitignore
+.vscode/
+.idea/
+*.swp
+*.log

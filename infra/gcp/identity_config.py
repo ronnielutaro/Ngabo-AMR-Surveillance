@@ -117,7 +117,10 @@ DEFERRED_SERVICE_ACCOUNTS: dict[str, str] = {
 # Roles permitted for ngabo-deployer
 # Cloud Run Developer authority is explicitly DEFERRED to #90 (Cloud Run Deployment)
 DEPLOYER_PROJECT_ROLES: tuple[str, ...] = ()
-DEPLOYER_ARTIFACT_REGISTRY_ROLES: tuple[str, ...] = ("roles/artifactregistry.reader",)
+# Issue #89: publishing requires repository-scoped write authority on
+# ngabo-artifacts only. Writer subsumes the former #87-era reader authority,
+# so the obsolete reader role is replaced rather than accumulated.
+DEPLOYER_ARTIFACT_REGISTRY_ROLES: tuple[str, ...] = ("roles/artifactregistry.writer",)
 DEPLOYER_ACT_AS_TARGETS: tuple[str, ...] = (CORE_RUNTIME_SA_NAME, WEB_RUNTIME_SA_NAME)
 
 # Runtime service accounts begin with zero speculative project-level roles

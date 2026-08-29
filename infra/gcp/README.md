@@ -162,7 +162,7 @@ The identity management script is located at [`infra/gcp/identity.py`](file:///d
 1. **`ngabo-deployer`**:
    - **Role**: Dedicated deployment service identity used exclusively by GitHub Actions delivery workflows.
    - **Allowed Project Roles**: **None** (`roles/run.developer` is explicitly deferred to Issue #90 to maintain strict least privilege).
-   - **Allowed Resource Roles**: `roles/artifactregistry.reader` on repository `ngabo-artifacts`.
+   - **Allowed Resource Roles**: `roles/artifactregistry.writer` on repository `ngabo-artifacts` only (Issue #89: repository-scoped publishing; writer subsumes the former #87-era reader authority, which is revoked on convergence).
    - **Allowed actAs Targets**: `roles/iam.serviceAccountUser` on `ngabo-core-runtime` and `ngabo-web-runtime` only.
    - **Impersonation**: Keyless OIDC federated via Workload Identity Pool `ngabo-github` and Provider `ngabo-repo`.
    - **User-Managed Keys**: **0** (strictly prohibited).

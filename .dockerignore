@@ -1,9 +1,17 @@
+# Root build-context exclusions (Issue #89)
+# The ngabo-web build uses the repository root as its Docker context; the
+# ngabo-core build uses services/core (see services/core/.dockerignore).
+# Keep every context free of secrets, caches, and unrelated content while
+# retaining the locked build inputs (workspace manifests, lockfiles, source).
+
 # Dependencies / build output
 node_modules/
 .next/
 out/
 dist/
 coverage/
+artifacts/
+*.tsbuildinfo
 
 # Python
 __pycache__/
@@ -13,6 +21,7 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 *.egg-info/
+htmlcov/
 
 # Environment / secrets / credentials
 .env
@@ -22,12 +31,23 @@ __pycache__/
 *credentials*.json
 *service-account*.json
 gha-creds-*.json
+*.pem
+*.key
+id_rsa*
+id_ed25519*
 
-# Git / IDE
+# Git / IDE / OS / editor
 .git/
-.github/
+.gitignore
 .vscode/
 .idea/
+*.swp
+*.swo
+Thumbs.db
+.DS_Store
+
+# Local scratch / evidence staging
+scratch/
 
 # Logs
 *.log

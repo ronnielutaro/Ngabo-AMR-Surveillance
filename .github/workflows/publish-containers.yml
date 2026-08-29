@@ -1,0 +1,175 @@
+name: Publish Containers
+
+# Issue #89 trusted publish workflow.
+#
+# Trust boundary: this workflow runs ONLY from the develop ref, in the `dev`
+# GitHub environment, authenticating keylessly via Workload Identity
+# Federation as ngabo-deployer (repository-scoped artifactregistry.writer on
+# ngabo-artifacts). It never runs from arbitrary PR branches and never uses
+# stored credentials or JSON service-account keys.
+#
+# It builds, tests, and scans the exact image objects it pushes: the pushed
+# digest equals the locally loaded digest (single buildx build, both
+# exports), and the Trivy scan runs against those same loaded objects.
+#
+# Authoritative artifact identity is the immutable digest; tags are
+# navigation only and no "latest" tag is ever the promotion identity.
+
+on:
+  workflow_dispatch:
+    branches:
+      - develop
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: publish-containers-develop
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish Immutable Container Images
+    runs-on: ubuntu-24.04
+    environment: dev
+    timeout-minutes: 40
+    if: github.ref == 'refs/heads/develop'
+    env:
+      IMAGE_PREFIX: us-central1-docker.pkg.dev/ngabo-amr-2026/ngabo-artifacts
+    steps:
+      - name: Checkout develop
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: refs/heads/develop
+          persist-credentials: false
+
+      - name: Authenticate to Google Cloud via WIF
+        # google-github-actions/auth v3.0.0
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        with:
+          workload_identity_provider: projects/907313480935/locations/global/workloadIdentityPools/ngabo-github/providers/ngabo-repo
+          service_account: ngabo-deployer@ngabo-amr-2026.iam.gserviceaccount.com
+          token_format: access_token
+
+      - name: Set up gcloud
+        # google-github-actions/setup-gcloud v3.0.1
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
+        with:
+          project_id: ngabo-amr-2026
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+
+      - name: Set up Docker Buildx
+        # docker/setup-buildx-action v3.12.0
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+
+      - name: Build and push ngabo-core (same digest loaded for scan)
+        id: core-push
+        # docker/build-push-action v7.3.0
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
+        with:
+          context: services/core
+          file: services/core/Dockerfile
+          push: true
+          load: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/ngabo-core:${{ github.sha }}
+            ${{ env.IMAGE_PREFIX }}/ngabo-core:sha-${{ github.sha }}
+          build-args: |
+            SOURCE_REVISION=${{ github.sha }}
+            SOURCE_URL=${{ github.repositoryUrl }}
+            APP_VERSION=0.1.0
+
+      - name: Build and push ngabo-web (same digest loaded for scan)
+        id: web-push
+        # docker/build-push-action v7.3.0
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: true
+          load: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/ngabo-web:${{ github.sha }}
+            ${{ env.IMAGE_PREFIX }}/ngabo-web:sha-${{ github.sha }}
+          build-args: |
+            SOURCE_REVISION=${{ github.sha }}
+            SOURCE_URL=${{ github.repositoryUrl }}
+            APP_VERSION=0.1.0
+
+      - name: Verify core runtime behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="${{ env.IMAGE_PREFIX }}/ngabo-core:${{ github.sha }}"
+          docker run --rm "$image" ngabo-health | grep -q '"status": "ok"'
+          [[ "$(docker inspect --format '{{.Config.User}}' "$image")" == "ngabo" ]]
+
+      - name: Verify web runtime behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="${{ env.IMAGE_PREFIX }}/ngabo-web:${{ github.sha }}"
+          [[ "$(docker inspect --format '{{.Config.User}}' "$image")" == "ngabo" ]]
+          cid="$(docker run -d --rm -p 127.0.0.1:18080:8080 "$image")"
+          trap 'docker stop "${cid}" >/dev/null 2>&1 || true' EXIT
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18080/ >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:18080/ | grep -qi "html"
+          docker stop "${cid}" >/dev/null
+
+      - name: Scan pushed ngabo-core digest
+        # aquasecurity/trivy-action v0.36.0
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8
+        with:
+          image-ref: ${{ env.IMAGE_PREFIX }}/ngabo-core:${{ github.sha }}
+          format: table
+          exit-code: "1"
+          severity: HIGH,CRITICAL
+          output: core-scan.txt
+
+      - name: Scan pushed ngabo-web digest
+        # aquasecurity/trivy-action v0.36.0
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8
+        with:
+          image-ref: ${{ env.IMAGE_PREFIX }}/ngabo-web:${{ github.sha }}
+          format: table
+          exit-code: "1"
+          severity: HIGH,CRITICAL
+          output: web-scan.txt
+
+      - name: Generate machine-readable publish evidence
+        shell: bash
+        env:
+          EVIDENCE_OUT: container-publish-evidence.json
+          EVIDENCE_REPOSITORY: ${{ github.repository }}
+          EVIDENCE_COMMIT: ${{ github.sha }}
+          EVIDENCE_WORKFLOW: ${{ github.workflow }}
+          EVIDENCE_RUN_ID: ${{ github.run_id }}
+          EVIDENCE_BASE_URL: ${{ env.IMAGE_PREFIX }}
+          EVIDENCE_CORE_DIGEST: ${{ steps.core-push.outputs.digest }}
+          EVIDENCE_WEB_DIGEST: ${{ steps.web-push.outputs.digest }}
+          EVIDENCE_CORE_SCAN: core-scan.txt
+          EVIDENCE_WEB_SCAN: web-scan.txt
+        run: |
+          set -euo pipefail
+          cd services/core
+          uv sync --frozen
+          uv run python ../../infra/github/container_evidence.py --output "../../${EVIDENCE_OUT}"
+
+      - name: Upload publish evidence
+        # actions/upload-artifact v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: container-publish-evidence-${{ github.run_id }}
+          path: |
+            container-publish-evidence.json
+            core-scan.txt
+            web-scan.txt
+          if-no-files-found: error
+          retention-days: 30
