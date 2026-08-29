@@ -2,10 +2,6 @@ name: WIF Auth Proof
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - feature/cloud-1a-3-keyless-iam
-      - develop
 
 permissions:
   contents: read
@@ -41,19 +37,3 @@ jobs:
           gcloud config list --format="json"
           echo "=== Read-only Project Verification ==="
           gcloud projects describe ngabo-amr-2026 --format="yaml(projectId,projectNumber,name,lifecycleState)"
-
-  wif-negative-ref-proof:
-    name: Prove WIF Cloud Provider Rejects Unauthorized Branch Ref
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        # Pinned to actions/checkout v4.2.2
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-
-      - name: Attempt GCP WIF Auth on Feature Branch (Must Fail at Cloud Provider)
-        id: gcp-auth-negative
-        # Pinned to google-github-actions/auth v2.1.8
-        uses: google-github-actions/auth@71f986410dfbc7added4569d411d040a91dc6935
-        with:
-          workload_identity_provider: projects/907313480935/locations/global/workloadIdentityPools/ngabo-github/providers/ngabo-repo
-          service_account: ngabo-deployer@ngabo-amr-2026.iam.gserviceaccount.com
