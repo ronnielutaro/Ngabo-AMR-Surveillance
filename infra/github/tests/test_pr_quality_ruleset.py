@@ -1,3 +1,4 @@
+import copy
 import json
 import pathlib
 import sys
@@ -143,6 +144,40 @@ class RulesetTests(unittest.TestCase):
         manager = pr_quality_ruleset.RulesetManager("owner/repo", runner=runner)
         with self.assertRaisesRegex(RuntimeError, "INSPECTION_FAILED"):
             manager.plan()
+
+    def test_unknown_github_populated_params_do_not_break_validation(self):
+        # GitHub may echo server-populated pull_request parameters that the
+        # desired payload never declared; validation must compare only the
+        # governed subset and still report convergence.
+        desired = pr_quality_ruleset.desired_ruleset()
+        summary = {"id": 42, "name": pr_quality_ruleset.RULESET_NAME}
+        detail = {"id": 42, **copy.deepcopy(desired)}
+        detail["rules"][0]["parameters"]["some_future_github_field"] = "x"
+        runner = FakeRunner([result([summary]), result(detail)])
+        manager = pr_quality_ruleset.RulesetManager("owner/repo", runner=runner)
+        self.assertEqual(manager.plan()["action"], "NONE")
+
+    def test_github_default_unattributed_approval_is_pinned_and_drifts_to_update(self):
+        # The live GitHub API defaults require_extra_approval_for_unattributed_changes
+        # to true when omitted; the contract pins it to false, so an observed
+        # ruleset carrying the server default must be reported as drift (UPDATE).
+        desired = pr_quality_ruleset.desired_ruleset()
+        summary = {"id": 42, "name": pr_quality_ruleset.RULESET_NAME}
+        detail = {"id": 42, **copy.deepcopy(desired)}
+        detail["rules"][0]["parameters"][
+            "require_extra_approval_for_unattributed_changes"
+        ] = True
+        runner = FakeRunner([result([summary]), result(detail)])
+        manager = pr_quality_ruleset.RulesetManager("owner/repo", runner=runner)
+        plan = manager.plan()
+        self.assertEqual(plan["action"], "UPDATE")
+        self.assertEqual(plan["ruleset_id"], 42)
+
+    def test_desired_contract_pins_github_managed_defaults(self):
+        desired = pr_quality_ruleset.desired_ruleset()
+        pull_params = desired["rules"][0]["parameters"]
+        self.assertFalse(pull_params["require_extra_approval_for_unattributed_changes"])
+        self.assertEqual(pull_params["required_reviewers"], [])
 
     def test_teardown_rehearsal(self):
         desired = pr_quality_ruleset.desired_ruleset()
