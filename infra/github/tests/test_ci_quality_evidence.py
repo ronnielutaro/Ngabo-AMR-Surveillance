@@ -106,7 +106,7 @@ class ValidEvidenceTests(unittest.TestCase):
         pr = _make_pr_data()
         run = _make_run_data()
         jobs = _make_jobs_data()
-        neg_run = _make_run_data(run_id=99999, head_sha="c1c9aa18", conclusion="failure")
+        neg_run = _make_run_data(run_id=33245608901, head_sha="1ea49549e904eedce29c7184390303732638ddc4", conclusion="failure")
         neg_jobs = _make_jobs_data()
         neg_jobs["jobs"][5]["conclusion"] = "failure"  # Core Quality failed
         runner = _make_runner(
@@ -120,7 +120,7 @@ class ValidEvidenceTests(unittest.TestCase):
             repo="owner/repo",
             pr_number=103,
             run_id=12345,
-            direct_import_negative_run="99999",
+            direct_import_negative_run="33245608901",
             importfrom_bypass_negative_run=None,
             high_severity_negative_run=None,
             runner=runner,
@@ -229,7 +229,11 @@ class ValidEvidenceTests(unittest.TestCase):
         pr = _make_pr_data()
         run = _make_run_data()
         jobs = _make_jobs_data()
-        neg_run = _make_run_data(run_id=33247203439, head_sha="7afe3882", conclusion="failure")
+        neg_run = _make_run_data(
+            run_id=33247203439,
+            head_sha="50cd9cc8f3cf92f870a9eccfa8cf030db385f92b",
+            conclusion="failure",
+        )
         neg_jobs = _make_jobs_data()
         neg_jobs["jobs"][3]["conclusion"] = "failure"  # Dependency Security failed
         runner = _make_runner(
@@ -252,32 +256,54 @@ class ValidEvidenceTests(unittest.TestCase):
         self.assertEqual(proof["run_id"], "33247203439")
         self.assertEqual(proof["advisory_id"], "GHSA-cpwx-vrp4-4pq7")
 
-    def test_unknown_high_severity_proof_omits_advisory_id(self):
+    def test_unregistered_negative_proof_run_rejected(self):
         pr = _make_pr_data()
         run = _make_run_data()
         jobs = _make_jobs_data()
-        neg_run = _make_run_data(run_id=88888, head_sha="7afe3882", conclusion="failure")
-        neg_jobs = _make_jobs_data()
-        neg_jobs["jobs"][3]["conclusion"] = "failure"  # Dependency Security failed
+        runner = _make_runner(
+            FakeProcess(0, json.dumps(pr)),
+            FakeProcess(0, json.dumps(run)),
+            FakeProcess(0, json.dumps(jobs)),
+        )
+        with self.assertRaises(ci_quality_evidence.EvidenceValidationError) as ctx:
+            ci_quality_evidence.build_ci_evidence(
+                repo="owner/repo",
+                pr_number=103,
+                run_id=12345,
+                direct_import_negative_run=None,
+                importfrom_bypass_negative_run=None,
+                high_severity_negative_run="88888",
+                runner=runner,
+            )
+        self.assertIn("not registered in KNOWN_NEGATIVE_FIXTURES", str(ctx.exception))
+
+    def test_negative_run_head_sha_mismatch_rejected(self):
+        pr = _make_pr_data()
+        run = _make_run_data()
+        jobs = _make_jobs_data()
+        # Head SHA differs from expected fixture SHA
+        neg_run = _make_run_data(
+            run_id=33247203439,
+            head_sha="different_sha_1234567890123456789012345678",
+            conclusion="failure",
+        )
         runner = _make_runner(
             FakeProcess(0, json.dumps(pr)),
             FakeProcess(0, json.dumps(run)),
             FakeProcess(0, json.dumps(jobs)),
             FakeProcess(0, json.dumps(neg_run)),
-            FakeProcess(0, json.dumps(neg_jobs)),
         )
-        evidence = ci_quality_evidence.build_ci_evidence(
-            repo="owner/repo",
-            pr_number=103,
-            run_id=12345,
-            direct_import_negative_run=None,
-            importfrom_bypass_negative_run=None,
-            high_severity_negative_run="88888",
-            runner=runner,
-        )
-        proof = evidence["historical_negative_proofs"]["high_severity_dependency"]
-        self.assertEqual(proof["run_id"], "88888")
-        self.assertNotIn("advisory_id", proof)
+        with self.assertRaises(ci_quality_evidence.EvidenceValidationError) as ctx:
+            ci_quality_evidence.build_ci_evidence(
+                repo="owner/repo",
+                pr_number=103,
+                run_id=12345,
+                direct_import_negative_run=None,
+                importfrom_bypass_negative_run=None,
+                high_severity_negative_run="33247203439",
+                runner=runner,
+            )
+        self.assertIn("head SHA is", str(ctx.exception))
 
     def test_cli_rejects_arbitrary_advisory_argument(self):
         # Verify parser raises error when caller attempts --advisory-id

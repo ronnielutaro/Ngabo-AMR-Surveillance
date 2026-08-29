@@ -269,7 +269,7 @@ def validate_negative_run(
 
     if expected_head_sha:
         actual_sha = run_data.get("head_sha", "")
-        if not actual_sha.startswith(expected_head_sha):
+        if actual_sha != expected_head_sha:
             raise EvidenceValidationError(
                 f"negative proof run {run_id} head SHA is '{actual_sha}', expected '{expected_head_sha}'"
             )
@@ -295,7 +295,7 @@ KNOWN_NEGATIVE_FIXTURES: dict[str, dict[str, Any]] = {
     "33245608901": {
         "proof_key": "direct_import_bypass",
         "expected_failed_job": "Core Quality",
-        "expected_head_sha": "c1c9aa18",
+        "expected_head_sha": "1ea49549e904eedce29c7184390303732638ddc4",
         "description": (
             "Direct 'import infrastructure' bypass — architecture "
             "checker correctly rejects"
@@ -304,7 +304,7 @@ KNOWN_NEGATIVE_FIXTURES: dict[str, dict[str, Any]] = {
     "33247122809": {
         "proof_key": "importfrom_bypass",
         "expected_failed_job": "Core Quality",
-        "expected_head_sha": "7afe3882",
+        "expected_head_sha": "f2d7f45aba869f146d15ae3fb079cdbff6cab688",
         "description": (
             "'from ngabo import infrastructure' bypass — architecture "
             "checker correctly rejects via resolve_name"
@@ -313,7 +313,7 @@ KNOWN_NEGATIVE_FIXTURES: dict[str, dict[str, Any]] = {
     "33247203439": {
         "proof_key": "high_severity_dependency",
         "expected_failed_job": "Dependency Security",
-        "expected_head_sha": "7afe3882",
+        "expected_head_sha": "50cd9cc8f3cf92f870a9eccfa8cf030db385f92b",
         "advisory_id": "GHSA-cpwx-vrp4-4pq7",
         "description": (
             "High-severity vulnerable dependency — uv audit + "
@@ -368,57 +368,75 @@ def build_ci_evidence(
     historical_negative_proofs: dict[str, Any] = {}
 
     if direct_import_negative_run:
-        fixture_di = KNOWN_NEGATIVE_FIXTURES.get(str(direct_import_negative_run), {})
+        run_key = str(direct_import_negative_run)
+        if run_key not in KNOWN_NEGATIVE_FIXTURES:
+            raise EvidenceValidationError(
+                f"negative proof run {run_key} is not registered in KNOWN_NEGATIVE_FIXTURES"
+            )
+        fixture_di = KNOWN_NEGATIVE_FIXTURES[run_key]
+        if fixture_di.get("proof_key") != "direct_import_bypass":
+            raise EvidenceValidationError(
+                f"fixture {run_key} proof_key is '{fixture_di.get('proof_key')}', expected 'direct_import_bypass'"
+            )
         if validate_negative_proofs:
             validate_negative_run(
                 repo,
                 direct_import_negative_run,
-                expected_failed_job=fixture_di.get("expected_failed_job", "Core Quality"),
-                expected_head_sha=fixture_di.get("expected_head_sha", "c1c9aa18"),
+                expected_failed_job=fixture_di["expected_failed_job"],
+                expected_head_sha=fixture_di["expected_head_sha"],
                 runner=runner,
             )
         historical_negative_proofs["direct_import_bypass"] = {
-            "run_id": str(direct_import_negative_run),
-            "description": fixture_di.get(
-                "description",
-                "Direct 'import infrastructure' bypass — architecture checker correctly rejects",
-            ),
+            "run_id": run_key,
+            "description": fixture_di["description"],
         }
 
     if importfrom_bypass_negative_run:
-        fixture_if = KNOWN_NEGATIVE_FIXTURES.get(str(importfrom_bypass_negative_run), {})
+        run_key = str(importfrom_bypass_negative_run)
+        if run_key not in KNOWN_NEGATIVE_FIXTURES:
+            raise EvidenceValidationError(
+                f"negative proof run {run_key} is not registered in KNOWN_NEGATIVE_FIXTURES"
+            )
+        fixture_if = KNOWN_NEGATIVE_FIXTURES[run_key]
+        if fixture_if.get("proof_key") != "importfrom_bypass":
+            raise EvidenceValidationError(
+                f"fixture {run_key} proof_key is '{fixture_if.get('proof_key')}', expected 'importfrom_bypass'"
+            )
         if validate_negative_proofs:
             validate_negative_run(
                 repo,
                 importfrom_bypass_negative_run,
-                expected_failed_job=fixture_if.get("expected_failed_job", "Core Quality"),
-                expected_head_sha=fixture_if.get("expected_head_sha", "7afe3882"),
+                expected_failed_job=fixture_if["expected_failed_job"],
+                expected_head_sha=fixture_if["expected_head_sha"],
                 runner=runner,
             )
         historical_negative_proofs["importfrom_bypass"] = {
-            "run_id": str(importfrom_bypass_negative_run),
-            "description": fixture_if.get(
-                "description",
-                "'from ngabo import infrastructure' bypass — architecture checker correctly rejects via resolve_name",
-            ),
+            "run_id": run_key,
+            "description": fixture_if["description"],
         }
 
     if high_severity_negative_run:
-        fixture_hs = KNOWN_NEGATIVE_FIXTURES.get(str(high_severity_negative_run), {})
+        run_key = str(high_severity_negative_run)
+        if run_key not in KNOWN_NEGATIVE_FIXTURES:
+            raise EvidenceValidationError(
+                f"negative proof run {run_key} is not registered in KNOWN_NEGATIVE_FIXTURES"
+            )
+        fixture_hs = KNOWN_NEGATIVE_FIXTURES[run_key]
+        if fixture_hs.get("proof_key") != "high_severity_dependency":
+            raise EvidenceValidationError(
+                f"fixture {run_key} proof_key is '{fixture_hs.get('proof_key')}', expected 'high_severity_dependency'"
+            )
         if validate_negative_proofs:
             validate_negative_run(
                 repo,
                 high_severity_negative_run,
-                expected_failed_job=fixture_hs.get("expected_failed_job", "Dependency Security"),
-                expected_head_sha=fixture_hs.get("expected_head_sha", "7afe3882"),
+                expected_failed_job=fixture_hs["expected_failed_job"],
+                expected_head_sha=fixture_hs["expected_head_sha"],
                 runner=runner,
             )
         proof_obj: dict[str, Any] = {
-            "run_id": str(high_severity_negative_run),
-            "description": fixture_hs.get(
-                "description",
-                "High-severity vulnerable dependency — uv audit + dependency review correctly reject",
-            ),
+            "run_id": run_key,
+            "description": fixture_hs["description"],
         }
         # Derive advisory_id strictly from validated known fixture, omitting if unverified/unknown
         if "advisory_id" in fixture_hs:

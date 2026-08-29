@@ -157,6 +157,13 @@ class ControlPlaneRaceTests(unittest.TestCase):
             )
         self.assertIn("RACE DETECTED", str(ctx.exception))
 
+    def test_pnpm_lock_and_uv_lock_are_protected_paths(self):
+        self.assertTrue(check_control_plane.is_protected_path("pnpm-lock.yaml"))
+        self.assertTrue(check_control_plane.is_protected_path("services/core/uv.lock"))
+        self.assertTrue(check_control_plane.is_protected_path("package.json"))
+        self.assertTrue(check_control_plane.is_protected_path("services/core/pyproject.toml"))
+        self.assertFalse(check_control_plane.is_protected_path("docs/README.md"))
+
 
 if __name__ == "__main__":
     unittest.main()

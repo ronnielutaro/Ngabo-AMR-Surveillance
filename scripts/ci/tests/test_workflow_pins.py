@@ -257,6 +257,63 @@ class WorkflowPinTests(unittest.TestCase):
             )
             self.assertEqual(check_workflow_pins.scan_file(path), [])
 
+    def test_workflow_invoking_local_composite_action_with_unpinned_step_fails(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            actions_dir = root / ".github" / "actions" / "my-action"
+            actions_dir.mkdir(parents=True)
+            manifest = actions_dir / "action.yml"
+            manifest.write_text(
+                "runs:\n"
+                "  using: composite\n"
+                "  steps:\n"
+                "    - uses: actions/checkout@v4\n",
+                encoding="utf-8",
+            )
+            wf_dir = root / ".github" / "workflows"
+            wf_dir.mkdir(parents=True)
+            wf_path = wf_dir / "ci.yml"
+            wf_path.write_text(
+                "name: CI\n"
+                "jobs:\n"
+                "  test:\n"
+                "    runs-on: ubuntu-latest\n"
+                "    steps:\n"
+                "      - uses: ./.github/actions/my-action\n",
+                encoding="utf-8",
+            )
+            errors = check_workflow_pins.scan(wf_dir)
+            self.assertEqual(len(errors), 1)
+            self.assertIn("must be pinned to a full 40-hex commit SHA", errors[0])
+
+    def test_workflow_invoking_local_composite_action_with_pinned_step_passes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            actions_dir = root / ".github" / "actions" / "my-action"
+            actions_dir.mkdir(parents=True)
+            manifest = actions_dir / "action.yml"
+            manifest.write_text(
+                "runs:\n"
+                "  using: composite\n"
+                "  steps:\n"
+                "    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1\n",
+                encoding="utf-8",
+            )
+            wf_dir = root / ".github" / "workflows"
+            wf_dir.mkdir(parents=True)
+            wf_path = wf_dir / "ci.yml"
+            wf_path.write_text(
+                "name: CI\n"
+                "jobs:\n"
+                "  test:\n"
+                "    runs-on: ubuntu-latest\n"
+                "    steps:\n"
+                "      - uses: ./.github/actions/my-action\n",
+                encoding="utf-8",
+            )
+            errors = check_workflow_pins.scan(wf_dir)
+            self.assertEqual(errors, [])
+
 
 if __name__ == "__main__":
     unittest.main()

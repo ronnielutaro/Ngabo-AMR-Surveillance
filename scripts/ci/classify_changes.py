@@ -23,6 +23,37 @@ SHARED_FILES = {
 WEB_DEPENDENCY_FILES = {"pnpm-lock.yaml", "apps/web/package.json"}
 CORE_DEPENDENCY_FILES = {"services/core/pyproject.toml", "services/core/uv.lock"}
 CI_CONTROL_PREFIXES = (".github/workflows/", "scripts/ci/", "infra/github/")
+CI_CONTROL_FILES = {
+    "package.json",
+    "pnpm-lock.yaml",
+    "pnpm-workspace.yaml",
+    "services/core/pyproject.toml",
+    "services/core/uv.lock",
+}
+
+
+def _is_ci_control_plane_path(path: str) -> bool:
+    if path.startswith(CI_CONTROL_PREFIXES) or path in CI_CONTROL_FILES:
+        return True
+    if path.startswith("apps/web/"):
+        rel = path[len("apps/web/"):]
+        if rel in (
+            "package.json",
+            "tsconfig.json",
+            "tsconfig.node.json",
+            "eslint.config.js",
+            "vitest.config.ts",
+            "next.config.js",
+            "postcss.config.js",
+        ) or (
+            rel.startswith("tsconfig")
+            or rel.startswith("eslint.config")
+            or rel.startswith("vitest.config")
+            or rel.startswith("next.config")
+            or rel.startswith("postcss.config")
+        ):
+            return True
+    return False
 
 
 @dataclass(frozen=True)
@@ -56,7 +87,7 @@ def _is_docs_only(path: str) -> bool:
 
 
 def _is_known_non_doc_path(path: str) -> bool:
-    if path in SHARED_FILES or path.startswith(CI_CONTROL_PREFIXES):
+    if path in SHARED_FILES or _is_ci_control_plane_path(path):
         return True
     if path in WEB_DEPENDENCY_FILES or path.startswith(WEB_PREFIXES):
         return True
@@ -97,8 +128,9 @@ def classify(paths: Iterable[str]) -> Classification:
         for path in changed
     )
 
-    ci_control = any(path.startswith(CI_CONTROL_PREFIXES) for path in changed)
-    shared = any(path in SHARED_FILES for path in changed) or ci_control or has_unclassified_non_doc
+    ci_control_shared = any(path.startswith(CI_CONTROL_PREFIXES) for path in changed)
+    shared = any(path in SHARED_FILES for path in changed) or ci_control_shared or has_unclassified_non_doc
+    ci_control = any(_is_ci_control_plane_path(path) for path in changed)
     core = (
         shared
         or any(path.startswith(CORE_PREFIXES) or path in CORE_DEPENDENCY_FILES for path in changed)

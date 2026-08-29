@@ -105,8 +105,10 @@ def is_protected_path(path: str) -> bool:
         return True
     if path in (
         "package.json",
+        "pnpm-lock.yaml",
         "pnpm-workspace.yaml",
         "services/core/pyproject.toml",
+        "services/core/uv.lock",
     ):
         return True
     if path.startswith("apps/web/"):

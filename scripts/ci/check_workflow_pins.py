@@ -80,7 +80,32 @@ def _fallback_parse_uses(content: str) -> list[str]:
     return uses_list
 
 
-def validate_uses_value(uses_val: Any, path: Path) -> list[str]:
+def _resolve_local_action(val: str, calling_file: Path) -> Path | None:
+    """Resolve a local action path to its action.yml or action.yaml manifest."""
+    # Try relative to calling file and relative to repository root
+    candidates: list[Path] = []
+    cleaned = val.lstrip("./").replace("\\", "/")
+    # Relative to calling file
+    candidates.append(calling_file.parent / val)
+    candidates.append(calling_file.parent / cleaned)
+    # Relative to current working directory / repo root
+    candidates.append(Path(val))
+    candidates.append(Path(cleaned))
+
+    for cand in candidates:
+        if cand.is_file() and cand.suffix in (".yml", ".yaml"):
+            return cand.resolve()
+        if cand.is_dir():
+            for name in ("action.yml", "action.yaml"):
+                manifest = cand / name
+                if manifest.is_file():
+                    return manifest.resolve()
+    return None
+
+
+def validate_uses_value(
+    uses_val: Any, path: Path, allow_fallback: bool = False
+) -> list[str]:
     errors: list[str] = []
     if not isinstance(uses_val, str):
         return [f"{path}: 'uses' key value is not a string: {uses_val!r}"]
@@ -91,7 +116,10 @@ def validate_uses_value(uses_val: Any, path: Path) -> list[str]:
 
     # Local reference: starts with ./ or .github/
     if val.startswith("./") or val.startswith(".github/"):
-        return []
+        manifest = _resolve_local_action(val, path)
+        if manifest and manifest != path.resolve():
+            errors.extend(scan_file(manifest, allow_fallback=allow_fallback))
+        return errors
 
     # Docker action reference
     if val.startswith("docker://"):
@@ -117,14 +145,16 @@ def validate_uses_value(uses_val: Any, path: Path) -> list[str]:
     return errors
 
 
-def _check_step(step: Any, path: Path) -> list[str]:
+def _check_step(step: Any, path: Path, allow_fallback: bool = False) -> list[str]:
     errors: list[str] = []
     if isinstance(step, dict) and "uses" in step:
-        errors.extend(validate_uses_value(step["uses"], path))
+        errors.extend(validate_uses_value(step["uses"], path, allow_fallback=allow_fallback))
     return errors
 
 
-def check_workflow_tree(data: Any, path: Path) -> list[str]:
+def check_workflow_tree(
+    data: Any, path: Path, allow_fallback: bool = False
+) -> list[str]:
     """Check action and reusable workflow pin compliance in parsed YAML data.
 
     Inspects ONLY actual action execution positions:
@@ -144,7 +174,7 @@ def check_workflow_tree(data: Any, path: Path) -> list[str]:
     top_steps = data.get("steps")
     if isinstance(top_steps, list):
         for step in top_steps:
-            errors.extend(_check_step(step, path))
+            errors.extend(_check_step(step, path, allow_fallback=allow_fallback))
 
     # 2. Workflow jobs: jobs.<job_id>
     jobs = data.get("jobs")
@@ -154,12 +184,12 @@ def check_workflow_tree(data: Any, path: Path) -> list[str]:
                 continue
             # Reusable workflow call at job level
             if "uses" in job:
-                errors.extend(validate_uses_value(job["uses"], path))
+                errors.extend(validate_uses_value(job["uses"], path, allow_fallback=allow_fallback))
             # Steps within job
             steps = job.get("steps")
             if isinstance(steps, list):
                 for step in steps:
-                    errors.extend(_check_step(step, path))
+                    errors.extend(_check_step(step, path, allow_fallback=allow_fallback))
 
     # 3. Composite action definition: runs.steps
     runs = data.get("runs")
@@ -167,7 +197,7 @@ def check_workflow_tree(data: Any, path: Path) -> list[str]:
         steps = runs.get("steps")
         if isinstance(steps, list):
             for step in steps:
-                errors.extend(_check_step(step, path))
+                errors.extend(_check_step(step, path, allow_fallback=allow_fallback))
 
     return errors
 
@@ -183,7 +213,7 @@ def scan_file(path: Path, allow_fallback: bool = False) -> list[str]:
         uses_list = _fallback_parse_uses(content)
         errors: list[str] = []
         for val in uses_list:
-            errors.extend(validate_uses_value(val, path))
+            errors.extend(validate_uses_value(val, path, allow_fallback=allow_fallback))
         return errors
 
     try:
@@ -193,14 +223,23 @@ def scan_file(path: Path, allow_fallback: bool = False) -> list[str]:
 
     if data is None:
         return []
-    return check_workflow_tree(data, path)
+    return check_workflow_tree(data, path, allow_fallback=allow_fallback)
 
 
 def scan(root: Path, allow_fallback: bool = False) -> list[str]:
     errors: list[str] = []
-    for ext in ("*.yml", "*.yaml"):
-        for path in sorted(root.glob(ext)):
-            errors.extend(scan_file(path, allow_fallback=allow_fallback))
+    paths: set[Path] = set()
+    if root.is_file():
+        paths.add(root)
+    elif root.is_dir():
+        for ext in ("*.yml", "*.yaml"):
+            paths.update(root.rglob(ext))
+        # If scanning a workflows directory, also look for sibling actions directory
+        if root.name == "workflows" and (root.parent / "actions").is_dir():
+            for ext in ("*.yml", "*.yaml"):
+                paths.update((root.parent / "actions").rglob(ext))
+    for path in sorted(paths):
+        errors.extend(scan_file(path, allow_fallback=allow_fallback))
     return errors
 
 
