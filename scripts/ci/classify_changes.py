@@ -107,7 +107,13 @@ def classify(paths: Iterable[str]) -> Classification:
         shared
         or any(path.startswith(WEB_PREFIXES) or path in WEB_DEPENDENCY_FILES for path in changed)
     )
-    infra = shared or any(path.startswith(INFRA_PREFIXES) for path in changed)
+    infra = (
+        shared
+        or any(
+            path.startswith(INFRA_PREFIXES) or path in CORE_DEPENDENCY_FILES
+            for path in changed
+        )
+    )
     dependency_changed = any(
         path in WEB_DEPENDENCY_FILES or path in CORE_DEPENDENCY_FILES
         for path in changed

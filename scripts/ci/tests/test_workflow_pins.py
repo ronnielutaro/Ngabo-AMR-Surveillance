@@ -100,7 +100,50 @@ class WorkflowPinTests(unittest.TestCase):
             )
             self.assertEqual(check_workflow_pins.scan_file(path), [])
 
-    def test_fallback_multiline_uses_fails(self):
+    def test_inline_mapping_second_key_fails(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = pathlib.Path(temp) / "ci.yml"
+            path.write_text(
+                "steps:\n  - { name: Checkout, uses: actions/checkout@v7 }\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(len(check_workflow_pins.scan_file(path)), 1)
+
+    def test_inline_mapping_second_key_sha_passes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = pathlib.Path(temp) / "ci.yml"
+            path.write_text(
+                "steps:\n  - { name: Checkout, uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 }\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(check_workflow_pins.scan_file(path), [])
+
+    def test_semantic_parser_ignores_uses_in_run_script_block(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = pathlib.Path(temp) / "ci.yml"
+            path.write_text(
+                'steps:\n  - name: Echo\n    run: |\n      echo "uses: actions/checkout@v7"\n',
+                encoding="utf-8",
+            )
+            self.assertEqual(check_workflow_pins.scan_file(path), [])
+
+    def test_pyyaml_missing_fails_closed_by_default(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = pathlib.Path(temp) / "ci.yml"
+            path.write_text(
+                "steps:\n  - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1\n",
+                encoding="utf-8",
+            )
+            orig_yaml = check_workflow_pins.yaml
+            check_workflow_pins.yaml = None
+            try:
+                errors = check_workflow_pins.scan_file(path)
+                self.assertEqual(len(errors), 1)
+                self.assertIn("PyYAML is required", errors[0])
+            finally:
+                check_workflow_pins.yaml = orig_yaml
+
+    def test_fallback_multiline_uses_fails_when_allowed(self):
         with tempfile.TemporaryDirectory() as temp:
             path = pathlib.Path(temp) / "ci.yml"
             path.write_text(
@@ -109,11 +152,13 @@ class WorkflowPinTests(unittest.TestCase):
             orig_yaml = check_workflow_pins.yaml
             check_workflow_pins.yaml = None
             try:
-                self.assertEqual(len(check_workflow_pins.scan_file(path)), 1)
+                self.assertEqual(
+                    len(check_workflow_pins.scan_file(path, allow_fallback=True)), 1
+                )
             finally:
                 check_workflow_pins.yaml = orig_yaml
 
-    def test_fallback_ignores_uses_in_run_script_block(self):
+    def test_fallback_ignores_uses_in_run_script_block_when_allowed(self):
         with tempfile.TemporaryDirectory() as temp:
             path = pathlib.Path(temp) / "ci.yml"
             path.write_text(
@@ -122,7 +167,9 @@ class WorkflowPinTests(unittest.TestCase):
             orig_yaml = check_workflow_pins.yaml
             check_workflow_pins.yaml = None
             try:
-                self.assertEqual(check_workflow_pins.scan_file(path), [])
+                self.assertEqual(
+                    check_workflow_pins.scan_file(path, allow_fallback=True), []
+                )
             finally:
                 check_workflow_pins.yaml = orig_yaml
 

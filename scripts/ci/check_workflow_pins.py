@@ -134,9 +134,14 @@ def traverse_yaml_tree(node: Any, path: Path, parent_key: str | None = None) -> 
     return errors
 
 
-def scan_file(path: Path) -> list[str]:
+def scan_file(path: Path, allow_fallback: bool = False) -> list[str]:
     content = path.read_text(encoding="utf-8")
     if yaml is None:
+        if not allow_fallback:
+            return [
+                f"{path}: PyYAML is required for authoritative workflow pin checking but is not installed. "
+                f"Refusing to evaluate pins via fallback."
+            ]
         uses_list = _fallback_parse_uses(content)
         errors: list[str] = []
         for val in uses_list:
@@ -153,21 +158,28 @@ def scan_file(path: Path) -> list[str]:
     return traverse_yaml_tree(data, path)
 
 
-def scan(root: Path) -> list[str]:
+def scan(root: Path, allow_fallback: bool = False) -> list[str]:
     errors: list[str] = []
     for ext in ("*.yml", "*.yaml"):
         for path in sorted(root.glob(ext)):
-            errors.extend(scan_file(path))
+            errors.extend(scan_file(path, allow_fallback=allow_fallback))
     return errors
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description="Authoritative semantic YAML workflow pin checker."
+    )
     parser.add_argument(
         "workflow_dir", nargs="?", type=Path, default=Path(".github/workflows")
     )
+    parser.add_argument(
+        "--allow-fallback",
+        action="store_true",
+        help="Allow fallback scanner for optional local diagnostics without PyYAML (never authoritative in CI)",
+    )
     args = parser.parse_args()
-    errors = scan(args.workflow_dir)
+    errors = scan(args.workflow_dir, allow_fallback=args.allow_fallback)
     if errors:
         print("\n".join(errors))
         return 1

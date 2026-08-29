@@ -68,12 +68,24 @@ jobs:
         with:
           python-version: "3.11.16"
 
+      - name: Set up uv
+        # astral-sh/setup-uv v10.0.1
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          version: "0.12.4"
+          working-directory: services/core
+          enable-cache: true
+          ignore-nothing-to-cache: true
+
       - name: Run CI contract tests
+        shell: bash
         run: |
           set -euo pipefail
-          python -m unittest discover -s scripts/ci/tests -p 'test_*.py'
-          python -m unittest discover -s infra/github/tests -p 'test_*.py'
-          python scripts/ci/check_workflow_pins.py .github/workflows
+          cd services/core
+          uv sync --frozen
+          uv run python -m unittest discover -s ../../scripts/ci/tests -p 'test_*.py'
+          uv run python -m unittest discover -s ../../infra/github/tests -p 'test_*.py'
+          uv run python ../../scripts/ci/check_workflow_pins.py ../../.github/workflows
 
   dependency-review:
     name: Dependency Review

@@ -225,28 +225,73 @@ class ValidEvidenceTests(unittest.TestCase):
         )
         self.assertEqual(evidence["observed"]["run_conclusion"], "success")
 
-    def test_negative_run_must_be_failure(self):
+    def test_known_high_severity_proof_binds_fixture_advisory_id(self):
         pr = _make_pr_data()
         run = _make_run_data()
         jobs = _make_jobs_data()
-        success_neg_run = _make_run_data(run_id=99999, conclusion="success")
+        neg_run = _make_run_data(run_id=33247203439, head_sha="7afe3882", conclusion="failure")
+        neg_jobs = _make_jobs_data()
+        neg_jobs["jobs"][3]["conclusion"] = "failure"  # Dependency Security failed
         runner = _make_runner(
             FakeProcess(0, json.dumps(pr)),
             FakeProcess(0, json.dumps(run)),
             FakeProcess(0, json.dumps(jobs)),
-            FakeProcess(0, json.dumps(success_neg_run)),
+            FakeProcess(0, json.dumps(neg_run)),
+            FakeProcess(0, json.dumps(neg_jobs)),
         )
-        with self.assertRaises(ci_quality_evidence.EvidenceValidationError) as ctx:
-            ci_quality_evidence.build_ci_evidence(
-                repo="owner/repo",
-                pr_number=103,
-                run_id=12345,
-                direct_import_negative_run="99999",
-                importfrom_bypass_negative_run=None,
-                high_severity_negative_run=None,
-                runner=runner,
-            )
-        self.assertIn("expected 'failure'", str(ctx.exception))
+        evidence = ci_quality_evidence.build_ci_evidence(
+            repo="owner/repo",
+            pr_number=103,
+            run_id=12345,
+            direct_import_negative_run=None,
+            importfrom_bypass_negative_run=None,
+            high_severity_negative_run="33247203439",
+            runner=runner,
+        )
+        proof = evidence["historical_negative_proofs"]["high_severity_dependency"]
+        self.assertEqual(proof["run_id"], "33247203439")
+        self.assertEqual(proof["advisory_id"], "GHSA-cpwx-vrp4-4pq7")
+
+    def test_unknown_high_severity_proof_omits_advisory_id(self):
+        pr = _make_pr_data()
+        run = _make_run_data()
+        jobs = _make_jobs_data()
+        neg_run = _make_run_data(run_id=88888, head_sha="7afe3882", conclusion="failure")
+        neg_jobs = _make_jobs_data()
+        neg_jobs["jobs"][3]["conclusion"] = "failure"  # Dependency Security failed
+        runner = _make_runner(
+            FakeProcess(0, json.dumps(pr)),
+            FakeProcess(0, json.dumps(run)),
+            FakeProcess(0, json.dumps(jobs)),
+            FakeProcess(0, json.dumps(neg_run)),
+            FakeProcess(0, json.dumps(neg_jobs)),
+        )
+        evidence = ci_quality_evidence.build_ci_evidence(
+            repo="owner/repo",
+            pr_number=103,
+            run_id=12345,
+            direct_import_negative_run=None,
+            importfrom_bypass_negative_run=None,
+            high_severity_negative_run="88888",
+            runner=runner,
+        )
+        proof = evidence["historical_negative_proofs"]["high_severity_dependency"]
+        self.assertEqual(proof["run_id"], "88888")
+        self.assertNotIn("advisory_id", proof)
+
+    def test_cli_rejects_arbitrary_advisory_argument(self):
+        import argparse
+        # Verify parser raises error when caller attempts --advisory-id
+        with self.assertRaises(SystemExit):
+            parser = argparse.ArgumentParser()
+            # Calling main with arbitrary --advisory-id will fail argument parsing
+            sys_argv = ["ci_quality_evidence.py", "--advisory-id", "GHSA-FAKE-1234"]
+            orig_argv = sys.argv
+            sys.argv = sys_argv
+            try:
+                ci_quality_evidence.main()
+            finally:
+                sys.argv = orig_argv
 
 
 # ---------------------------------------------------------------------------

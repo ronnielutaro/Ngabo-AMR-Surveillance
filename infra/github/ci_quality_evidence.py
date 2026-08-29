@@ -291,6 +291,38 @@ def validate_negative_run(
     return run_data
 
 
+KNOWN_NEGATIVE_FIXTURES: dict[str, dict[str, Any]] = {
+    "33245608901": {
+        "proof_key": "direct_import_bypass",
+        "expected_failed_job": "Core Quality",
+        "expected_head_sha": "c1c9aa18",
+        "description": (
+            "Direct 'import infrastructure' bypass — architecture "
+            "checker correctly rejects"
+        ),
+    },
+    "33247122809": {
+        "proof_key": "importfrom_bypass",
+        "expected_failed_job": "Core Quality",
+        "expected_head_sha": "7afe3882",
+        "description": (
+            "'from ngabo import infrastructure' bypass — architecture "
+            "checker correctly rejects via resolve_name"
+        ),
+    },
+    "33247203439": {
+        "proof_key": "high_severity_dependency",
+        "expected_failed_job": "Dependency Security",
+        "expected_head_sha": "7afe3882",
+        "advisory_id": "GHSA-cpwx-vrp4-4pq7",
+        "description": (
+            "High-severity vulnerable dependency — uv audit + "
+            "dependency review correctly reject"
+        ),
+    },
+}
+
+
 def build_ci_evidence(
     repo: str = DEFAULT_REPO,
     pr_number: int = DEFAULT_PR,
@@ -298,7 +330,6 @@ def build_ci_evidence(
     direct_import_negative_run: str | None = "33245608901",
     importfrom_bypass_negative_run: str | None = "33247122809",
     high_severity_negative_run: str | None = "33247203439",
-    advisory_id: str | None = "GHSA-cpwx-vrp4-4pq7",
     rename_bypass_negative_run: str | None = None,
     validate_negative_proofs: bool = True,
     runner: Callable[[Sequence[str]], subprocess.CompletedProcess[str]] | None = None,
@@ -338,57 +369,61 @@ def build_ci_evidence(
     historical_negative_proofs: dict[str, Any] = {}
 
     if direct_import_negative_run:
+        fixture_di = KNOWN_NEGATIVE_FIXTURES.get(str(direct_import_negative_run), {})
         if validate_negative_proofs:
             validate_negative_run(
                 repo,
                 direct_import_negative_run,
-                expected_failed_job="Core Quality",
-                expected_head_sha="c1c9aa18",
+                expected_failed_job=fixture_di.get("expected_failed_job", "Core Quality"),
+                expected_head_sha=fixture_di.get("expected_head_sha", "c1c9aa18"),
                 runner=runner,
             )
         historical_negative_proofs["direct_import_bypass"] = {
             "run_id": str(direct_import_negative_run),
-            "description": (
-                "Direct 'import infrastructure' bypass — architecture "
-                "checker correctly rejects"
+            "description": fixture_di.get(
+                "description",
+                "Direct 'import infrastructure' bypass — architecture checker correctly rejects",
             ),
         }
 
     if importfrom_bypass_negative_run:
+        fixture_if = KNOWN_NEGATIVE_FIXTURES.get(str(importfrom_bypass_negative_run), {})
         if validate_negative_proofs:
             validate_negative_run(
                 repo,
                 importfrom_bypass_negative_run,
-                expected_failed_job="Core Quality",
-                expected_head_sha="7afe3882",
+                expected_failed_job=fixture_if.get("expected_failed_job", "Core Quality"),
+                expected_head_sha=fixture_if.get("expected_head_sha", "7afe3882"),
                 runner=runner,
             )
         historical_negative_proofs["importfrom_bypass"] = {
             "run_id": str(importfrom_bypass_negative_run),
-            "description": (
-                "'from ngabo import infrastructure' bypass — architecture "
-                "checker correctly rejects via resolve_name"
+            "description": fixture_if.get(
+                "description",
+                "'from ngabo import infrastructure' bypass — architecture checker correctly rejects via resolve_name",
             ),
         }
 
     if high_severity_negative_run:
+        fixture_hs = KNOWN_NEGATIVE_FIXTURES.get(str(high_severity_negative_run), {})
         if validate_negative_proofs:
             validate_negative_run(
                 repo,
                 high_severity_negative_run,
-                expected_failed_job="Dependency Security",
-                expected_head_sha="7afe3882",
+                expected_failed_job=fixture_hs.get("expected_failed_job", "Dependency Security"),
+                expected_head_sha=fixture_hs.get("expected_head_sha", "7afe3882"),
                 runner=runner,
             )
         proof_obj: dict[str, Any] = {
             "run_id": str(high_severity_negative_run),
-            "description": (
-                "High-severity vulnerable dependency — uv audit + "
-                "dependency review correctly reject"
+            "description": fixture_hs.get(
+                "description",
+                "High-severity vulnerable dependency — uv audit + dependency review correctly reject",
             ),
         }
-        if advisory_id:
-            proof_obj["advisory_id"] = advisory_id
+        # Derive advisory_id strictly from validated known fixture, omitting if unverified/unknown
+        if "advisory_id" in fixture_hs:
+            proof_obj["advisory_id"] = fixture_hs["advisory_id"]
         historical_negative_proofs["high_severity_dependency"] = proof_obj
 
     if rename_bypass_negative_run:
@@ -513,7 +548,6 @@ def main() -> int:
     parser.add_argument("--direct-import-negative-run", default="33245608901")
     parser.add_argument("--importfrom-negative-run", default="33247122809")
     parser.add_argument("--security-negative-run", default="33247203439")
-    parser.add_argument("--advisory-id", default="GHSA-cpwx-vrp4-4pq7")
     parser.add_argument("--rename-negative-run", default=None)
     parser.add_argument("--output", type=Path, default=None)
     args = parser.parse_args()
@@ -526,7 +560,6 @@ def main() -> int:
             direct_import_negative_run=args.direct_import_negative_run,
             importfrom_bypass_negative_run=args.importfrom_negative_run,
             high_severity_negative_run=args.security_negative_run,
-            advisory_id=args.advisory_id,
             rename_bypass_negative_run=args.rename_negative_run,
         )
     except EvidenceValidationError as exc:
