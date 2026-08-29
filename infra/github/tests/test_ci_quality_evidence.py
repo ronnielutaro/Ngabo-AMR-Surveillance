@@ -280,12 +280,20 @@ class ValidEvidenceTests(unittest.TestCase):
         self.assertNotIn("advisory_id", proof)
 
     def test_cli_rejects_arbitrary_advisory_argument(self):
-        import argparse
         # Verify parser raises error when caller attempts --advisory-id
         with self.assertRaises(SystemExit):
-            parser = argparse.ArgumentParser()
-            # Calling main with arbitrary --advisory-id will fail argument parsing
             sys_argv = ["ci_quality_evidence.py", "--advisory-id", "GHSA-FAKE-1234"]
+            orig_argv = sys.argv
+            sys.argv = sys_argv
+            try:
+                ci_quality_evidence.main()
+            finally:
+                sys.argv = orig_argv
+
+    def test_cli_rejects_rename_argument(self):
+        # Verify parser raises error when caller attempts --rename-negative-run
+        with self.assertRaises(SystemExit):
+            sys_argv = ["ci_quality_evidence.py", "--rename-negative-run", "12345"]
             orig_argv = sys.argv
             sys.argv = sys_argv
             try:

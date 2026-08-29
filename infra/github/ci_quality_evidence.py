@@ -330,7 +330,6 @@ def build_ci_evidence(
     direct_import_negative_run: str | None = "33245608901",
     importfrom_bypass_negative_run: str | None = "33247122809",
     high_severity_negative_run: str | None = "33247203439",
-    rename_bypass_negative_run: str | None = None,
     validate_negative_proofs: bool = True,
     runner: Callable[[Sequence[str]], subprocess.CompletedProcess[str]] | None = None,
 ) -> dict[str, Any]:
@@ -425,19 +424,6 @@ def build_ci_evidence(
         if "advisory_id" in fixture_hs:
             proof_obj["advisory_id"] = fixture_hs["advisory_id"]
         historical_negative_proofs["high_severity_dependency"] = proof_obj
-
-    if rename_bypass_negative_run:
-        if validate_negative_proofs:
-            validate_negative_run(
-                repo, rename_bypass_negative_run, expected_failed_job=None, runner=runner
-            )
-        historical_negative_proofs["rename_bypass"] = {
-            "run_id": str(rename_bypass_negative_run),
-            "description": (
-                "Core-to-docs rename bypass — rename-aware collector "
-                "correctly retains source path"
-            ),
-        }
 
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -548,7 +534,6 @@ def main() -> int:
     parser.add_argument("--direct-import-negative-run", default="33245608901")
     parser.add_argument("--importfrom-negative-run", default="33247122809")
     parser.add_argument("--security-negative-run", default="33247203439")
-    parser.add_argument("--rename-negative-run", default=None)
     parser.add_argument("--output", type=Path, default=None)
     args = parser.parse_args()
 
@@ -560,7 +545,6 @@ def main() -> int:
             direct_import_negative_run=args.direct_import_negative_run,
             importfrom_bypass_negative_run=args.importfrom_negative_run,
             high_severity_negative_run=args.security_negative_run,
-            rename_bypass_negative_run=args.rename_negative_run,
         )
     except EvidenceValidationError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

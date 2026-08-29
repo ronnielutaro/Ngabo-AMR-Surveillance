@@ -48,8 +48,8 @@ def _fallback_parse_uses(content: str) -> list[str]:
             i += 1
             continue
 
-        # Ignore permission/env blocks
-        if re.match(r"""^\s*(?:permissions|env)\s*:""", line_raw, re.IGNORECASE):
+        # Ignore permission/env/with/inputs blocks in fallback scanner
+        if re.match(r"""^\s*(?:permissions|env|with|inputs)\s*:""", line_raw, re.IGNORECASE):
             i += 1
             continue
 
@@ -117,20 +117,58 @@ def validate_uses_value(uses_val: Any, path: Path) -> list[str]:
     return errors
 
 
-def traverse_yaml_tree(node: Any, path: Path, parent_key: str | None = None) -> list[str]:
+def _check_step(step: Any, path: Path) -> list[str]:
     errors: list[str] = []
-    if isinstance(node, dict):
-        for k, v in node.items():
-            k_str = str(k)
-            if k_str == "uses":
-                # Only validate 'uses' if parent_key is 'steps' or 'jobs' or in a job/step block (not permissions)
-                if parent_key not in ("permissions", "env"):
-                    errors.extend(validate_uses_value(v, path))
-            elif k_str not in ("permissions", "env"):
-                errors.extend(traverse_yaml_tree(v, path, parent_key=k_str))
-    elif isinstance(node, list):
-        for item in node:
-            errors.extend(traverse_yaml_tree(item, path, parent_key=parent_key))
+    if isinstance(step, dict) and "uses" in step:
+        errors.extend(validate_uses_value(step["uses"], path))
+    return errors
+
+
+def check_workflow_tree(data: Any, path: Path) -> list[str]:
+    """Check action and reusable workflow pin compliance in parsed YAML data.
+
+    Inspects ONLY actual action execution positions:
+    - Reusable workflow calls at job level: `jobs.<job_id>.uses`
+    - Action references at step level: `jobs.<job_id>.steps[i].uses`
+    - Composite action step references: `runs.steps[i].uses`
+    - Direct step list references: `steps[i].uses`
+
+    Non-action data positions (such as `with.uses`, `inputs.uses`, `env.uses`)
+    are not treated as action references.
+    """
+    errors: list[str] = []
+    if not isinstance(data, dict):
+        return errors
+
+    # 1. Top-level steps list (workflow step snippets or action manifests)
+    top_steps = data.get("steps")
+    if isinstance(top_steps, list):
+        for step in top_steps:
+            errors.extend(_check_step(step, path))
+
+    # 2. Workflow jobs: jobs.<job_id>
+    jobs = data.get("jobs")
+    if isinstance(jobs, dict):
+        for _job_id, job in jobs.items():
+            if not isinstance(job, dict):
+                continue
+            # Reusable workflow call at job level
+            if "uses" in job:
+                errors.extend(validate_uses_value(job["uses"], path))
+            # Steps within job
+            steps = job.get("steps")
+            if isinstance(steps, list):
+                for step in steps:
+                    errors.extend(_check_step(step, path))
+
+    # 3. Composite action definition: runs.steps
+    runs = data.get("runs")
+    if isinstance(runs, dict):
+        steps = runs.get("steps")
+        if isinstance(steps, list):
+            for step in steps:
+                errors.extend(_check_step(step, path))
+
     return errors
 
 
@@ -155,7 +193,7 @@ def scan_file(path: Path, allow_fallback: bool = False) -> list[str]:
 
     if data is None:
         return []
-    return traverse_yaml_tree(data, path)
+    return check_workflow_tree(data, path)
 
 
 def scan(root: Path, allow_fallback: bool = False) -> list[str]:

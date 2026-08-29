@@ -173,6 +173,90 @@ class WorkflowPinTests(unittest.TestCase):
             finally:
                 check_workflow_pins.yaml = orig_yaml
 
+    def test_action_input_named_uses_in_with_block_ignored(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = pathlib.Path(temp) / "ci.yml"
+            path.write_text(
+                "jobs:\n"
+                "  build:\n"
+                "    runs-on: ubuntu-latest\n"
+                "    steps:\n"
+                "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1\n"
+                "        with:\n"
+                "          uses: documentation\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(check_workflow_pins.scan_file(path), [])
+
+    def test_workflow_call_input_named_uses_ignored(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = pathlib.Path(temp) / "ci.yml"
+            path.write_text(
+                "on:\n"
+                "  workflow_call:\n"
+                "    inputs:\n"
+                "      uses:\n"
+                "        type: string\n"
+                "        default: value\n"
+                "jobs:\n"
+                "  build:\n"
+                "    runs-on: ubuntu-latest\n"
+                "    steps:\n"
+                "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(check_workflow_pins.scan_file(path), [])
+
+    def test_job_level_reusable_workflow_unpinned_fails(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = pathlib.Path(temp) / "ci.yml"
+            path.write_text(
+                "jobs:\n"
+                "  caller:\n"
+                "    uses: owner/repo/.github/workflows/reusable.yml@main\n",
+                encoding="utf-8",
+            )
+            errors = check_workflow_pins.scan_file(path)
+            self.assertEqual(len(errors), 1)
+            self.assertIn("must be pinned to a full 40-hex commit SHA", errors[0])
+
+    def test_job_level_reusable_workflow_sha_pinned_passes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = pathlib.Path(temp) / "ci.yml"
+            path.write_text(
+                "jobs:\n"
+                "  caller:\n"
+                "    uses: owner/repo/.github/workflows/reusable.yml@3d3c42e5aac5ba805825da76410c181273ba90b1\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(check_workflow_pins.scan_file(path), [])
+
+    def test_composite_action_step_unpinned_fails(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = pathlib.Path(temp) / "action.yml"
+            path.write_text(
+                "runs:\n"
+                "  using: composite\n"
+                "  steps:\n"
+                "    - uses: actions/checkout@v4\n",
+                encoding="utf-8",
+            )
+            errors = check_workflow_pins.scan_file(path)
+            self.assertEqual(len(errors), 1)
+            self.assertIn("must be pinned to a full 40-hex commit SHA", errors[0])
+
+    def test_composite_action_step_sha_pinned_passes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = pathlib.Path(temp) / "action.yml"
+            path.write_text(
+                "runs:\n"
+                "  using: composite\n"
+                "  steps:\n"
+                "    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(check_workflow_pins.scan_file(path), [])
+
 
 if __name__ == "__main__":
     unittest.main()
