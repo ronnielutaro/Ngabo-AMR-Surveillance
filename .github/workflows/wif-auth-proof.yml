@@ -14,26 +14,29 @@ jobs:
     environment: dev
     steps:
       - name: Checkout repository
-        # Pinned to actions/checkout v4.2.2
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        # Pinned to actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Authenticate to Google Cloud via Workload Identity Federation
         id: gcp-auth
-        # Pinned to google-github-actions/auth v2.1.8
-        uses: google-github-actions/auth@71f986410dfbc7added4569d411d040a91dc6935
+        # Pinned to google-github-actions/auth v3.0.0
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
         with:
           workload_identity_provider: projects/907313480935/locations/global/workloadIdentityPools/ngabo-github/providers/ngabo-repo
           service_account: ngabo-deployer@ngabo-amr-2026.iam.gserviceaccount.com
 
       - name: Set up Google Cloud SDK
-        # Pinned to google-github-actions/setup-gcloud v2.1.4
-        uses: google-github-actions/setup-gcloud@77e7a554d41e2ee56fc945c52dfd3f33d12def9a
+        # Pinned to google-github-actions/setup-gcloud v3.0.1
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
 
-      - name: Verify Effective GCP Identity (Read-only)
+      - name: Verify Effective GCP Identity (Non-mutating Assertion)
         run: |
-          echo "=== Active gcloud Authentication ==="
-          gcloud auth list
-          echo "=== Configured Project ==="
-          gcloud config list --format="json"
-          echo "=== Read-only Project Verification ==="
-          gcloud projects describe ngabo-amr-2026 --format="yaml(projectId,projectNumber,name,lifecycleState)"
+          echo "=== Verifying Active gcloud Authentication ==="
+          ACTIVE_ACCOUNT=$(gcloud auth list --filter=status:ACTIVE --format="value(account)")
+          EXPECTED_ACCOUNT="ngabo-deployer@ngabo-amr-2026.iam.gserviceaccount.com"
+          echo "Active Account: ${ACTIVE_ACCOUNT}"
+          if [ "${ACTIVE_ACCOUNT}" != "${EXPECTED_ACCOUNT}" ]; then
+            echo "ERROR: Active account '${ACTIVE_ACCOUNT}' does not match expected '${EXPECTED_ACCOUNT}'" >&2
+            exit 1
+          fi
+          echo "SUCCESS: Keyless OIDC WIF impersonation verified for ${ACTIVE_ACCOUNT}"

@@ -1,5 +1,5 @@
 {
-  "contract_version": "ngabo-cloud-identity-v1",
+  "contract_version": "ngabo-cloud-identity-v1.1",
   "issue": "87",
   "topology": {
     "canonical_project_id": "ngabo-amr-2026",
@@ -8,7 +8,7 @@
     "wif_location": "global"
   },
   "service_accounts": {
-    "created": {
+    "expected": {
       "ngabo-deployer": {
         "email": "ngabo-deployer@ngabo-amr-2026.iam.gserviceaccount.com",
         "display_name": "Ngabo CI/CD Deployment Identity",
@@ -25,42 +25,84 @@
         "user_managed_key_count": 0
       }
     },
+    "observed": {
+      "ngabo-deployer": {
+        "email": "ngabo-deployer@ngabo-amr-2026.iam.gserviceaccount.com",
+        "exists": true,
+        "user_managed_key_count": 0
+      },
+      "ngabo-core-runtime": {
+        "email": "ngabo-core-runtime@ngabo-amr-2026.iam.gserviceaccount.com",
+        "exists": true,
+        "user_managed_key_count": 0
+      },
+      "ngabo-web-runtime": {
+        "email": "ngabo-web-runtime@ngabo-amr-2026.iam.gserviceaccount.com",
+        "exists": true,
+        "user_managed_key_count": 0
+      }
+    },
+    "verified": true,
     "deferred": {
       "event-publisher": "Deferred until the signal-event publishing architecture is implemented and a distinct runtime boundary is justified.",
       "acknowledger": "Deferred until external-action / machine-ack architecture is implemented and a separately assumable identity is justified."
     }
   },
   "workload_identity_federation": {
-    "pool_id": "ngabo-github",
-    "provider_id": "ngabo-repo",
-    "issuer": "https://token.actions.githubusercontent.com",
-    "repository_identity": {
-      "repository_name": "ronnielutaro/Ngabo-AMR-Surveillance",
+    "expected": {
+      "pool_id": "ngabo-github",
+      "provider_id": "ngabo-repo",
+      "issuer": "https://token.actions.githubusercontent.com",
       "repository_id": "1333677446",
       "repository_owner_id": "29591720",
       "allowed_ref": "refs/heads/develop",
-      "allowed_environment": "dev"
+      "allowed_environment": "dev",
+      "attribute_mapping": {
+        "google.subject": "assertion.sub",
+        "attribute.repository_id": "assertion.repository_id",
+        "attribute.repository_owner_id": "assertion.repository_owner_id",
+        "attribute.ref": "assertion.ref",
+        "attribute.environment": "assertion.environment",
+        "attribute.workflow_ref": "assertion.workflow_ref"
+      },
+      "attribute_condition": "assertion.repository_id == \"1333677446\" && assertion.repository_owner_id == \"29591720\" && assertion.ref == \"refs/heads/develop\" && assertion.environment == \"dev\"",
+      "authorized_principal_set": "principalSet://iam.googleapis.com/projects/907313480935/locations/global/workloadIdentityPools/ngabo-github/attribute.repository_id/1333677446"
     },
-    "attribute_mapping": {
-      "google.subject": "assertion.sub",
-      "attribute.repository_id": "assertion.repository_id",
-      "attribute.repository_owner_id": "assertion.repository_owner_id",
-      "attribute.ref": "assertion.ref",
-      "attribute.environment": "assertion.environment",
-      "attribute.workflow_ref": "assertion.workflow_ref"
+    "observed": {
+      "pool_exists": true,
+      "provider_state": "ACTIVE",
+      "provider_issuer": "https://token.actions.githubusercontent.com",
+      "attribute_mapping": {
+        "attribute.environment": "assertion.environment",
+        "attribute.ref": "assertion.ref",
+        "attribute.repository_id": "assertion.repository_id",
+        "attribute.repository_owner_id": "assertion.repository_owner_id",
+        "attribute.workflow_ref": "assertion.workflow_ref",
+        "google.subject": "assertion.sub"
+      },
+      "attribute_condition": "assertion.repository_id == \"1333677446\" && assertion.repository_owner_id == \"29591720\" && assertion.ref == \"refs/heads/develop\" && assertion.environment == \"dev\"",
+      "actual_wif_members": [
+        "principalSet://iam.googleapis.com/projects/907313480935/locations/global/workloadIdentityPools/ngabo-github/attribute.repository_id/1333677446"
+      ]
     },
-    "attribute_condition": "assertion.repository_id == \"1333677446\" && assertion.repository_owner_id == \"29591720\" && assertion.ref == \"refs/heads/develop\"",
-    "impersonated_service_account": "ngabo-deployer@ngabo-amr-2026.iam.gserviceaccount.com",
-    "impersonation_principal_set": "principalSet://iam.googleapis.com/projects/907313480935/locations/global/workloadIdentityPools/ngabo-github/attribute.repository_id/1333677446"
+    "verified": true
   },
   "github_integration": {
-    "dev_environment_present": true,
-    "branch_policy": {
-      "restricted_to_branches": [
+    "expected": {
+      "environment": "dev",
+      "deployment_branch_policy": [
         "develop"
       ],
       "custom_branch_policies": true
     },
+    "observed": {
+      "environment_present": true,
+      "custom_branch_policies": true,
+      "branch_policies": [
+        "develop"
+      ]
+    },
+    "verified": true,
     "auth_proof_workflow": {
       "file": ".github/workflows/wif-auth-proof.yml",
       "trigger": "workflow_dispatch",
@@ -71,40 +113,49 @@
       },
       "pinned_actions": {
         "actions/checkout": {
-          "version": "v4.2.2",
-          "commit_sha": "11bd71901bbe5b1630ceea73d27597364c9af683"
+          "version": "v7.0.1",
+          "commit_sha": "3d3c42e5aac5ba805825da76410c181273ba90b1"
         },
         "google-github-actions/auth": {
-          "version": "v2.1.8",
-          "commit_sha": "71f986410dfbc7added4569d411d040a91dc6935"
+          "version": "v3.0.0",
+          "commit_sha": "7c6bc770dae815cd3e89ee6cdf493a5fab2cc093"
+        },
+        "google-github-actions/setup-gcloud": {
+          "version": "v3.0.1",
+          "commit_sha": "aa5489c8933f4cc7a4f7d45035b3b1440c9c10db"
         }
       }
     }
   },
   "iam_contracts": {
-    "deployer_roles": {
-      "project": [
-        "roles/run.developer"
-      ],
-      "artifact_registry": [
+    "expected": {
+      "deployer_project_roles": [],
+      "deployer_ar_roles": [
         "roles/artifactregistry.reader"
       ],
-      "act_as_targets": [
+      "deployer_act_as_targets": [
         "ngabo-core-runtime",
         "ngabo-web-runtime"
+      ],
+      "core_runtime_roles": [],
+      "web_runtime_roles": [],
+      "prohibited_basic_roles": [
+        "roles/owner",
+        "roles/editor",
+        "roles/viewer",
+        "roles/iam.securityAdmin",
+        "roles/iam.serviceAccountAdmin",
+        "roles/secretmanager.admin"
+      ],
+      "cloud_run_developer_authority": "DEFERRED_TO_#90"
+    },
+    "observed": {
+      "deployer_project_roles": [],
+      "deployer_ar_roles": [
+        "roles/artifactregistry.reader"
       ]
     },
-    "core_runtime_roles": [],
-    "web_runtime_roles": [],
-    "prohibited_basic_roles_verified_absent": [
-      "roles/owner",
-      "roles/editor",
-      "roles/viewer",
-      "roles/iam.securityAdmin",
-      "roles/iam.serviceAccountAdmin",
-      "roles/secretmanager.admin"
-    ],
-    "project_wide_secret_accessor_absent": true
+    "verified": true
   },
   "secret_manager_contracts": [
     {
@@ -142,16 +193,20 @@
       "wif_pool_valid": true,
       "wif_provider_valid": true,
       "deployer_roles_match_allowlist": true,
+      "deployer_ar_roles_match_allowlist": true,
       "runtime_roles_match_allowlist": true,
       "prohibited_basic_roles_absent": true,
       "project_wide_secret_accessor_absent": true,
       "deployer_act_as_valid": true,
-      "wif_impersonation_valid": true
+      "wif_impersonation_exact": true,
+      "github_env_valid": true
     },
     "teardown_rehearsal_passed": true,
     "destructive_actions_executed": false,
     "cessation_verification_executed": false,
     "cessation_verification_required_on_real_teardown": true,
+    "positive_wif_proof_status": "PENDING_POST_MERGE",
+    "runtime_payload_access": "DEFERRED_UNTIL_FIRST_REAL_SECRET_VERSION",
     "privacy_audit_status": "EXTERNAL_REVIEW_REQUIRED"
   }
 }

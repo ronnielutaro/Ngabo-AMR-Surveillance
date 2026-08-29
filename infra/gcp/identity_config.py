@@ -27,18 +27,24 @@ WIF_LOCATION = DEFAULT_WIF_LOCATION
 GITHUB_REPO_ID = "1333677446"
 GITHUB_OWNER_ID = "29591720"
 GITHUB_REPO_NAME = "ronnielutaro/Ngabo-AMR-Surveillance"
+GITHUB_OWNER = "ronnielutaro"
+GITHUB_REPO = "Ngabo-AMR-Surveillance"
 GITHUB_ALLOWED_REF = "refs/heads/develop"
 GITHUB_ALLOWED_ENV = "dev"
 GITHUB_ISSUER = "https://token.actions.githubusercontent.com"
 
 # Pinned GitHub Actions Commit SHAs
 ACTIONS_CHECKOUT_PIN = {
-    "version": "v4.2.2",
-    "commit_sha": "11bd71901bbe5b1630ceea73d27597364c9af683",
+    "version": "v7.0.1",
+    "commit_sha": "3d3c42e5aac5ba805825da76410c181273ba90b1",
 }
 GOOGLE_AUTH_ACTION_PIN = {
-    "version": "v2.1.8",
-    "commit_sha": "71f986410dfbc7added4569d411d040a91dc6935",
+    "version": "v3.0.0",
+    "commit_sha": "7c6bc770dae815cd3e89ee6cdf493a5fab2cc093",
+}
+GOOGLE_SETUP_GCLOUD_ACTION_PIN = {
+    "version": "v3.0.1",
+    "commit_sha": "aa5489c8933f4cc7a4f7d45035b3b1440c9c10db",
 }
 
 # ---------------------------------------------------------------------------
@@ -51,7 +57,7 @@ WIF_POOL_DESCRIPTION = "Workload Identity Pool for ronnielutaro/Ngabo-AMR-Survei
 
 WIF_PROVIDER_ID = "ngabo-repo"
 WIF_PROVIDER_DISPLAY_NAME = "Ngabo GitHub Repository Provider"
-WIF_PROVIDER_DESCRIPTION = "OIDC Provider for GitHub Actions with repository and ref constraints"
+WIF_PROVIDER_DESCRIPTION = "OIDC Provider for GitHub Actions with repository, ref, and environment constraints"
 
 WIF_ATTRIBUTE_MAPPING: dict[str, str] = {
     "google.subject": "assertion.sub",
@@ -65,7 +71,8 @@ WIF_ATTRIBUTE_MAPPING: dict[str, str] = {
 WIF_ATTRIBUTE_CONDITION = (
     f'assertion.repository_id == "{GITHUB_REPO_ID}" && '
     f'assertion.repository_owner_id == "{GITHUB_OWNER_ID}" && '
-    f'assertion.ref == "{GITHUB_ALLOWED_REF}"'
+    f'assertion.ref == "{GITHUB_ALLOWED_REF}" && '
+    f'assertion.environment == "{GITHUB_ALLOWED_ENV}"'
 )
 
 # ---------------------------------------------------------------------------
@@ -108,7 +115,8 @@ DEFERRED_SERVICE_ACCOUNTS: dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 # Roles permitted for ngabo-deployer
-DEPLOYER_PROJECT_ROLES: tuple[str, ...] = ("roles/run.developer",)
+# Cloud Run Developer authority is explicitly DEFERRED to #90 (Cloud Run Deployment)
+DEPLOYER_PROJECT_ROLES: tuple[str, ...] = ()
 DEPLOYER_ARTIFACT_REGISTRY_ROLES: tuple[str, ...] = ("roles/artifactregistry.reader",)
 DEPLOYER_ACT_AS_TARGETS: tuple[str, ...] = (CORE_RUNTIME_SA_NAME, WEB_RUNTIME_SA_NAME)
 

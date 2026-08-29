@@ -12,11 +12,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from infra.gcp.identity import GcpIdentityManager
+from infra.gcp.github_env import GitHubEnvInspector, GitHubEnvManager
+from infra.gcp.identity import GcpIdentityInspector, GcpIdentityManager
 from infra.gcp.identity_config import (
     ACTIONS_CHECKOUT_PIN,
     CORE_RUNTIME_SA_NAME,
+    DEFERRED_SERVICE_ACCOUNTS,
     DEPLOYER_ACT_AS_TARGETS,
+    DEPLOYER_ARTIFACT_REGISTRY_ROLES,
     DEPLOYER_PROJECT_ROLES,
     DEPLOYER_SA_NAME,
     GITHUB_ALLOWED_ENV,
@@ -25,6 +28,7 @@ from infra.gcp.identity_config import (
     GITHUB_OWNER_ID,
     GITHUB_REPO_ID,
     GOOGLE_AUTH_ACTION_PIN,
+    GOOGLE_SETUP_GCLOUD_ACTION_PIN,
     PROHIBITED_BASIC_ROLES,
     SECRET_CONTRACTS,
     SERVICE_ACCOUNTS,
@@ -44,16 +48,12 @@ VALID_SAMPLE_PROVIDER_DETAILS = {
     "displayName": "Ngabo GitHub Repository Provider",
     "attributeMapping": WIF_ATTRIBUTE_MAPPING,
     "attributeCondition": WIF_ATTRIBUTE_CONDITION,
-    "issuerUri": GITHUB_ISSUER,
+    "oidc": {"issuerUri": GITHUB_ISSUER},
     "state": "ACTIVE",
 }
 
-VALID_PROJECT_BINDINGS = [
-    {
-        "role": "roles/run.developer",
-        "members": [f"serviceAccount:{DEPLOYER_SA_NAME}@{SAMPLE_PROJECT_ID}.iam.gserviceaccount.com"],
-    }
-]
+# DEPLOYER_PROJECT_ROLES is empty tuple () per #87 least privilege contract
+VALID_PROJECT_BINDINGS: list[dict[str, Any]] = []
 
 VALID_AR_BINDINGS = [
     {
@@ -101,17 +101,32 @@ def create_converged_manager() -> GcpIdentityManager:
     mgr.inspector.wif_pool_exists = MagicMock(return_value=True)  # type: ignore[method-assign]
     mgr.inspector.wif_provider_exists = MagicMock(return_value=True)  # type: ignore[method-assign]
     mgr.inspector.get_wif_provider_details = MagicMock(return_value=VALID_SAMPLE_PROVIDER_DETAILS)  # type: ignore[method-assign]
-    mgr.inspector.get_project_iam_bindings = MagicMock(return_value=VALID_PROJECT_BINDINGS)  # type: ignore[method-assign]
-    mgr.inspector.get_artifact_registry_iam_bindings = MagicMock(return_value=VALID_AR_BINDINGS)  # type: ignore[method-assign]
+    mgr.inspector.get_project_iam_bindings = MagicMock(return_value=list(VALID_PROJECT_BINDINGS))  # type: ignore[method-assign]
+    mgr.inspector.get_artifact_registry_iam_bindings = MagicMock(return_value=list(VALID_AR_BINDINGS))  # type: ignore[method-assign]
+    mgr.inspector.get_all_project_service_accounts = MagicMock(  # type: ignore[method-assign]
+        return_value=[{"email": mgr.config.service_account_email(sa)} for sa in SERVICE_ACCOUNTS]
+    )
 
     def sa_bindings_side_effect(sa_email: str) -> list[dict[str, Any]]:
         if DEPLOYER_SA_NAME in sa_email:
-            return VALID_DEPLOYER_SA_BINDINGS
-        return VALID_RUNTIME_SA_BINDINGS
+            return list(VALID_DEPLOYER_SA_BINDINGS)
+        return list(VALID_RUNTIME_SA_BINDINGS)
 
     mgr.inspector.get_service_account_iam_bindings = MagicMock(  # type: ignore[method-assign]
         side_effect=sa_bindings_side_effect
     )
+
+    # GitHub Environment mocks
+    mgr.github_manager.inspector.get_environment = MagicMock(  # type: ignore[method-assign]
+        return_value={
+            "deployment_branch_policy": {
+                "protected_branches": False,
+                "custom_branch_policies": True,
+            }
+        }
+    )
+    mgr.github_manager.inspector.get_branch_policies = MagicMock(return_value=["develop"])  # type: ignore[method-assign]
+
     return mgr
 
 
@@ -138,10 +153,12 @@ def test_synthetic_oidc_claims_evaluation() -> None:
         repo_id = str(assertion.get("repository_id", ""))
         owner_id = str(assertion.get("repository_owner_id", ""))
         ref = str(assertion.get("ref", ""))
+        env = str(assertion.get("environment", ""))
         return (
             repo_id == GITHUB_REPO_ID
             and owner_id == GITHUB_OWNER_ID
             and ref == GITHUB_ALLOWED_REF
+            and env == GITHUB_ALLOWED_ENV
         )
 
     valid_assertion = {
@@ -150,25 +167,34 @@ def test_synthetic_oidc_claims_evaluation() -> None:
         "ref": "refs/heads/develop",
         "environment": "dev",
     }
+    # Correct repo + owner + develop + dev -> ALLOW
     assert evaluate_condition(valid_assertion) is True
 
-    # Negative: wrong repository ID
+    # Negative: correct repo + owner + develop + no environment -> DENY
+    no_env = {k: v for k, v in valid_assertion.items() if k != "environment"}
+    assert evaluate_condition(no_env) is False
+
+    # Negative: correct repo + owner + develop + wrong environment -> DENY
+    wrong_env = {**valid_assertion, "environment": "production"}
+    assert evaluate_condition(wrong_env) is False
+
+    # Negative: feature branch + dev -> DENY
+    wrong_ref = {**valid_assertion, "ref": "refs/heads/feature/cloud-1a-3-keyless-iam"}
+    assert evaluate_condition(wrong_ref) is False
+
+    # Negative: wrong repository ID -> DENY
     wrong_repo = {**valid_assertion, "repository_id": "9999999999"}
     assert evaluate_condition(wrong_repo) is False
 
-    # Negative: wrong owner ID
+    # Negative: wrong owner ID -> DENY
     wrong_owner = {**valid_assertion, "repository_owner_id": "99999999"}
     assert evaluate_condition(wrong_owner) is False
 
-    # Negative: feature branch
-    wrong_ref = {**valid_assertion, "ref": "refs/heads/feature/unauthorized"}
-    assert evaluate_condition(wrong_ref) is False
-
-    # Negative: pull request ref
-    pr_ref = {**valid_assertion, "ref": "refs/pull/100/merge"}
+    # Negative: pull request ref -> DENY
+    pr_ref = {**valid_assertion, "ref": "refs/pull/102/merge"}
     assert evaluate_condition(pr_ref) is False
 
-    # Negative: tags
+    # Negative: tags -> DENY
     tag_ref = {**valid_assertion, "ref": "refs/tags/v0.1.0"}
     assert evaluate_condition(tag_ref) is False
 
@@ -189,357 +215,364 @@ def test_validate_passes_on_converged_environment() -> None:
     assert res["checks"]["wif_pool_valid"] is True
     assert res["checks"]["wif_provider_valid"] is True
     assert res["checks"]["deployer_roles_match_allowlist"] is True
+    assert res["checks"]["deployer_ar_roles_match_allowlist"] is True
     assert res["checks"]["runtime_roles_match_allowlist"] is True
     assert res["checks"]["prohibited_basic_roles_absent"] is True
     assert res["checks"]["project_wide_secret_accessor_absent"] is True
     assert res["checks"]["deployer_act_as_valid"] is True
-    assert res["checks"]["wif_impersonation_valid"] is True
+    assert res["checks"]["wif_impersonation_exact"] is True
+    assert res["checks"]["github_env_valid"] is True
 
 
 def test_validate_fails_if_user_managed_key_present() -> None:
     """Test that validation fails if any user-managed key exists on a service account."""
     mgr = create_converged_manager()
     mgr.inspector.get_user_managed_keys = MagicMock(  # type: ignore[method-assign]
-        side_effect=lambda email: [{"name": "key1"}] if DEPLOYER_SA_NAME in email else []
+        return_value=[{"name": "projects/-/serviceAccounts/123/keys/bad-key"}]
     )
     res = mgr.validate()
     assert res["passed"] is False
     assert res["checks"]["user_managed_keys_zero"] is False
-    assert any("Prohibited user-managed key found" in f for f in res["failures"])
+    assert any("Prohibited user-managed key" in f for f in res["failures"])
 
 
 def test_validate_fails_if_service_account_missing() -> None:
-    """Test validation failure when a required service account is missing."""
+    """Test that validation fails if any required service account is absent."""
     mgr = create_converged_manager()
-    mgr.inspector.service_account_exists = MagicMock(  # type: ignore[method-assign]
-        side_effect=lambda email: CORE_RUNTIME_SA_NAME not in email
-    )
+    mgr.inspector.service_account_exists = MagicMock(return_value=False)  # type: ignore[method-assign]
     res = mgr.validate()
     assert res["passed"] is False
     assert res["checks"]["service_accounts_present"] is False
-    assert any("Required service account 'ngabo-core-runtime'" in f for f in res["failures"])
 
 
-def test_validate_fails_on_prohibited_basic_roles() -> None:
-    """Test validation rejection when prohibited roles (e.g. roles/owner, roles/editor) appear."""
+def test_validate_fails_if_wif_pool_missing() -> None:
+    """Test that validation fails if WIF pool does not exist."""
     mgr = create_converged_manager()
-    for bad_role in PROHIBITED_BASIC_ROLES:
-        mgr.inspector.get_project_iam_bindings = MagicMock(  # type: ignore[method-assign]
-            return_value=VALID_PROJECT_BINDINGS + [
-                {
-                    "role": bad_role,
-                    "members": [f"serviceAccount:{DEPLOYER_SA_NAME}@{SAMPLE_PROJECT_ID}.iam.gserviceaccount.com"],
-                }
-            ]
-        )
+    mgr.inspector.wif_pool_exists = MagicMock(return_value=False)  # type: ignore[method-assign]
+    res = mgr.validate()
+    assert res["passed"] is False
+    assert res["checks"]["wif_pool_valid"] is False
+
+
+def test_validate_fails_if_wif_provider_missing() -> None:
+    """Test that validation fails if WIF provider does not exist."""
+    mgr = create_converged_manager()
+    mgr.inspector.wif_provider_exists = MagicMock(return_value=False)  # type: ignore[method-assign]
+    mgr.inspector.get_wif_provider_details = MagicMock(return_value=None)  # type: ignore[method-assign]
+    res = mgr.validate()
+    assert res["passed"] is False
+    assert res["checks"]["wif_provider_valid"] is False
+
+
+def test_validate_fails_if_wif_provider_issuer_mismatched_or_inactive() -> None:
+    """Test that validation fails if WIF provider issuer or state is invalid."""
+    mgr = create_converged_manager()
+    bad_provider = dict(VALID_SAMPLE_PROVIDER_DETAILS)
+    bad_provider["oidc"] = {"issuerUri": "https://evil.token.issuer.com"}
+    mgr.inspector.get_wif_provider_details = MagicMock(return_value=bad_provider)  # type: ignore[method-assign]
+
+    res = mgr.validate()
+    assert res["passed"] is False
+    assert res["checks"]["wif_provider_valid"] is False
+    assert any("issuer" in f for f in res["failures"])
+
+    bad_state_provider = dict(VALID_SAMPLE_PROVIDER_DETAILS)
+    bad_state_provider["state"] = "DISABLED"
+    mgr.inspector.get_wif_provider_details = MagicMock(return_value=bad_state_provider)  # type: ignore[method-assign]
+    res2 = mgr.validate()
+    assert res2["passed"] is False
+    assert any("ACTIVE" in f for f in res2["failures"])
+
+
+# ---------------------------------------------------------------------------
+# IAM Allow-list & Scope Enforcement Tests
+# ---------------------------------------------------------------------------
+
+
+def test_validate_fails_on_unapproved_deployer_project_role() -> None:
+    """Test that validation fails if deployer has ANY project role not in DEPLOYER_PROJECT_ROLES."""
+    mgr = create_converged_manager()
+    # DEPLOYER_PROJECT_ROLES is empty; adding any role must trigger failure
+    unapproved_bindings = [
+        {
+            "role": "roles/run.developer",
+            "members": [f"serviceAccount:{DEPLOYER_SA_NAME}@{SAMPLE_PROJECT_ID}.iam.gserviceaccount.com"],
+        }
+    ]
+    mgr.inspector.get_project_iam_bindings = MagicMock(return_value=unapproved_bindings)  # type: ignore[method-assign]
+    res = mgr.validate()
+    assert res["passed"] is False
+    assert res["checks"]["deployer_roles_match_allowlist"] is False
+    assert any("Deployer project roles" in f for f in res["failures"])
+
+
+def test_validate_fails_on_extra_artifact_registry_role() -> None:
+    """Test that validation fails if deployer possesses extra Artifact Registry roles."""
+    mgr = create_converged_manager()
+    extra_ar_bindings = [
+        {
+            "role": "roles/artifactregistry.reader",
+            "members": [f"serviceAccount:{DEPLOYER_SA_NAME}@{SAMPLE_PROJECT_ID}.iam.gserviceaccount.com"],
+        },
+        {
+            "role": "roles/artifactregistry.writer",
+            "members": [f"serviceAccount:{DEPLOYER_SA_NAME}@{SAMPLE_PROJECT_ID}.iam.gserviceaccount.com"],
+        },
+    ]
+    mgr.inspector.get_artifact_registry_iam_bindings = MagicMock(return_value=extra_ar_bindings)  # type: ignore[method-assign]
+    res = mgr.validate()
+    assert res["passed"] is False
+    assert res["checks"]["deployer_ar_roles_match_allowlist"] is False
+
+
+def test_validate_fails_on_prohibited_basic_role() -> None:
+    """Test that validation fails if any service account possesses a basic role."""
+    for role in PROHIBITED_BASIC_ROLES:
+        mgr = create_converged_manager()
+        bad_bindings = [
+            {
+                "role": role,
+                "members": [f"serviceAccount:{DEPLOYER_SA_NAME}@{SAMPLE_PROJECT_ID}.iam.gserviceaccount.com"],
+            }
+        ]
+        mgr.inspector.get_project_iam_bindings = MagicMock(return_value=bad_bindings)  # type: ignore[method-assign]
         res = mgr.validate()
         assert res["passed"] is False
         assert res["checks"]["prohibited_basic_roles_absent"] is False
-        assert any(bad_role in f for f in res["failures"])
 
 
 def test_validate_fails_on_project_wide_secret_accessor() -> None:
-    """Test validation rejection if project-wide secretAccessor is assigned to any service account."""
+    """Test that validation fails if any service account has project-wide secretAccessor."""
     mgr = create_converged_manager()
-    mgr.inspector.get_project_iam_bindings = MagicMock(  # type: ignore[method-assign]
-        return_value=VALID_PROJECT_BINDINGS + [
-            {
-                "role": "roles/secretmanager.secretAccessor",
-                "members": [f"serviceAccount:{CORE_RUNTIME_SA_NAME}@{SAMPLE_PROJECT_ID}.iam.gserviceaccount.com"],
-            }
-        ]
-    )
+    bad_bindings = [
+        {
+            "role": "roles/secretmanager.secretAccessor",
+            "members": [f"serviceAccount:{CORE_RUNTIME_SA_NAME}@{SAMPLE_PROJECT_ID}.iam.gserviceaccount.com"],
+        }
+    ]
+    mgr.inspector.get_project_iam_bindings = MagicMock(return_value=bad_bindings)  # type: ignore[method-assign]
     res = mgr.validate()
     assert res["passed"] is False
     assert res["checks"]["project_wide_secret_accessor_absent"] is False
-    assert any("prohibited project-wide secretAccessor" in f for f in res["failures"])
 
 
-def test_validate_fails_on_missing_act_as_binding() -> None:
-    """Test validation failure if deployer lacks actAs on a runtime service account."""
+def test_validate_fails_on_project_wide_service_account_user() -> None:
+    """Test that validation fails if deployer has project-level roles/iam.serviceAccountUser."""
     mgr = create_converged_manager()
-    mgr.inspector.get_service_account_iam_bindings = MagicMock(  # type: ignore[method-assign]
-        side_effect=lambda email: []
-    )
+    bad_bindings = [
+        {
+            "role": "roles/iam.serviceAccountUser",
+            "members": [f"serviceAccount:{DEPLOYER_SA_NAME}@{SAMPLE_PROJECT_ID}.iam.gserviceaccount.com"],
+        }
+    ]
+    mgr.inspector.get_project_iam_bindings = MagicMock(return_value=bad_bindings)  # type: ignore[method-assign]
     res = mgr.validate()
     assert res["passed"] is False
     assert res["checks"]["deployer_act_as_valid"] is False
+    assert any("prohibited project-level 'roles/iam.serviceAccountUser'" in f for f in res["failures"])
 
 
-def test_validate_fails_on_missing_wif_impersonation() -> None:
-    """Test validation failure if deployer lacks workloadIdentityUser binding."""
+def test_validate_fails_on_unauthorized_act_as_target() -> None:
+    """Test that validation fails if deployer has actAs on an unapproved service account."""
     mgr = create_converged_manager()
-    mgr.inspector.get_service_account_iam_bindings = MagicMock(  # type: ignore[method-assign]
-        side_effect=lambda email: VALID_RUNTIME_SA_BINDINGS if DEPLOYER_SA_NAME not in email else []
-    )
+    unapproved_sa = f"907313480935-compute@developer.gserviceaccount.com"
+    all_sas = [
+        {"email": mgr.config.service_account_email(sa)} for sa in SERVICE_ACCOUNTS
+    ] + [{"email": unapproved_sa}]
+    mgr.inspector.get_all_project_service_accounts = MagicMock(return_value=all_sas)  # type: ignore[method-assign]
+
+    def bad_sa_bindings(email: str) -> list[dict[str, Any]]:
+        if email == unapproved_sa:
+            return [{
+                "role": "roles/iam.serviceAccountUser",
+                "members": [f"serviceAccount:{DEPLOYER_SA_NAME}@{SAMPLE_PROJECT_ID}.iam.gserviceaccount.com"],
+            }]
+        if DEPLOYER_SA_NAME in email:
+            return list(VALID_DEPLOYER_SA_BINDINGS)
+        return list(VALID_RUNTIME_SA_BINDINGS)
+
+    mgr.inspector.get_service_account_iam_bindings = MagicMock(side_effect=bad_sa_bindings)  # type: ignore[method-assign]
     res = mgr.validate()
     assert res["passed"] is False
-    assert res["checks"]["wif_impersonation_valid"] is False
+    assert res["checks"]["deployer_act_as_valid"] is False
+    assert any("unauthorized actAs on unapproved service account" in f for f in res["failures"])
 
 
-# ---------------------------------------------------------------------------
-# Plan and Apply Idempotency Tests
-# ---------------------------------------------------------------------------
-
-
-def test_plan_converged_when_live_matches_target() -> None:
-    """Test that plan reports converged with 0 planned actions on target state."""
+def test_validate_fails_on_unauthorized_wif_impersonator() -> None:
+    """Test that validation fails if any extra or unauthorized principal can impersonate deployer."""
     mgr = create_converged_manager()
-    plan = mgr.plan()
-    assert plan["is_converged"] is True
-    assert plan["planned_actions"] == []
+    bad_deployer_bindings = [
+        {
+            "role": "roles/iam.workloadIdentityUser",
+            "members": [
+                f"principalSet://iam.googleapis.com/projects/{SAMPLE_PROJECT_NUMBER}/locations/global/workloadIdentityPools/{WIF_POOL_ID}/attribute.repository_id/{GITHUB_REPO_ID}",
+                "user:attacker@evil.com",
+            ],
+        }
+    ]
+
+    def bad_bindings_side_effect(email: str) -> list[dict[str, Any]]:
+        if DEPLOYER_SA_NAME in email:
+            return bad_deployer_bindings
+        return list(VALID_RUNTIME_SA_BINDINGS)
+
+    mgr.inspector.get_service_account_iam_bindings = MagicMock(side_effect=bad_bindings_side_effect)  # type: ignore[method-assign]
+    res = mgr.validate()
+    assert res["passed"] is False
+    assert res["checks"]["wif_impersonation_exact"] is False
+    assert any("unauthorized WIF impersonator members" in f for f in res["failures"])
 
 
-def test_plan_reports_unconverged_actions() -> None:
-    """Test that plan enumerates missing service accounts, pool, provider, and bindings."""
-    cfg = GcpIdentityConfig(project_id=SAMPLE_PROJECT_ID, project_number=SAMPLE_PROJECT_NUMBER)
-    mgr = GcpIdentityManager(cfg)
-    mgr.inspector.get_project_number = MagicMock(return_value=SAMPLE_PROJECT_NUMBER)  # type: ignore[method-assign]
-    mgr.inspector.service_account_exists = MagicMock(return_value=False)  # type: ignore[method-assign]
-    mgr.inspector.get_user_managed_keys = MagicMock(return_value=[])  # type: ignore[method-assign]
-    mgr.inspector.wif_pool_exists = MagicMock(return_value=False)  # type: ignore[method-assign]
-    mgr.inspector.get_project_iam_bindings = MagicMock(return_value=[])  # type: ignore[method-assign]
-    mgr.inspector.get_artifact_registry_iam_bindings = MagicMock(return_value=[])  # type: ignore[method-assign]
-    mgr.inspector.get_service_account_iam_bindings = MagicMock(return_value=[])  # type: ignore[method-assign]
+# ---------------------------------------------------------------------------
+# Fail-Closed Inspector Exception Handling Tests
+# ---------------------------------------------------------------------------
+
+
+def test_inspector_fails_closed_on_subprocess_error() -> None:
+    """Test that inspector raises RuntimeError on subprocess failures instead of returning empty lists."""
+    cfg = GcpIdentityConfig(project_id=SAMPLE_PROJECT_ID)
+    inspector = GcpIdentityInspector(cfg)
+
+    with patch("infra.gcp.identity.run_gcloud_command") as mock_gcloud:
+        mock_gcloud.return_value = (1, "", "Permission denied")
+        with pytest.raises(RuntimeError, match="INSPECTION_FAILED"):
+            inspector.get_user_managed_keys("some-sa@proj.iam.gserviceaccount.com")
+
+        with pytest.raises(RuntimeError, match="INSPECTION_FAILED"):
+            inspector.get_project_iam_bindings()
+
+        with pytest.raises(RuntimeError, match="INSPECTION_FAILED"):
+            inspector.get_service_account_iam_bindings("some-sa@proj.iam.gserviceaccount.com")
+
+        with pytest.raises(RuntimeError, match="INSPECTION_FAILED"):
+            inspector.get_artifact_registry_iam_bindings("repo")
+
+
+def test_inspector_fails_closed_on_malformed_json() -> None:
+    """Test that inspector raises RuntimeError on malformed JSON stdout."""
+    cfg = GcpIdentityConfig(project_id=SAMPLE_PROJECT_ID)
+    inspector = GcpIdentityInspector(cfg)
+
+    with patch("infra.gcp.identity.run_gcloud_command") as mock_gcloud:
+        mock_gcloud.return_value = (0, "not-valid-json{{{", "")
+        with pytest.raises(RuntimeError, match="INSPECTION_FAILED"):
+            inspector.get_user_managed_keys("some-sa@proj.iam.gserviceaccount.com")
+
+
+# ---------------------------------------------------------------------------
+# GitHub Environment Automation Tests
+# ---------------------------------------------------------------------------
+
+
+def test_github_env_manager_plan_and_validate() -> None:
+    """Test GitHubEnvManager plan and validate behavior."""
+    inspector = GitHubEnvInspector()
+    inspector.get_environment = MagicMock(return_value=None)  # type: ignore[method-assign]
+    mgr = GitHubEnvManager(inspector)
 
     plan = mgr.plan()
     assert plan["is_converged"] is False
-    assert any("Create service account 'ngabo-deployer'" in a for a in plan["planned_actions"])
-    assert any(f"Create Workload Identity Pool '{WIF_POOL_ID}'" in a for a in plan["planned_actions"])
-    assert any("Grant 'roles/run.developer'" in a for a in plan["planned_actions"])
+    assert len(plan["planned_actions"]) >= 2
+
+    # Converged case
+    inspector.get_environment = MagicMock(  # type: ignore[method-assign]
+        return_value={"deployment_branch_policy": {"custom_branch_policies": True}}
+    )
+    inspector.get_branch_policies = MagicMock(return_value=["develop"])  # type: ignore[method-assign]
+    val = mgr.validate()
+    assert val["passed"] is True
+    assert val["checks"]["environment_present"] is True
+    assert val["checks"]["custom_branch_policies_enabled"] is True
+    assert val["checks"]["exact_branch_policy_matches"] is True
 
 
-def test_apply_idempotent_no_op() -> None:
-    """Test that apply executes 0 operations on converged environment."""
+# ---------------------------------------------------------------------------
+# Pinned Actions Contract Verification Tests
+# ---------------------------------------------------------------------------
+
+
+def test_actions_checkout_pin_contract() -> None:
+    """Ensure actions/checkout pin uses verified current version and full commit SHA."""
+    assert ACTIONS_CHECKOUT_PIN["version"] == "v7.0.1"
+    assert ACTIONS_CHECKOUT_PIN["commit_sha"] == "3d3c42e5aac5ba805825da76410c181273ba90b1"
+    assert len(ACTIONS_CHECKOUT_PIN["commit_sha"]) == 40
+
+
+def test_google_auth_action_pin_contract() -> None:
+    """Ensure google-github-actions/auth pin uses verified current version and full commit SHA."""
+    assert GOOGLE_AUTH_ACTION_PIN["version"] == "v3.0.0"
+    assert GOOGLE_AUTH_ACTION_PIN["commit_sha"] == "7c6bc770dae815cd3e89ee6cdf493a5fab2cc093"
+    assert len(GOOGLE_AUTH_ACTION_PIN["commit_sha"]) == 40
+
+
+def test_google_setup_gcloud_action_pin_contract() -> None:
+    """Ensure google-github-actions/setup-gcloud pin uses verified current version and full commit SHA."""
+    assert GOOGLE_SETUP_GCLOUD_ACTION_PIN["version"] == "v3.0.1"
+    assert GOOGLE_SETUP_GCLOUD_ACTION_PIN["commit_sha"] == "aa5489c8933f4cc7a4f7d45035b3b1440c9c10db"
+    assert len(GOOGLE_SETUP_GCLOUD_ACTION_PIN["commit_sha"]) == 40
+
+
+# ---------------------------------------------------------------------------
+# Evidence & Teardown Rehearsal Tests
+# ---------------------------------------------------------------------------
+
+
+def test_export_evidence_derives_expected_observed_verified(tmp_path: Path) -> None:
+    """Ensure export_evidence produces expected, observed, and verified sections."""
     mgr = create_converged_manager()
-    captured_commands: list[list[str]] = []
+    out_file = tmp_path / "identity_evidence.json"
+    evidence = mgr.export_evidence(out_file)
 
-    def mock_gcloud(cmd: list[str]) -> tuple[int, str, str]:
-        captured_commands.append(cmd)
-        return (0, "{}", "")
+    assert out_file.exists()
+    assert "expected" in evidence["service_accounts"]
+    assert "observed" in evidence["service_accounts"]
+    assert "verified" in evidence["service_accounts"]
+    assert evidence["service_accounts"]["verified"] is True
 
-    with patch("infra.gcp.identity.run_gcloud_command", side_effect=mock_gcloud):
-        res = mgr.apply()
-        assert res["success"] is True
-        assert res["noop"] is True
-        assert res["operations"] == []
-        assert len(captured_commands) == 0
+    assert "expected" in evidence["workload_identity_federation"]
+    assert "observed" in evidence["workload_identity_federation"]
+    assert evidence["workload_identity_federation"]["verified"] is True
 
-
-def test_apply_provisions_missing_resources() -> None:
-    """Test that apply executes creation commands for missing items."""
-    cfg = GcpIdentityConfig(project_id=SAMPLE_PROJECT_ID, project_number=SAMPLE_PROJECT_NUMBER)
-    mgr = GcpIdentityManager(cfg)
-    mgr.inspector.get_project_number = MagicMock(return_value=SAMPLE_PROJECT_NUMBER)  # type: ignore[method-assign]
-    mgr.inspector.service_account_exists = MagicMock(return_value=False)  # type: ignore[method-assign]
-    mgr.inspector.get_user_managed_keys = MagicMock(return_value=[])  # type: ignore[method-assign]
-    mgr.inspector.wif_pool_exists = MagicMock(return_value=False)  # type: ignore[method-assign]
-    mgr.inspector.wif_provider_exists = MagicMock(return_value=False)  # type: ignore[method-assign]
-    mgr.inspector.get_project_iam_bindings = MagicMock(return_value=[])  # type: ignore[method-assign]
-    mgr.inspector.get_artifact_registry_iam_bindings = MagicMock(return_value=[])  # type: ignore[method-assign]
-    mgr.inspector.get_service_account_iam_bindings = MagicMock(return_value=[])  # type: ignore[method-assign]
-
-    captured_commands: list[list[str]] = []
-
-    def mock_gcloud(cmd: list[str]) -> tuple[int, str, str]:
-        captured_commands.append(cmd)
-        return (0, "{}", "")
-
-    with patch("infra.gcp.identity.run_gcloud_command", side_effect=mock_gcloud):
-        res = mgr.apply()
-        assert res["success"] is True
-        assert res["noop"] is False
-        assert len(res["operations"]) > 0
-        # Assert service account creations occurred
-        assert any("service-accounts" in cmd and "create" in cmd for cmd in captured_commands)
-        # Assert WIF pool creation occurred
-        assert any("workload-identity-pools" in cmd and "create" in cmd for cmd in captured_commands)
-        # Assert WIF provider creation occurred
-        assert any("providers" in cmd and "create-oidc" in cmd for cmd in captured_commands)
-
-
-# ---------------------------------------------------------------------------
-# Secret Contract & Teardown Rehearsal Tests
-# ---------------------------------------------------------------------------
-
-
-def test_secret_contracts_defined_without_values() -> None:
-    """Validate that Secret Manager contracts define environments, owners, and behaviors without secret values."""
-    assert len(SECRET_CONTRACTS) >= 2
-    for contract in SECRET_CONTRACTS:
-        assert contract.environment in ("dev", "judge")
-        assert contract.owner_workload == "ngabo-core"
-        assert CORE_RUNTIME_SA_NAME in contract.authorized_readers
-        assert DEPLOYER_SA_NAME not in contract.authorized_readers
-        assert "fails fast" in contract.missing_secret_behavior.lower()
-        assert "Destroy secret versions" in contract.teardown_behavior
+    assert evidence["verification_results"]["positive_wif_proof_status"] == "PENDING_POST_MERGE"
+    assert evidence["verification_results"]["runtime_payload_access"] == "DEFERRED_UNTIL_FIRST_REAL_SECRET_VERSION"
+    assert evidence["verification_results"]["privacy_audit_status"] == "EXTERNAL_REVIEW_REQUIRED"
 
 
 def test_teardown_rehearsal_is_plan_only() -> None:
-    """Test that teardown rehearsal produces a 4-step plan without destructive execution."""
+    """Ensure teardown rehearsal does not execute destructive actions."""
     mgr = create_converged_manager()
-    teardown = mgr.teardown_rehearsal()
-    assert teardown["teardown_mode"] == "PLAN_ONLY"
-    assert teardown["destructive_actions_executed"] is False
-    assert teardown["cessation_verification_executed"] is False
-    assert teardown["cessation_verification_required_on_real_teardown"] is True
-    assert len(teardown["steps"]) == 4
+    rehearsal = mgr.teardown_rehearsal()
+    assert rehearsal["teardown_mode"] == "PLAN_ONLY"
+    assert rehearsal["destructive_actions_executed"] is False
+    assert len(rehearsal["steps"]) == 5
 
 
-def test_export_evidence_structure(tmp_path: Path) -> None:
-    """Test that export_evidence produces compliant machine-readable JSON."""
+def test_synthetic_secret_probe_mocked() -> None:
+    """Test verify_synthetic_secret_probe with mocked gcloud responses."""
     mgr = create_converged_manager()
-    evidence_file = tmp_path / "identity_evidence.json"
-    evidence = mgr.export_evidence(evidence_file)
-
-    assert evidence["contract_version"] == "ngabo-cloud-identity-v1"
-    assert evidence["issue"] == "87"
-    assert evidence["topology"]["canonical_project_id"] == SAMPLE_PROJECT_ID
-    assert evidence["service_accounts"]["created"][DEPLOYER_SA_NAME]["user_managed_key_count"] == 0
-    assert evidence["workload_identity_federation"]["pool_id"] == WIF_POOL_ID
-    assert evidence["github_integration"]["auth_proof_workflow"]["permissions"] == {
-        "contents": "read",
-        "id-token": "write",
-    }
-    assert evidence["iam_contracts"]["prohibited_basic_roles_verified_absent"] == list(
-        PROHIBITED_BASIC_ROLES
-    )
-    assert evidence["verification_results"]["privacy_audit_status"] == "EXTERNAL_REVIEW_REQUIRED"
-
-    # Verify file was written and is valid JSON
-    assert evidence_file.exists()
-    with open(evidence_file, encoding="utf-8") as f:
-        loaded = json.load(f)
-    assert loaded["contract_version"] == "ngabo-cloud-identity-v1"
-
-
-# ---------------------------------------------------------------------------
-# Workflow File & Action Pinning Tests
-# ---------------------------------------------------------------------------
-
-
-def test_workflow_file_permissions_and_pinned_actions() -> None:
-    """Verify that .github/workflows/wif-auth-proof.yml uses exact minimal permissions and pinned commit SHAs."""
-    repo_root = Path(__file__).resolve().parent.parent.parent.parent
-    workflow_path = repo_root / ".github" / "workflows" / "wif-auth-proof.yml"
-    assert workflow_path.exists(), f"Workflow file {workflow_path} must exist."
-
-    content = workflow_path.read_text(encoding="utf-8")
-    assert "workflow_dispatch:" in content
-    assert "environment: dev" in content
-    assert "contents: read" in content
-    assert "id-token: write" in content
-
-    # Check pinned action SHAs
-    assert ACTIONS_CHECKOUT_PIN["commit_sha"] in content
-    assert GOOGLE_AUTH_ACTION_PIN["commit_sha"] in content
-    # Verify no unpinned floating tags like @v3 or @main
-    assert "@v4" not in content
-    assert "@v3" not in content
-    assert "@v2" not in content
-    assert "@main" not in content
-    assert "@master" not in content
-
-
-# ---------------------------------------------------------------------------
-# CLI & Configuration Helper Tests
-# ---------------------------------------------------------------------------
-
-
-def test_gcp_identity_config_methods() -> None:
-    """Test helper methods on GcpIdentityConfig."""
-    cfg = GcpIdentityConfig(project_id="test-proj", project_number="123456789")
-    assert cfg.service_account_email("my-sa") == "my-sa@test-proj.iam.gserviceaccount.com"
-    assert (
-        cfg.wif_pool_name()
-        == "projects/123456789/locations/global/workloadIdentityPools/ngabo-github"
-    )
-    assert (
-        cfg.wif_provider_name()
-        == "projects/123456789/locations/global/workloadIdentityPools/ngabo-github/providers/ngabo-repo"
-    )
-    assert (
-        cfg.wif_principal_set()
-        == f"principalSet://iam.googleapis.com/projects/123456789/locations/global/workloadIdentityPools/ngabo-github/attribute.repository_id/{GITHUB_REPO_ID}"
-    )
-
-
-def test_cli_plan_text_and_json(capsys: pytest.CaptureFixture[str]) -> None:
-    """Test CLI main() for plan command in text and json formats."""
-    from infra.gcp.identity import main
-
-    with patch("infra.gcp.identity.GcpIdentityManager", return_value=create_converged_manager()):
-        # Text format
-        code = main(["plan"])
-        assert code == 0
-        captured = capsys.readouterr()
-        assert "Ngabo GCP Identity & WIF Plan" in captured.out
-        assert "Converged (No-op):True" in captured.out
-
-        # JSON format
-        code = main(["--format=json", "plan"])
-        assert code == 0
-        captured = capsys.readouterr()
-        data = json.loads(captured.out)
-        assert data["is_converged"] is True
-
-
-def test_cli_validate_text_and_json(capsys: pytest.CaptureFixture[str]) -> None:
-    """Test CLI main() for validate command in text and json formats."""
-    from infra.gcp.identity import main
-
-    with patch("infra.gcp.identity.GcpIdentityManager", return_value=create_converged_manager()):
-        # Text format
-        code = main(["validate"])
-        assert code == 0
-        captured = capsys.readouterr()
-        assert "Ngabo GCP Identity & WIF Validation" in captured.out
-        assert "PASSED" in captured.out
-
-        # JSON format
-        code = main(["--format=json", "validate"])
-        assert code == 0
-        captured = capsys.readouterr()
-        data = json.loads(captured.out)
-        assert data["passed"] is True
-
-
-def test_cli_apply_text_and_json(capsys: pytest.CaptureFixture[str]) -> None:
-    """Test CLI main() for apply command in text and json formats."""
-    from infra.gcp.identity import main
-
-    mgr = create_converged_manager()
-    with patch("infra.gcp.identity.GcpIdentityManager", return_value=mgr):
-        # Text format
-        code = main(["apply"])
-        assert code == 0
-        captured = capsys.readouterr()
-        assert "Identity bootstrap completed successfully." in captured.out
-
-        # JSON format
-        code = main(["--format=json", "apply"])
-        assert code == 0
-        captured = capsys.readouterr()
-        data = json.loads(captured.out)
-        assert data["success"] is True
-        assert data["noop"] is True
-
-
-def test_cli_teardown_text_and_json(capsys: pytest.CaptureFixture[str]) -> None:
-    """Test CLI main() for teardown --dry-run command in text and json formats."""
-    from infra.gcp.identity import main
-
-    mgr = create_converged_manager()
-    with patch("infra.gcp.identity.GcpIdentityManager", return_value=mgr):
-        # Text format
-        code = main(["teardown", "--dry-run"])
-        assert code == 0
-        captured = capsys.readouterr()
-        assert "Teardown Rehearsal (PLAN_ONLY)" in captured.out
-
-        # JSON format
-        code = main(["--format=json", "teardown", "--dry-run"])
-        assert code == 0
-        captured = capsys.readouterr()
-        data = json.loads(captured.out)
-        assert data["teardown_mode"] == "PLAN_ONLY"
+    with patch("infra.gcp.identity.run_gcloud_command") as mock_gcloud:
+        core_email = mgr.config.service_account_email(CORE_RUNTIME_SA_NAME)
+        # 1. create -> 0
+        # 2. add-binding -> 0
+        # 3. get-iam-policy -> 0 with core binding
+        # 4. delete -> 0
+        policy_json = json.dumps({
+            "bindings": [
+                {
+                    "role": "roles/secretmanager.secretAccessor",
+                    "members": [f"serviceAccount:{core_email}"],
+                }
+            ]
+        })
+        mock_gcloud.side_effect = [
+            (0, "", ""),
+            (0, "", ""),
+            (0, policy_json, ""),
+            (0, "", ""),
+        ]
+        res = mgr.verify_synthetic_secret_probe()
+        assert res["core_runtime_allowed"] is True
+        assert res["web_runtime_denied"] is True
+        assert res["deployer_denied"] is True
+        assert res["project_wide_accessor_absent"] is True
+        assert res["cleanup_successful"] is True

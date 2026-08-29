@@ -161,7 +161,7 @@ The identity management script is located at [`infra/gcp/identity.py`](file:///d
 
 1. **`ngabo-deployer`**:
    - **Role**: Dedicated deployment service identity used exclusively by GitHub Actions delivery workflows.
-   - **Allowed Project Roles**: `roles/run.developer` on project `ngabo-amr-2026`.
+   - **Allowed Project Roles**: **None** (`roles/run.developer` is explicitly deferred to Issue #90 to maintain strict least privilege).
    - **Allowed Resource Roles**: `roles/artifactregistry.reader` on repository `ngabo-artifacts`.
    - **Allowed actAs Targets**: `roles/iam.serviceAccountUser` on `ngabo-core-runtime` and `ngabo-web-runtime` only.
    - **Impersonation**: Keyless OIDC federated via Workload Identity Pool `ngabo-github` and Provider `ngabo-repo`.
@@ -185,22 +185,29 @@ The identity management script is located at [`infra/gcp/identity.py`](file:///d
   - `attribute.repository_owner_id = assertion.repository_owner_id` (`29591720`)
 - **Attribute Condition**:
   ```cel
-  assertion.repository_id == "1333677446" && assertion.repository_owner_id == "29591720" && assertion.ref == "refs/heads/develop"
+  assertion.repository_id == "1333677446" && assertion.repository_owner_id == "29591720" && assertion.ref == "refs/heads/develop" && assertion.environment == "dev"
   ```
 - **GitHub Environment Restriction**:
   - Environment: `dev` (restricted to deployment branch `develop`).
+- **Pinned Proof Actions**:
+  - `actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1` (`v7.0.1`)
+  - `google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093` (`v3.0.0`)
+  - `google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db` (`v3.0.1`)
 
 ### 7.3 Identity CLI Commands
 
 ```bash
-# Evaluate live identity and WIF state against contract
+# Evaluate live identity, WIF, and GitHub environment state against contract
 python infra/gcp/identity.py plan
 
 # Idempotently provision service accounts, WIF pool/provider, and IAM bindings
 python infra/gcp/identity.py apply
 
-# Validate that all 3 service accounts exist with 0 keys, WIF matches contract, and no broad roles exist
+# Validate that all service accounts exist with 0 keys, WIF matches contract, and no unapproved roles exist
 python infra/gcp/identity.py validate
+
+# Run bounded ephemeral synthetic Secret Manager policy probe
+python infra/gcp/identity.py secret-probe
 
 # Perform plan-only identity teardown rehearsal
 python infra/gcp/identity.py teardown --dry-run
