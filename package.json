@@ -27,6 +27,10 @@
     "infra:apply": "python infra/gcp/bootstrap.py apply",
     "infra:validate": "python infra/gcp/bootstrap.py validate",
     "infra:teardown:dry-run": "python infra/gcp/bootstrap.py teardown --dry-run",
+    "infra:identity:plan": "python infra/gcp/identity.py plan",
+    "infra:identity:apply": "python infra/gcp/identity.py apply",
+    "infra:identity:validate": "python infra/gcp/identity.py validate",
+    "infra:identity:teardown:dry-run": "python infra/gcp/identity.py teardown --dry-run",
     "infra:test": "cd services/core && uv run pytest ../../infra/gcp/tests"
   }
 }

@@ -1,0 +1,39 @@
+name: WIF Auth Proof
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  wif-proof:
+    name: Prove GitHub OIDC to GCP WIF Impersonation
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: Checkout repository
+        # Pinned to actions/checkout v4.2.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Authenticate to Google Cloud via Workload Identity Federation
+        id: gcp-auth
+        # Pinned to google-github-actions/auth v2.1.8
+        uses: google-github-actions/auth@71f986410dfbc7added4569d411d040a91dc6935
+        with:
+          workload_identity_provider: projects/907313480935/locations/global/workloadIdentityPools/ngabo-github/providers/ngabo-repo
+          service_account: ngabo-deployer@ngabo-amr-2026.iam.gserviceaccount.com
+
+      - name: Set up Google Cloud SDK
+        # Pinned to google-github-actions/setup-gcloud v2.1.4
+        uses: google-github-actions/setup-gcloud@77e7a554d41e2ee56fc945c52dfd3f33d12def9a
+
+      - name: Verify Effective GCP Identity (Read-only)
+        run: |
+          echo "=== Active gcloud Authentication ==="
+          gcloud auth list
+          echo "=== Configured Project ==="
+          gcloud config list --format="json"
+          echo "=== Read-only Project Verification ==="
+          gcloud projects describe ngabo-amr-2026 --format="yaml(projectId,projectNumber,name,lifecycleState)"

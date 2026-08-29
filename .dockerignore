@@ -14,7 +14,7 @@ __pycache__/
 .ruff_cache/
 *.egg-info/
 
-# Environment / secrets
+# Environment / secrets / credentials
 .env
 .env.*
 !.env.example
@@ -23,9 +23,11 @@ __pycache__/
 *service-account*.json
 gha-creds-*.json
 
+# Git / IDE
+.git/
+.github/
+.vscode/
+.idea/
+
 # Logs
 *.log
-
-# OS / editor
-.DS_Store
-Thumbs.db
