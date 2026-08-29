@@ -348,6 +348,55 @@ class WorkflowPinTests(unittest.TestCase):
             self.assertEqual(len(errors), 1)
             self.assertIn("must be pinned to a full 40-hex commit SHA", errors[0])
 
+    def test_docker_action_image_mutable_tag_fails(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = pathlib.Path(temp) / "action.yml"
+            path.write_text(
+                "runs:\n"
+                "  using: docker\n"
+                "  image: docker://alpine:latest\n",
+                encoding="utf-8",
+            )
+            errors = check_workflow_pins.scan_file(path)
+            self.assertEqual(len(errors), 1)
+            self.assertIn("@sha256", errors[0])
+
+    def test_docker_action_image_sha256_passes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = pathlib.Path(temp) / "action.yml"
+            sha64 = "a" * 64
+            path.write_text(
+                "runs:\n"
+                "  using: docker\n"
+                f"  image: docker://alpine@sha256:{sha64}\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(check_workflow_pins.scan_file(path), [])
+
+    def test_docker_action_image_without_docker_prefix_fails(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = pathlib.Path(temp) / "action.yml"
+            path.write_text(
+                "runs:\n"
+                "  using: docker\n"
+                "  image: alpine:latest\n",
+                encoding="utf-8",
+            )
+            errors = check_workflow_pins.scan_file(path)
+            self.assertEqual(len(errors), 1)
+            self.assertIn("docker://", errors[0])
+
+    def test_composite_action_without_image_passes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = pathlib.Path(temp) / "action.yml"
+            path.write_text(
+                "runs:\n"
+                "  using: composite\n"
+                "  steps: []\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(check_workflow_pins.scan_file(path), [])
+
     def test_unresolvable_local_action_reference_fails_closed(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)

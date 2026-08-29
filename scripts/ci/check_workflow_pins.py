@@ -181,6 +181,34 @@ def _check_step(
     return errors
 
 
+def _check_runs_image(
+    image: Any,
+    path: Path,
+    allow_fallback: bool = False,
+    repo_root: Path | None = None,
+) -> list[str]:
+    """Validate ``runs.image`` in local Docker container action manifests.
+
+    A container registry image is external executable input, so it must use
+    the ``docker://`` prefix and be pinned to an immutable ``@sha256:<64-hex>``
+    digest — the same contract enforced for ``uses: docker://...`` references.
+    """
+    if not isinstance(image, str) or not image.strip():
+        return []
+    val = image.strip()
+    if not val.startswith("docker://"):
+        return [
+            f"{path}: local action runs.image '{val}' must use the 'docker://' prefix "
+            f"and be pinned to an immutable @sha256:<64-hex> digest"
+        ]
+    if not DOCKER_SHA_RE.fullmatch(val):
+        return [
+            f"{path}: local action runs.image '{val}' must be pinned to an immutable "
+            f"@sha256:<64-hex> digest"
+        ]
+    return []
+
+
 def check_workflow_tree(
     data: Any,
     path: Path,
@@ -241,9 +269,17 @@ def check_workflow_tree(
                         )
                     )
 
-    # 3. Composite action definition: runs.steps
+    # 3. Local action definition: runs (composite steps and docker image)
     runs = data.get("runs")
     if isinstance(runs, dict):
+        errors.extend(
+            _check_runs_image(
+                runs.get("image"),
+                path,
+                allow_fallback=allow_fallback,
+                repo_root=repo_root,
+            )
+        )
         steps = runs.get("steps")
         if isinstance(steps, list):
             for step in steps:
