@@ -22,6 +22,11 @@
     "core:typecheck": "cd services/core && uv run mypy ngabo tests",
     "core:test": "cd services/core && uv run pytest",
     "core:health": "cd services/core && uv run ngabo-health",
-    "core:certify-hero": "cd services/core && uv run ngabo-certify-hero"
+    "core:certify-hero": "cd services/core && uv run ngabo-certify-hero",
+    "infra:plan": "python infra/gcp/bootstrap.py plan",
+    "infra:apply": "python infra/gcp/bootstrap.py apply",
+    "infra:validate": "python infra/gcp/bootstrap.py validate",
+    "infra:teardown:dry-run": "python infra/gcp/bootstrap.py teardown --dry-run",
+    "infra:test": "cd services/core && uv run pytest ../../infra/gcp/tests"
   }
 }
