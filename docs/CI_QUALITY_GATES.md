@@ -20,7 +20,7 @@ CI does **not** prove deployed behavior and receives no GCP credentials, OIDC pe
 - `apps/web/**` requires the web lane.
 - `infra/gcp/**` requires the infrastructure regression lane.
 - `.github/workflows/**`, `scripts/ci/**`, `infra/github/**`, and shared repository/toolchain configuration are cross-cutting and require all relevant lanes.
-- documentation-only changes may skip core/web/infra, but `CI Policy`, `Dependency Review`, and `PR Quality Gate` still produce real checks.
+- documentation-only changes may skip core/web/infra, but `CI Policy`, `Dependency Security`, and `PR Quality Gate` still produce real checks.
 - an empty/unclassifiable diff fails safe by requiring every lane.
 
 The workflow itself never uses `paths:` or `paths-ignore:` to disappear a required check.
@@ -28,8 +28,6 @@ The workflow itself never uses `paths:` or `paths-ignore:` to disappear a requir
 ## Core lane
 
 Pinned CI runtime: Python `3.11.16`; uv `0.12.4`.
-
-The lane runs, in order:
 
 ```bash
 cd services/core
@@ -40,10 +38,9 @@ uv run mypy ngabo tests
 uv run python ../../scripts/ci/check_architecture.py ngabo
 uv run pytest
 uv build
-uv --preview audit --frozen --output-format json
 ```
 
-`uv lock --check` and `uv sync --frozen` prevent manifest/lock drift. The architecture checker enforces the frozen Clean Architecture dependency rule from `docs/CLEAN_ARCHITECTURE.md`: domain cannot depend on application/interfaces/infrastructure/bootstrap or framework/cloud/network SDKs; application cannot depend on interfaces/infrastructure/bootstrap or those vendor SDKs. The audit fails closed on any vulnerability reported by uv, which is stricter than the Issue #88 high-severity floor.
+`uv lock --check` and `uv sync --frozen` prevent manifest/lock drift. The architecture checker enforces the frozen Clean Architecture dependency rule from `docs/CLEAN_ARCHITECTURE.md`: domain cannot depend on application/interfaces/infrastructure/bootstrap or framework/cloud/network SDKs; application cannot depend on interfaces/infrastructure/bootstrap or those vendor SDKs.
 
 ## Web lane
 
@@ -55,29 +52,38 @@ pnpm --filter ngabo-web exec eslint .
 pnpm --filter ngabo-web exec tsc --noEmit
 pnpm --filter ngabo-web exec vitest run
 pnpm --filter ngabo-web exec next build
-pnpm audit --audit-level=high --json
 ```
 
 CI invokes the underlying tools directly rather than trusting mutable package scripts, so a PR cannot turn a required lint/type/test/build script into a no-op and still satisfy the gate. The frozen install validates `package.json` against `pnpm-lock.yaml`.
 
 ## Infrastructure regression lane
 
-Infrastructure changes are verified offline only:
+Infrastructure changes are verified offline only. Full mypy and tests run across `infra/gcp`; Ruff is applied to changed `infra/gcp` Python files so #88 does not retroactively rewrite the already-certified #87 identity implementation solely to clear pre-existing style debt.
 
 ```bash
 cd services/core
 uv lock --check
 uv sync --frozen
-uv run ruff check ../../infra/gcp
 uv run mypy ../../infra/gcp
 uv run pytest ../../infra/gcp/tests
 ```
 
-Normal PR CI never runs `gcloud`, `infra:apply`, `identity:apply`, or any cloud mutation.
+Any changed `infra/gcp/*.py` file is additionally passed to Ruff. Normal PR CI never runs `gcloud`, `infra:apply`, `identity:apply`, or any cloud mutation.
 
 ## Dependency security
 
-Every PR runs pinned `actions/dependency-review-action` with `fail-on-severity: high`. Core and web lanes additionally audit their frozen package-manager graphs. Audit execution failure is a CI failure; audits are not advisory-only.
+Every PR runs the always-blocking `Dependency Security` job:
+
+```bash
+cd services/core
+uv --preview audit --frozen
+cd ../..
+pnpm audit --audit-level=high
+```
+
+The Python audit fails on any vulnerability reported by uv, which is stricter than the Issue #88 high-severity floor. The pnpm audit fails on high/critical findings. Audit execution failures fail closed.
+
+A first live #88 run also attempted GitHub's native `actions/dependency-review-action`, but GitHub returned `Dependency review is not supported on this repository` because the repository Dependency Graph is currently disabled. The connector available to this implementation has no repository security-analysis settings mutation. #88 therefore does not disguise that platform setting as a passing check: package-manager audits are the blocking dependency-security contract until the Dependency Graph is enabled and native Dependency Review can be added honestly.
 
 ## Action pinning and caches
 
