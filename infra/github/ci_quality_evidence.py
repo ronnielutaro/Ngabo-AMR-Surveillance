@@ -237,12 +237,13 @@ def validate_negative_run(
     repo: str,
     run_id: str | int,
     expected_failed_job: str | None = None,
+    expected_head_sha: str | None = None,
     runner: Callable[[Sequence[str]], subprocess.CompletedProcess[str]] | None = None,
 ) -> dict[str, Any]:
     """Fetch and validate a negative proof run.
 
     Verifies workflow name, event type, completed status, failure conclusion,
-    and expected failed job if specified.
+    expected failed job, and expected head SHA if specified.
     """
     run_data = run_gh_json([f"repos/{repo}/actions/runs/{run_id}"], runner=runner)
     run_name = run_data.get("name", "")
@@ -265,6 +266,13 @@ def validate_negative_run(
         raise EvidenceValidationError(
             f"negative proof run {run_id} conclusion is '{conclusion}', expected 'failure'"
         )
+
+    if expected_head_sha:
+        actual_sha = run_data.get("head_sha", "")
+        if not actual_sha.startswith(expected_head_sha):
+            raise EvidenceValidationError(
+                f"negative proof run {run_id} head SHA is '{actual_sha}', expected '{expected_head_sha}'"
+            )
 
     if expected_failed_job:
         jobs_data = run_gh_json([f"repos/{repo}/actions/runs/{run_id}/jobs"], runner=runner)

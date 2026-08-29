@@ -15,6 +15,7 @@ INNER_LAYER_FORBIDDEN: dict[str, tuple[str, ...]] = {
         "ngabo.bootstrap",
     ),
     "application": ("ngabo.interfaces", "ngabo.infrastructure", "ngabo.bootstrap"),
+    "interfaces": ("ngabo.infrastructure", "ngabo.bootstrap"),
 }
 
 VENDOR_PREFIXES = (
