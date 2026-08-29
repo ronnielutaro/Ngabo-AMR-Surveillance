@@ -1,0 +1,455 @@
+name: PR Quality
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-quality-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  changed-paths:
+    name: Changed Paths
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      core_required: ${{ steps.classify.outputs.core_required }}
+      web_required: ${{ steps.classify.outputs.web_required }}
+      infra_required: ${{ steps.classify.outputs.infra_required }}
+      shared_required: ${{ steps.classify.outputs.shared_required }}
+      dependency_changed: ${{ steps.classify.outputs.dependency_changed }}
+      ci_control_plane_changed: ${{ steps.classify.outputs.ci_control_plane_changed }}
+      docs_only: ${{ steps.classify.outputs.docs_only }}
+    steps:
+      - name: Checkout PR head with history
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Compute changed files (rename-aware)
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/collect_changed_paths.py \
+            --base-sha "${BASE_SHA}" \
+            --head-sha "${HEAD_SHA}" \
+            --output changed-files.txt
+
+      - name: Classify change scope
+        id: classify
+        run: python3 scripts/ci/classify_changes.py --github-output "${GITHUB_OUTPUT}" --json changed-files.txt
+
+  policy:
+    name: CI Policy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        # actions/setup-python v7.0.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Set up uv
+        # astral-sh/setup-uv v10.0.1
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          version: "0.12.4"
+          working-directory: services/core
+          enable-cache: true
+          ignore-nothing-to-cache: true
+
+      - name: Run CI contract tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd services/core
+          uv sync --frozen
+          uv run python -m unittest discover -s ../../scripts/ci/tests -p 'test_*.py'
+          uv run python -m unittest discover -s ../../infra/github/tests -p 'test_*.py'
+          uv run python ../../scripts/ci/check_workflow_pins.py ../../.github/workflows
+
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Review dependency changes
+        # actions/dependency-review-action v5.0.0
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294
+        with:
+          fail-on-severity: high
+
+  dependency-security:
+    name: Dependency Security
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Checkout repository
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        # actions/setup-python v7.0.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Set up uv
+        # astral-sh/setup-uv v10.0.1
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          version: "0.12.4"
+          working-directory: services/core
+          enable-cache: true
+          ignore-nothing-to-cache: true
+
+      - name: Audit frozen Python dependency graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd services/core
+          uv --preview audit --frozen --output-format text
+
+      - name: Set up pnpm and Node
+        # pnpm/setup v2.1.0
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b
+        with:
+          version: "11.22.0"
+          runtime: node@24.19.0
+          cache: true
+          cache-dependency-path: pnpm-lock.yaml
+          install: false
+
+      - name: Audit pnpm dependency graph
+        run: pnpm audit --audit-level=high
+
+  core:
+    name: Core Quality
+    needs: changed-paths
+    if: needs.changed-paths.outputs.core_required == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout repository
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        # actions/setup-python v7.0.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Set up uv
+        # astral-sh/setup-uv v10.0.1
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          version: "0.12.4"
+          working-directory: services/core
+          enable-cache: true
+          ignore-nothing-to-cache: true
+
+      - name: Prepare diagnostics
+        run: mkdir -p artifacts
+
+      - name: Validate core lockfile
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd services/core
+          uv lock --check 2>&1 | tee ../../artifacts/core-lock.log
+
+      - name: Install frozen core dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd services/core
+          uv sync --frozen 2>&1 | tee ../../artifacts/core-sync.log
+
+      - name: Ruff
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd services/core
+          uv run ruff check . 2>&1 | tee ../../artifacts/core-ruff.log
+
+      - name: Strict mypy
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd services/core
+          uv run mypy ngabo tests 2>&1 | tee ../../artifacts/core-mypy.log
+
+      - name: Clean Architecture boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd services/core
+          uv run python ../../scripts/ci/check_architecture.py ngabo 2>&1 | tee ../../artifacts/core-architecture.log
+
+      - name: Pytest
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd services/core
+          uv run pytest --junitxml=../../artifacts/core-pytest.xml 2>&1 | tee ../../artifacts/core-pytest.log
+
+      - name: Build core package
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd services/core
+          uv build --out-dir ../../artifacts/core-dist 2>&1 | tee ../../artifacts/core-build.log
+
+      - name: Upload core failure evidence
+        if: failure()
+        # actions/upload-artifact v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: core-failure-${{ github.run_id }}
+          path: artifacts/
+          if-no-files-found: ignore
+          retention-days: 5
+
+  web:
+    name: Web Quality
+    needs: changed-paths
+    if: needs.changed-paths.outputs.web_required == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout repository
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm and Node
+        # pnpm/setup v2.1.0
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b
+        with:
+          version: "11.22.0"
+          runtime: node@24.19.0
+          cache: true
+          cache-dependency-path: pnpm-lock.yaml
+          install: false
+
+      - name: Prepare diagnostics
+        run: mkdir -p artifacts
+
+      - name: Install frozen web dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile 2>&1 | tee artifacts/web-install.log
+
+      - name: ESLint
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm --filter ngabo-web exec eslint . 2>&1 | tee artifacts/web-eslint.log
+
+      - name: TypeScript
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm --filter ngabo-web exec tsc --noEmit 2>&1 | tee artifacts/web-typescript.log
+
+      - name: Vitest
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm --filter ngabo-web exec vitest run 2>&1 | tee artifacts/web-vitest.log
+
+      - name: Production Next.js build
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm --filter ngabo-web exec next build 2>&1 | tee artifacts/web-build.log
+
+      - name: Upload web failure evidence
+        if: failure()
+        # actions/upload-artifact v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: web-failure-${{ github.run_id }}
+          path: artifacts/
+          if-no-files-found: ignore
+          retention-days: 5
+
+  infra:
+    name: Infrastructure Regression
+    needs: changed-paths
+    if: needs.changed-paths.outputs.infra_required == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Checkout repository with history
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        # actions/setup-python v7.0.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Set up uv
+        # astral-sh/setup-uv v10.0.1
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          version: "0.12.4"
+          working-directory: services/core
+          enable-cache: true
+          ignore-nothing-to-cache: true
+
+      - name: Prepare diagnostics
+        run: mkdir -p artifacts
+
+      - name: Validate and install frozen core toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd services/core
+          uv lock --check 2>&1 | tee ../../artifacts/infra-lock.log
+          uv sync --frozen 2>&1 | tee ../../artifacts/infra-sync.log
+
+      - name: Ruff changed GCP Python files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t changed < <(git diff --name-only "${BASE_SHA}" "${HEAD_SHA}" -- infra/gcp | grep '\.py$' || true)
+          existing=()
+          for path in "${changed[@]}"; do
+            [[ -f "${path}" ]] && existing+=("../../${path}")
+          done
+          if [[ ${#existing[@]} -eq 0 ]]; then
+            echo "No changed infra/gcp Python files; legacy #87 Ruff debt is not re-adjudicated by #88."
+            exit 0
+          fi
+          cd services/core
+          uv run ruff check "${existing[@]}" 2>&1 | tee ../../artifacts/infra-ruff.log
+
+      - name: Mypy infrastructure
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd services/core
+          uv run mypy ../../infra/gcp 2>&1 | tee ../../artifacts/infra-mypy.log
+
+      - name: Infrastructure tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd services/core
+          uv run pytest ../../infra/gcp/tests --junitxml=../../artifacts/infra-pytest.xml 2>&1 | tee ../../artifacts/infra-pytest.log
+
+      - name: Upload infrastructure failure evidence
+        if: failure()
+        # actions/upload-artifact v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: infra-failure-${{ github.run_id }}
+          path: artifacts/
+          if-no-files-found: ignore
+          retention-days: 5
+
+  gate:
+    name: PR Quality Gate
+    if: always()
+    needs:
+      - changed-paths
+      - policy
+      - dependency-review
+      - dependency-security
+      - core
+      - web
+      - infra
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      CHANGED_RESULT: ${{ needs.changed-paths.result }}
+      POLICY_RESULT: ${{ needs.policy.result }}
+      DEPENDENCY_REVIEW_RESULT: ${{ needs.dependency-review.result }}
+      SECURITY_RESULT: ${{ needs.dependency-security.result }}
+      CORE_REQUIRED: ${{ needs.changed-paths.outputs.core_required }}
+      WEB_REQUIRED: ${{ needs.changed-paths.outputs.web_required }}
+      INFRA_REQUIRED: ${{ needs.changed-paths.outputs.infra_required }}
+      CORE_RESULT: ${{ needs.core.result }}
+      WEB_RESULT: ${{ needs.web.result }}
+      INFRA_RESULT: ${{ needs.infra.result }}
+    steps:
+      - name: Enforce required-lane outcomes
+        shell: bash
+        run: |
+          set -euo pipefail
+          require_success() {
+            local label="$1" result="$2"
+            [[ "${result}" == "success" ]] || { echo "::error::${label} must succeed; observed ${result}"; return 1; }
+          }
+          require_lane() {
+            local label="$1" required="$2" result="$3"
+            if [[ "${required}" == "true" ]]; then
+              require_success "${label}" "${result}"
+            elif [[ "${result}" != "skipped" && "${result}" != "success" ]]; then
+              echo "::error::${label} was not required but ended as ${result}"
+              return 1
+            fi
+          }
+          status=0
+          require_success "Changed Paths" "${CHANGED_RESULT}" || status=1
+          require_success "CI Policy" "${POLICY_RESULT}" || status=1
+          require_success "Dependency Review" "${DEPENDENCY_REVIEW_RESULT}" || status=1
+          require_success "Dependency Security" "${SECURITY_RESULT}" || status=1
+          require_lane "Core Quality" "${CORE_REQUIRED}" "${CORE_RESULT}" || status=1
+          require_lane "Web Quality" "${WEB_REQUIRED}" "${WEB_RESULT}" || status=1
+          require_lane "Infrastructure Regression" "${INFRA_REQUIRED}" "${INFRA_RESULT}" || status=1
+          {
+            echo "## PR Quality Gate"
+            echo
+            echo "| Gate | Required | Result |"
+            echo "| --- | --- | --- |"
+            echo "| Changed Paths | yes | ${CHANGED_RESULT} |"
+            echo "| CI Policy | yes | ${POLICY_RESULT} |"
+            echo "| Dependency Review | yes | ${DEPENDENCY_REVIEW_RESULT} |"
+            echo "| Dependency Security | yes | ${SECURITY_RESULT} |"
+            echo "| Core Quality | ${CORE_REQUIRED:-unknown} | ${CORE_RESULT} |"
+            echo "| Web Quality | ${WEB_REQUIRED:-unknown} | ${WEB_RESULT} |"
+            echo "| Infrastructure Regression | ${INFRA_REQUIRED:-unknown} | ${INFRA_RESULT} |"
+          } >> "${GITHUB_STEP_SUMMARY}"
+          exit "${status}"

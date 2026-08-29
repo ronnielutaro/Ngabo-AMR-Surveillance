@@ -61,15 +61,7 @@ Create from `develop` when a version's planned functionality is complete:
 release/v0.2.0
 ```
 
-A release branch may contain:
-
-- final defect fixes;
-- version metadata;
-- changelog/release notes;
-- documentation;
-- release evaluation/hardening.
-
-Do not add new product scope to a release branch.
+A release branch may contain final defect fixes, version metadata, changelog/release notes, documentation, and release evaluation/hardening. Do not add new product scope to a release branch.
 
 Merge the finished release branch to `main`, tag the release, then merge/reconcile the release branch back into `develop`.
 
@@ -93,18 +85,9 @@ Ngabo uses **Semantic Versioning 2.0.0**.
 MAJOR.MINOR.PATCH
 ```
 
-After `1.0.0`:
+After `1.0.0`: MAJOR is an incompatible public API/event/schema change, MINOR is backward-compatible functionality and PATCH is a backward-compatible bug fix.
 
-- MAJOR — incompatible public API/event/schema change;
-- MINOR — backward-compatible functionality;
-- PATCH — backward-compatible bug fix.
-
-During `0.y.z` initial development:
-
-- bug fixes normally increment PATCH;
-- feature/release milestones normally increment MINOR;
-- breaking changes must still be explicitly documented as breaking and normally increment MINOR;
-- `1.0.0` is a deliberate production-readiness milestone and must not be produced automatically simply because a breaking commit exists.
+During `0.y.z` initial development, bug fixes normally increment PATCH, feature/release milestones normally increment MINOR, breaking changes must still be explicitly documented as breaking and normally increment MINOR, and `1.0.0` is a deliberate production-readiness milestone.
 
 See `ROADMAP.md` for Ngabo's release maturity policy.
 
@@ -118,36 +101,9 @@ Every commit must follow **Conventional Commits 1.0.0**:
 <type>[optional scope]: <description>
 ```
 
-Preferred types:
+Preferred types: `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `build`, `ci`, `chore`, `revert`.
 
-```text
-feat
-fix
-docs
-test
-refactor
-perf
-build
-ci
-chore
-revert
-```
-
-Preferred scopes:
-
-```text
-web
-core
-surveillance
-agent
-evidence
-events
-data
-eval
-infra
-docs
-release
-```
+Preferred scopes: `web`, `core`, `surveillance`, `agent`, `evidence`, `events`, `data`, `eval`, `infra`, `docs`, `release`.
 
 Examples:
 
@@ -159,27 +115,13 @@ docs(api): document incident review endpoint
 ci(release): validate conventional commits
 ```
 
-Breaking changes use `!` and/or a `BREAKING CHANGE:` footer:
-
-```text
-feat(events)!: revise incident event envelope
-```
-
-Keep commits focused. If a change has two unrelated purposes, split it.
+Breaking changes use `!` and/or a `BREAKING CHANGE:` footer. Keep commits focused.
 
 ---
 
 ## Pull Request Requirements
 
-A pull request should explain:
-
-- what changed;
-- why it changed;
-- how it was tested;
-- whether it changes a public API/schema/event;
-- whether it affects safety or human-review boundaries;
-- whether documentation must change;
-- whether an ADR is required.
+A pull request should explain what changed, why it changed, how it was tested, whether it changes a public API/schema/event, whether it affects safety or human-review boundaries, whether documentation must change, and whether an ADR is required.
 
 Before merge:
 
@@ -190,48 +132,59 @@ Before merge:
 - documentation reflects changed contracts;
 - architecture/safety invariants remain intact.
 
+### Required PR quality gates
+
+PRs into `develop` or `main` run the repository-owned quality contract described in `docs/CI_QUALITY_GATES.md`.
+
+The stable required result is `PR Quality Gate`. It always runs; path classification may skip an expensive core/web/infra lane only after the workflow has started. Lockfile-only changes (`pnpm-lock.yaml`) trigger Web Quality. Unknown non-documentation paths fail closed to full applicable validation. Shared CI/toolchain changes run the cross-cutting lanes, while docs-only changes still produce `CI Policy`, `Dependency Review`, `Dependency Security`, and the final gate.
+
+Use the same local contracts before review:
+
+```bash
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm web:build
+pnpm core:lock:check
+pnpm core:sync:frozen
+pnpm core:architecture
+pnpm core:build
+pnpm core:audit
+pnpm web:audit
+pnpm infra:test
+pnpm ci:test
+pnpm ci:pins
+```
+
+CI dependency installs are frozen. Caches are performance aids only and never replace lockfile or validation checks. Every PR runs dual dependency security validation: pinned native GitHub `Dependency Review` (`actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294`) and package-manager `Dependency Security` (frozen uv audit and high-severity pnpm audit); see `docs/CI_QUALITY_GATES.md`.
+
+Changes to CI control-plane files are separately inspected by `CI Control Plane`. That metadata-only workflow never checks out PR-head code. An owner-authored protected change requires an explicit approval marker bound to the exact current PR head SHA:
+
+```text
+CI-Control-Plane-Approval: <PR_HEAD_SHA>
+```
+
+Any new push changes the SHA and requires a fresh marker. This is an auditable control, not a hidden bypass.
+
+CI validates source/build quality; it does not prove deployed behavior.
+
 ---
 
 ## Architecture Decisions
 
-Material architecture changes require an Architecture Decision Record under:
-
-```text
-docs/adr/
-```
-
-Examples that require an ADR:
-
-- replacing Firestore;
-- changing the event architecture;
-- introducing another orchestration framework;
-- moving deterministic surveillance logic into an LLM;
-- changing human-review boundaries;
-- introducing a real clinical-data integration architecture.
-
-Routine refactors that preserve public behavior do not require an ADR.
+Material architecture changes require an Architecture Decision Record under `docs/adr/`. Examples include replacing Firestore, changing the event architecture, introducing another orchestration framework, moving deterministic surveillance logic into an LLM, changing human-review boundaries, or introducing a real clinical-data integration architecture. Routine refactors that preserve public behavior do not require an ADR.
 
 ---
 
 ## Safety Requirements
 
-Contributions must not:
-
-- make the runtime agent prescribe treatment;
-- make the runtime agent autonomously confirm an outbreak;
-- let model output replace deterministic scientific calculations;
-- fabricate evidence/citations;
-- bypass the human review gate;
-- silently convert missing laboratory facts into guessed values;
-- commit real patient data to the public repository.
+Contributions must not make the runtime agent prescribe treatment, autonomously confirm an outbreak, let model output replace deterministic scientific calculations, fabricate evidence/citations, bypass the human review gate, silently convert missing laboratory facts into guessed values, or commit real patient data to the public repository.
 
 ---
 
 ## Data Contributions
 
-Public fixtures and demonstration datasets must be synthetic unless a separately governed contribution explicitly permits otherwise.
-
-Synthetic data should be clearly labelled and should not reconstruct identifiable real patient records.
+Public fixtures and demonstration datasets must be synthetic unless a separately governed contribution explicitly permits otherwise. Synthetic data should be clearly labelled and should not reconstruct identifiable real patient records.
 
 ---
 
