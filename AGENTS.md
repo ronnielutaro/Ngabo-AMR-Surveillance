@@ -52,30 +52,35 @@ Work is driven by GitHub issues. The active issue is the **task-specific impleme
 2. `ROADMAP.md`
 3. `CONTRIBUTING.md`
 4. `docs/PRD.md`
-5. `docs/TECH_STACK.md`
-6. `docs/CLEAN_ARCHITECTURE.md`
-7. `docs/HACKATHON_ALIGNMENT.md`
-8. `docs/TASKMASTER_ZERO_HUMAN_AUTONOMY.md`
-9. `docs/BYOF_FRICTION.md`
-10. `docs/ADK_CAPABILITY_SPIKE.md`
-11. `docs/ADK_RUNTIME.md`
-12. `docs/ORCHESTRATION_PATTERNS.md`
-13. `docs/PROOF_CARRYING_REASONING.md`
-14. `docs/LONG_RUNNING_AGENT.md`
-15. `docs/AUTONOMOUS_EFFECT_OUTBOX.md`
-16. `docs/SYSTEM_DESIGN.md`
-17. `docs/AGENT_ARCHITECTURE.md`
-18. `docs/DATA_SAFETY_EVALUATION.md`
-19. `docs/OPERATIONAL_UTILITY_EVALUATION.md`
-20. `docs/UI_UX_SPEC.md`
-21. `docs/UI_UX_HACKATHON_ADDENDUM.md`
-22. `docs/ARCHITECTURE_DIAGRAM.md`
-23. `docs/THIRD_PARTY_PROVENANCE.md`
-24. `docs/SUBMISSION_EVIDENCE.md`
-25. `docs/SUBMISSION_FREEZE.md`
-26. `docs/HACKATHON_RISK_REGISTER.md`
-27. `docs/IMPLEMENTATION_PLAN.md`
-28. relevant ADRs, especially 0005–0009.
+5. `docs/LEAN_CANVAS.md`
+6. `docs/COMPETITOR_ANALYSIS.md`
+7. `docs/VALUE_PROPOSITION_CANVAS.md`
+8. `docs/TECH_STACK.md`
+9. `docs/CLEAN_ARCHITECTURE.md`
+10. `docs/HACKATHON_ALIGNMENT.md`
+11. `docs/TASKMASTER_ZERO_HUMAN_AUTONOMY.md`
+12. `docs/BYOF_FRICTION.md`
+13. `docs/ADK_CAPABILITY_SPIKE.md`
+14. `docs/ADK_RUNTIME.md`
+15. `docs/ORCHESTRATION_PATTERNS.md`
+16. `docs/PROOF_CARRYING_REASONING.md`
+17. `docs/LONG_RUNNING_AGENT.md`
+18. `docs/AUTONOMOUS_EFFECT_OUTBOX.md`
+19. `docs/SYSTEM_DESIGN.md`
+20. `docs/AGENT_ARCHITECTURE.md`
+21. `docs/DATA_SAFETY_EVALUATION.md`
+22. `docs/OPERATIONAL_UTILITY_EVALUATION.md`
+23. `docs/UI_UX_SPEC.md`
+24. `docs/UI_UX_HACKATHON_ADDENDUM.md`
+25. `docs/ARCHITECTURE_DIAGRAM.md`
+26. `docs/THIRD_PARTY_PROVENANCE.md`
+27. `docs/SUBMISSION_EVIDENCE.md`
+28. `docs/SUBMISSION_FREEZE.md`
+29. `docs/HACKATHON_RISK_REGISTER.md`
+30. `docs/IMPLEMENTATION_PLAN.md`
+31. relevant ADRs, especially 0005–0009.
+
+The Lean Canvas, competitor analysis and value proposition canvases define product positioning, user and adopter hypotheses, alternatives, differentiation and validation priorities. They do not override the PRD, safety/data constraints, architecture contracts, active issue scope or runtime evidence requirements. Treat every unvalidated customer, partner, adoption and market statement in those documents as a hypothesis rather than an implemented capability or established fact.
 
 If older documents still mention mandatory human approval/clarification in the v0.1 hero, `docs/TASKMASTER_ZERO_HUMAN_AUTONOMY.md` and `CLAUDE.md` supersede that wording for the safe A1 hero lane.
 

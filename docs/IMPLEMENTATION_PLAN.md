@@ -2,7 +2,7 @@
 
 **Version:** 0.8  
 **Created:** 2026-08-16  
-**Updated:** 2026-08-17  
+**Updated:** 2026-08-29  
 **Official hackathon deadline:** 2026-08-31, 5:00 PM Pacific Time
 
 ---
@@ -48,6 +48,9 @@ All implementation preserves:
 
 Required read set includes:
 
+- `docs/LEAN_CANVAS.md`
+- `docs/COMPETITOR_ANALYSIS.md`
+- `docs/VALUE_PROPOSITION_CANVAS.md`
 - `docs/HACKATHON_ALIGNMENT.md`
 - `docs/TASKMASTER_ZERO_HUMAN_AUTONOMY.md`
 - `docs/PROOF_CARRYING_REASONING.md`

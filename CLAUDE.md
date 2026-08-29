@@ -19,32 +19,37 @@ Read in this order:
 1. `ROADMAP.md`
 2. `CONTRIBUTING.md`
 3. `docs/PRD.md`
-4. `docs/TECH_STACK.md`
-5. `docs/CLEAN_ARCHITECTURE.md`
-6. `docs/HACKATHON_ALIGNMENT.md`
-7. `docs/TASKMASTER_ZERO_HUMAN_AUTONOMY.md`
-8. `docs/BYOF_FRICTION.md`
-9. `docs/ADK_CAPABILITY_SPIKE.md`
-10. `docs/ADK_RUNTIME.md`
-11. `docs/ORCHESTRATION_PATTERNS.md`
-12. `docs/PROOF_CARRYING_REASONING.md`
-13. `docs/LONG_RUNNING_AGENT.md`
-14. `docs/AUTONOMOUS_EFFECT_OUTBOX.md`
-15. `docs/SYSTEM_DESIGN.md`
-16. `docs/AGENT_ARCHITECTURE.md`
-17. `docs/DATA_SAFETY_EVALUATION.md`
-18. `docs/OPERATIONAL_UTILITY_EVALUATION.md`
-19. `docs/UI_UX_SPEC.md`
-20. `docs/UI_UX_HACKATHON_ADDENDUM.md`
-21. `docs/ARCHITECTURE_DIAGRAM.md`
-22. `docs/THIRD_PARTY_PROVENANCE.md`
-23. `docs/SUBMISSION_EVIDENCE.md`
-24. `docs/SUBMISSION_FREEZE.md`
-25. `docs/HACKATHON_RISK_REGISTER.md`
-26. `docs/IMPLEMENTATION_PLAN.md`
-27. relevant ADRs, especially ADRs 0005–0009.
+4. `docs/LEAN_CANVAS.md`
+5. `docs/COMPETITOR_ANALYSIS.md`
+6. `docs/VALUE_PROPOSITION_CANVAS.md`
+7. `docs/TECH_STACK.md`
+8. `docs/CLEAN_ARCHITECTURE.md`
+9. `docs/HACKATHON_ALIGNMENT.md`
+10. `docs/TASKMASTER_ZERO_HUMAN_AUTONOMY.md`
+11. `docs/BYOF_FRICTION.md`
+12. `docs/ADK_CAPABILITY_SPIKE.md`
+13. `docs/ADK_RUNTIME.md`
+14. `docs/ORCHESTRATION_PATTERNS.md`
+15. `docs/PROOF_CARRYING_REASONING.md`
+16. `docs/LONG_RUNNING_AGENT.md`
+17. `docs/AUTONOMOUS_EFFECT_OUTBOX.md`
+18. `docs/SYSTEM_DESIGN.md`
+19. `docs/AGENT_ARCHITECTURE.md`
+20. `docs/DATA_SAFETY_EVALUATION.md`
+21. `docs/OPERATIONAL_UTILITY_EVALUATION.md`
+22. `docs/UI_UX_SPEC.md`
+23. `docs/UI_UX_HACKATHON_ADDENDUM.md`
+24. `docs/ARCHITECTURE_DIAGRAM.md`
+25. `docs/THIRD_PARTY_PROVENANCE.md`
+26. `docs/SUBMISSION_EVIDENCE.md`
+27. `docs/SUBMISSION_FREEZE.md`
+28. `docs/HACKATHON_RISK_REGISTER.md`
+29. `docs/IMPLEMENTATION_PLAN.md`
+30. relevant ADRs, especially ADRs 0005–0009.
 
 Also read `AGENTS.md` and `CHANGELOG.md` before release-oriented work.
+
+The Lean Canvas, competitor analysis and value proposition canvases provide current product strategy and market context. Their customer segments, partnerships, adoption paths and commercial propositions remain hypotheses unless supported by explicit evidence. They may focus implementation and public positioning, but they may not expand active issue scope, override safety or architecture contracts, or turn planned capability into an implementation claim.
 
 ### Conflict precedence
 
@@ -60,6 +65,8 @@ PRD / Clean Architecture
 Hackathon / ADK / orchestration / proof-carrying reasoning / long-running / effect-outbox contracts
         ↓
 Evaluation / UI / implementation documents
+        ↓
+Product strategy / market-hypothesis documents
 ```
 
 **Important amendment:** `docs/TASKMASTER_ZERO_HUMAN_AUTONOMY.md` and ADR 0007 supersede older v0.1 wording that required human approval or clarification inside the canonical hackathon hero flow. Human-governed consequential clinical/public-health lanes remain valid future/real-world architecture, but the hero A1 coordination workflow is zero-human.
