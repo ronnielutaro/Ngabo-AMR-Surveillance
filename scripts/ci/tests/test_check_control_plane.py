@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
 import pathlib
 import subprocess
 import sys
 import unittest
+from unittest import mock
 from typing import Any
 
 CI_DIR = pathlib.Path(__file__).parents[1]
@@ -163,6 +165,61 @@ class ControlPlaneRaceTests(unittest.TestCase):
         self.assertTrue(check_control_plane.is_protected_path("package.json"))
         self.assertTrue(check_control_plane.is_protected_path("services/core/pyproject.toml"))
         self.assertFalse(check_control_plane.is_protected_path("docs/README.md"))
+
+    def test_stale_failure_not_posted_to_new_live_head(self):
+        # When validation fails because the head advanced mid-run, the failure
+        # status must be attached only to the head that was validated; the
+        # live PR must never be re-fetched to attach a stale failure to the
+        # new head (which would race with the newer run's own status).
+        posted: list[tuple[str, str]] = []
+
+        def fake_post(repo, head_sha, state, description, **kwargs):
+            posted.append((head_sha, state))
+
+        def fake_validate(repo, pr_number, repo_owner, runner=None):
+            meta = check_control_plane.LivePrMetadata(
+                number=pr_number,
+                head_sha="validatedsha00000000000000000000000000000000",
+                user_login="owner",
+                body="CI-Control-Plane-Approval: validatedsha00000000000000000000000000000000",
+                changed_files=1,
+                updated_at="2026-08-29T12:00:00Z",
+            )
+            return meta, [".github/workflows/ci.yml"]
+
+        def fake_verify(repo, pr_number, initial_meta, repo_owner, protected_paths, runner=None):
+            raise check_control_plane.ControlPlaneValidationError(
+                "RACE DETECTED: PR head changed during validation"
+            )
+
+        env = dict(os.environ)
+        try:
+            os.environ["GITHUB_REPOSITORY"] = "owner/repo"
+            os.environ["PR_NUMBER"] = "103"
+            os.environ["REPOSITORY_OWNER"] = "owner"
+            with mock.patch.object(
+                check_control_plane, "validate_control_plane", fake_validate
+            ), mock.patch.object(
+                check_control_plane, "verify_final_race", fake_verify
+            ), mock.patch.object(
+                check_control_plane, "post_commit_status", fake_post
+            ), mock.patch.object(
+                check_control_plane,
+                "fetch_live_pr",
+                side_effect=AssertionError(
+                    "fetch_live_pr must not run in the failure path"
+                ),
+            ) as mock_fetch:
+                rc = check_control_plane.main()
+                self.assertEqual(rc, 1)
+                mock_fetch.assert_not_called()
+        finally:
+            os.environ.clear()
+            os.environ.update(env)
+
+        self.assertEqual(
+            posted, [("validatedsha00000000000000000000000000000000", "failure")]
+        )
 
     def test_local_action_subtree_is_protected(self):
         # Entire .github/actions/** subtree is CI control-plane code: manifests

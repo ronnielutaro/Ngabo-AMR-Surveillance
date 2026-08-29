@@ -303,8 +303,10 @@ def main() -> int:
         print(f"Invalid PR_NUMBER: {pr_number_str}", file=sys.stderr)
         return 1
 
+    validated_head: str | None = None
     try:
         initial_meta, protected = validate_control_plane(repo, pr_number, repo_owner)
+        validated_head = initial_meta.head_sha
         final_meta = verify_final_race(repo, pr_number, initial_meta, repo_owner, protected)
         post_commit_status(
             repo,
@@ -319,12 +321,15 @@ def main() -> int:
         return 0
     except ControlPlaneValidationError as exc:
         print(f"::error::{exc}", file=sys.stderr)
-        # Attempt to attach failure status if head SHA is known
-        try:
-            live = fetch_live_pr(repo, pr_number)
-            post_commit_status(repo, live.head_sha, "failure", str(exc))
-        except Exception:
-            pass
+        # Attach failure status only to the head this validation actually
+        # evaluated. Never re-fetch the live PR here: the head may have
+        # advanced mid-validation, and a stale failure posted to the new head
+        # would race with (and could overwrite) the newer run's own status.
+        if validated_head is not None:
+            try:
+                post_commit_status(repo, validated_head, "failure", str(exc))
+            except Exception:
+                pass
         return 1
 
 

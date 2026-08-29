@@ -199,7 +199,7 @@ Ruleset activation is a staged post-merge acceptance step. A green implementatio
 
 - **`observed`**: values fetched from the GitHub API (PR head SHA, run ID, run conclusion, job conclusions, duration)
 - **`contract`**: repository policy assertions verified by tests (classifier contracts, architecture checker, merge governance, `privacy_review_status = EXTERNAL_REVIEW_REQUIRED`)
-- **`historical_negative_proofs`**: explicit run IDs/descriptions for bypass proofs (architecture import bypass, high-severity dependency, rename bypass)
+- **`historical_negative_proofs`**: explicit run IDs/descriptions for recorded bypass proofs (architecture import bypass and high-severity dependency). A hosted rename-bypass negative proof is deliberately `NOT_RECORDED` and is not claimed as recorded evidence.
 
 Before emitting evidence, the generator validates:
 - PR exists and number matches

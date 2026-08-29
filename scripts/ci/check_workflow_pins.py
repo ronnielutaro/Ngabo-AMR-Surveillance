@@ -189,18 +189,18 @@ def _check_runs_image(
 ) -> list[str]:
     """Validate ``runs.image`` in local Docker container action manifests.
 
-    A container registry image is external executable input, so it must use
-    the ``docker://`` prefix and be pinned to an immutable ``@sha256:<64-hex>``
-    digest — the same contract enforced for ``uses: docker://...`` references.
+    A ``docker://`` registry image is external executable input, so it must
+    be pinned to an immutable ``@sha256:<64-hex>`` digest — the same contract
+    enforced for ``uses: docker://...`` references.  A repository-local
+    Dockerfile path (e.g. ``Dockerfile``, ``./Dockerfile``) is immutable
+    checked-in content and needs no external pin.
     """
     if not isinstance(image, str) or not image.strip():
         return []
     val = image.strip()
     if not val.startswith("docker://"):
-        return [
-            f"{path}: local action runs.image '{val}' must use the 'docker://' prefix "
-            f"and be pinned to an immutable @sha256:<64-hex> digest"
-        ]
+        # Repository-local Dockerfile path — immutable PR content.
+        return []
     if not DOCKER_SHA_RE.fullmatch(val):
         return [
             f"{path}: local action runs.image '{val}' must be pinned to an immutable "

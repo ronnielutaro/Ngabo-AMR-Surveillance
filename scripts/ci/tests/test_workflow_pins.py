@@ -373,18 +373,16 @@ class WorkflowPinTests(unittest.TestCase):
             )
             self.assertEqual(check_workflow_pins.scan_file(path), [])
 
-    def test_docker_action_image_without_docker_prefix_fails(self):
+    def test_docker_action_image_local_dockerfile_passes(self):
         with tempfile.TemporaryDirectory() as temp:
             path = pathlib.Path(temp) / "action.yml"
             path.write_text(
                 "runs:\n"
                 "  using: docker\n"
-                "  image: alpine:latest\n",
+                "  image: Dockerfile\n",
                 encoding="utf-8",
             )
-            errors = check_workflow_pins.scan_file(path)
-            self.assertEqual(len(errors), 1)
-            self.assertIn("docker://", errors[0])
+            self.assertEqual(check_workflow_pins.scan_file(path), [])
 
     def test_composite_action_without_image_passes(self):
         with tempfile.TemporaryDirectory() as temp:
