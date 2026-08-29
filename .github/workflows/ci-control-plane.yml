@@ -36,7 +36,12 @@ jobs:
       - name: Inspect CI control-plane changes without checking out PR code
         shell: bash
         run: |
-          set -euo pipefail
+          changed_count=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq .changed_files)
+          if (( changed_count > 3000 )); then
+            echo "::error::PR changed file count (${changed_count}) exceeds GitHub PR Files API limit of 3000 files."
+            exit 1
+          fi
+
           gh api --paginate \
             "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files?per_page=100" \
             --jq '.[] | .filename, (.previous_filename // empty)' \

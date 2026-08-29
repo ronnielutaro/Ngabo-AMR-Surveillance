@@ -236,15 +236,50 @@ def fetch_run_evidence(
 def validate_negative_run(
     repo: str,
     run_id: str | int,
+    expected_failed_job: str | None = None,
     runner: Callable[[Sequence[str]], subprocess.CompletedProcess[str]] | None = None,
 ) -> dict[str, Any]:
-    """Fetch and validate a negative proof run (must have conclusion 'failure')."""
+    """Fetch and validate a negative proof run.
+
+    Verifies workflow name, event type, completed status, failure conclusion,
+    and expected failed job if specified.
+    """
     run_data = run_gh_json([f"repos/{repo}/actions/runs/{run_id}"], runner=runner)
+    run_name = run_data.get("name", "")
+    if run_name != DEFAULT_WORKFLOW_NAME:
+        raise EvidenceValidationError(
+            f"negative proof run {run_id} workflow is '{run_name}', expected '{DEFAULT_WORKFLOW_NAME}'"
+        )
+    event = run_data.get("event", "")
+    if event != "pull_request":
+        raise EvidenceValidationError(
+            f"negative proof run {run_id} event is '{event}', expected 'pull_request'"
+        )
+    status = run_data.get("status", "")
+    if status != "completed":
+        raise EvidenceValidationError(
+            f"negative proof run {run_id} status is '{status}', expected 'completed'"
+        )
     conclusion = run_data.get("conclusion")
     if conclusion != "failure":
         raise EvidenceValidationError(
             f"negative proof run {run_id} conclusion is '{conclusion}', expected 'failure'"
         )
+
+    if expected_failed_job:
+        jobs_data = run_gh_json([f"repos/{repo}/actions/runs/{run_id}/jobs"], runner=runner)
+        job_map = {j.get("name"): j for j in jobs_data.get("jobs", [])}
+        job_info = job_map.get(expected_failed_job)
+        if not job_info:
+            raise EvidenceValidationError(
+                f"negative proof run {run_id} missing expected job '{expected_failed_job}'"
+            )
+        job_conclusion = job_info.get("conclusion")
+        if job_conclusion != "failure":
+            raise EvidenceValidationError(
+                f"negative proof run {run_id} job '{expected_failed_job}' conclusion is '{job_conclusion}', expected 'failure'"
+            )
+
     return run_data
 
 
@@ -296,7 +331,9 @@ def build_ci_evidence(
 
     if direct_import_negative_run:
         if validate_negative_proofs:
-            validate_negative_run(repo, direct_import_negative_run, runner=runner)
+            validate_negative_run(
+                repo, direct_import_negative_run, expected_failed_job="Core Quality", runner=runner
+            )
         historical_negative_proofs["direct_import_bypass"] = {
             "run_id": str(direct_import_negative_run),
             "description": (
@@ -307,7 +344,9 @@ def build_ci_evidence(
 
     if importfrom_bypass_negative_run:
         if validate_negative_proofs:
-            validate_negative_run(repo, importfrom_bypass_negative_run, runner=runner)
+            validate_negative_run(
+                repo, importfrom_bypass_negative_run, expected_failed_job="Core Quality", runner=runner
+            )
         historical_negative_proofs["importfrom_bypass"] = {
             "run_id": str(importfrom_bypass_negative_run),
             "description": (
@@ -318,7 +357,9 @@ def build_ci_evidence(
 
     if high_severity_negative_run:
         if validate_negative_proofs:
-            validate_negative_run(repo, high_severity_negative_run, runner=runner)
+            validate_negative_run(
+                repo, high_severity_negative_run, expected_failed_job="Dependency Security", runner=runner
+            )
         proof_obj: dict[str, Any] = {
             "run_id": str(high_severity_negative_run),
             "description": (
@@ -332,7 +373,9 @@ def build_ci_evidence(
 
     if rename_bypass_negative_run:
         if validate_negative_proofs:
-            validate_negative_run(repo, rename_bypass_negative_run, runner=runner)
+            validate_negative_run(
+                repo, rename_bypass_negative_run, expected_failed_job=None, runner=runner
+            )
         historical_negative_proofs["rename_bypass"] = {
             "run_id": str(rename_bypass_negative_run),
             "description": (

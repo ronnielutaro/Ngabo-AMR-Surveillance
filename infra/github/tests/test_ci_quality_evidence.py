@@ -107,11 +107,14 @@ class ValidEvidenceTests(unittest.TestCase):
         run = _make_run_data()
         jobs = _make_jobs_data()
         neg_run = _make_run_data(run_id=99999, conclusion="failure")
+        neg_jobs = _make_jobs_data()
+        neg_jobs["jobs"][5]["conclusion"] = "failure"  # Core Quality failed
         runner = _make_runner(
             FakeProcess(0, json.dumps(pr)),       # fetch PR
             FakeProcess(0, json.dumps(run)),       # fetch run
             FakeProcess(0, json.dumps(jobs)),      # fetch jobs
             FakeProcess(0, json.dumps(neg_run)),   # validate direct import neg run
+            FakeProcess(0, json.dumps(neg_jobs)),  # validate direct import neg jobs
         )
         evidence = ci_quality_evidence.build_ci_evidence(
             repo="owner/repo",
