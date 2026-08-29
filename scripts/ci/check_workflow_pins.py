@@ -7,10 +7,28 @@ import re
 from pathlib import Path
 from typing import Any
 
-import yaml
+try:
+    import yaml
+except ImportError:
+    yaml = None  # type: ignore[assignment]
 
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 DOCKER_SHA_RE = re.compile(r"^docker://.*@sha256:[0-9a-f]{64}$")
+
+
+def _fallback_parse_uses(content: str) -> list[str]:
+    """Fallback scanner for environments without PyYAML."""
+    uses_list: list[str] = []
+    # Match any key ending with 'uses' followed by colon and value
+    pattern = re.compile(r"""(?:["']?uses["']?|\buses)\s*:\s*(['"]?)([^'"\n#]+)\1""", re.IGNORECASE)
+    for line in content.splitlines():
+        line = line.strip()
+        if line.startswith("#"):
+            continue
+        m = pattern.search(line)
+        if m:
+            uses_list.append(m.group(2).strip())
+    return uses_list
 
 
 def validate_uses_value(uses_val: Any, path: Path) -> list[str]:
@@ -65,8 +83,15 @@ def traverse_yaml_tree(node: Any, path: Path) -> list[str]:
 
 
 def scan_file(path: Path) -> list[str]:
+    content = path.read_text(encoding="utf-8")
+    if yaml is None:
+        uses_list = _fallback_parse_uses(content)
+        errors: list[str] = []
+        for val in uses_list:
+            errors.extend(validate_uses_value(val, path))
+        return errors
+
     try:
-        content = path.read_text(encoding="utf-8")
         data = yaml.safe_load(content)
     except Exception as exc:
         return [f"{path}: failed to parse YAML: {exc}"]
