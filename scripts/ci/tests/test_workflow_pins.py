@@ -94,6 +94,11 @@ class WorkflowPinTests(unittest.TestCase):
 
     def test_local_action_is_allowed(self):
         with tempfile.TemporaryDirectory() as temp:
+            local_action = pathlib.Path(temp) / ".github" / "actions" / "local"
+            local_action.mkdir(parents=True)
+            (local_action / "action.yml").write_text(
+                "runs:\n  using: composite\n  steps: []\n", encoding="utf-8"
+            )
             path = pathlib.Path(temp) / "ci.yml"
             path.write_text(
                 "steps:\n  - uses: ./.github/actions/local\n", encoding="utf-8"
@@ -313,6 +318,54 @@ class WorkflowPinTests(unittest.TestCase):
             )
             errors = check_workflow_pins.scan(wf_dir)
             self.assertEqual(errors, [])
+
+    def test_workflow_invoking_local_composite_action_in_custom_root_dir_fails_when_unpinned(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            tools_dir = root / "tools" / "action"
+            tools_dir.mkdir(parents=True)
+            manifest = tools_dir / "action.yml"
+            manifest.write_text(
+                "runs:\n"
+                "  using: composite\n"
+                "  steps:\n"
+                "    - uses: actions/checkout@v4\n",
+                encoding="utf-8",
+            )
+            wf_dir = root / ".github" / "workflows"
+            wf_dir.mkdir(parents=True)
+            wf_path = wf_dir / "ci.yml"
+            wf_path.write_text(
+                "name: CI\n"
+                "jobs:\n"
+                "  test:\n"
+                "    runs-on: ubuntu-latest\n"
+                "    steps:\n"
+                "      - uses: ./tools/action\n",
+                encoding="utf-8",
+            )
+            errors = check_workflow_pins.scan(wf_dir)
+            self.assertEqual(len(errors), 1)
+            self.assertIn("must be pinned to a full 40-hex commit SHA", errors[0])
+
+    def test_unresolvable_local_action_reference_fails_closed(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            wf_dir = root / ".github" / "workflows"
+            wf_dir.mkdir(parents=True)
+            wf_path = wf_dir / "ci.yml"
+            wf_path.write_text(
+                "name: CI\n"
+                "jobs:\n"
+                "  test:\n"
+                "    runs-on: ubuntu-latest\n"
+                "    steps:\n"
+                "      - uses: ./nonexistent/action\n",
+                encoding="utf-8",
+            )
+            errors = check_workflow_pins.scan(wf_dir)
+            self.assertEqual(len(errors), 1)
+            self.assertIn("could not be resolved", errors[0])
 
 
 if __name__ == "__main__":

@@ -63,8 +63,10 @@ PROTECTED_PREFIXES = (
 
 PROTECTED_EXACT = {
     "package.json",
+    "pnpm-lock.yaml",
     "pnpm-workspace.yaml",
     "services/core/pyproject.toml",
+    "services/core/uv.lock",
     "apps/web/package.json",
 }
 

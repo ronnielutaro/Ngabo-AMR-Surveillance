@@ -80,17 +80,29 @@ def _fallback_parse_uses(content: str) -> list[str]:
     return uses_list
 
 
-def _resolve_local_action(val: str, calling_file: Path) -> Path | None:
+def _find_repo_root(path: Path) -> Path:
+    """Find repository root by walking up from path."""
+    curr = path.resolve() if path.is_dir() else path.resolve().parent
+    for p in (curr, *curr.parents):
+        if (p / ".git").exists() or (p / ".github").is_dir() or (p / "package.json").is_file():
+            return p
+    return curr
+
+
+def _resolve_local_action(
+    val: str, calling_file: Path, repo_root: Path | None = None
+) -> Path | None:
     """Resolve a local action path to its action.yml or action.yaml manifest."""
-    # Try relative to calling file and relative to repository root
-    candidates: list[Path] = []
-    cleaned = val.lstrip("./").replace("\\", "/")
-    # Relative to calling file
-    candidates.append(calling_file.parent / val)
-    candidates.append(calling_file.parent / cleaned)
-    # Relative to current working directory / repo root
-    candidates.append(Path(val))
-    candidates.append(Path(cleaned))
+    root = repo_root or _find_repo_root(calling_file)
+    cleaned = val.lstrip(".").lstrip("/").replace("\\", "/")
+
+    # GitHub Actions always resolves ./relative paths in workflows from repo root
+    candidates: list[Path] = [
+        root / cleaned,
+        calling_file.parent / val,
+        calling_file.parent / cleaned,
+        Path(val).resolve(),
+    ]
 
     for cand in candidates:
         if cand.is_file() and cand.suffix in (".yml", ".yaml"):
@@ -104,7 +116,10 @@ def _resolve_local_action(val: str, calling_file: Path) -> Path | None:
 
 
 def validate_uses_value(
-    uses_val: Any, path: Path, allow_fallback: bool = False
+    uses_val: Any,
+    path: Path,
+    allow_fallback: bool = False,
+    repo_root: Path | None = None,
 ) -> list[str]:
     errors: list[str] = []
     if not isinstance(uses_val, str):
@@ -116,9 +131,14 @@ def validate_uses_value(
 
     # Local reference: starts with ./ or .github/
     if val.startswith("./") or val.startswith(".github/"):
-        manifest = _resolve_local_action(val, path)
-        if manifest and manifest != path.resolve():
-            errors.extend(scan_file(manifest, allow_fallback=allow_fallback))
+        manifest = _resolve_local_action(val, path, repo_root=repo_root)
+        if manifest is None:
+            errors.append(f"{path}: referenced local action '{val}' could not be resolved")
+            return errors
+        if manifest != path.resolve():
+            errors.extend(
+                scan_file(manifest, allow_fallback=allow_fallback, repo_root=repo_root)
+            )
         return errors
 
     # Docker action reference
@@ -145,15 +165,27 @@ def validate_uses_value(
     return errors
 
 
-def _check_step(step: Any, path: Path, allow_fallback: bool = False) -> list[str]:
+def _check_step(
+    step: Any,
+    path: Path,
+    allow_fallback: bool = False,
+    repo_root: Path | None = None,
+) -> list[str]:
     errors: list[str] = []
     if isinstance(step, dict) and "uses" in step:
-        errors.extend(validate_uses_value(step["uses"], path, allow_fallback=allow_fallback))
+        errors.extend(
+            validate_uses_value(
+                step["uses"], path, allow_fallback=allow_fallback, repo_root=repo_root
+            )
+        )
     return errors
 
 
 def check_workflow_tree(
-    data: Any, path: Path, allow_fallback: bool = False
+    data: Any,
+    path: Path,
+    allow_fallback: bool = False,
+    repo_root: Path | None = None,
 ) -> list[str]:
     """Check action and reusable workflow pin compliance in parsed YAML data.
 
@@ -174,7 +206,11 @@ def check_workflow_tree(
     top_steps = data.get("steps")
     if isinstance(top_steps, list):
         for step in top_steps:
-            errors.extend(_check_step(step, path, allow_fallback=allow_fallback))
+            errors.extend(
+                _check_step(
+                    step, path, allow_fallback=allow_fallback, repo_root=repo_root
+                )
+            )
 
     # 2. Workflow jobs: jobs.<job_id>
     jobs = data.get("jobs")
@@ -184,12 +220,26 @@ def check_workflow_tree(
                 continue
             # Reusable workflow call at job level
             if "uses" in job:
-                errors.extend(validate_uses_value(job["uses"], path, allow_fallback=allow_fallback))
+                errors.extend(
+                    validate_uses_value(
+                        job["uses"],
+                        path,
+                        allow_fallback=allow_fallback,
+                        repo_root=repo_root,
+                    )
+                )
             # Steps within job
             steps = job.get("steps")
             if isinstance(steps, list):
                 for step in steps:
-                    errors.extend(_check_step(step, path, allow_fallback=allow_fallback))
+                    errors.extend(
+                        _check_step(
+                            step,
+                            path,
+                            allow_fallback=allow_fallback,
+                            repo_root=repo_root,
+                        )
+                    )
 
     # 3. Composite action definition: runs.steps
     runs = data.get("runs")
@@ -197,12 +247,20 @@ def check_workflow_tree(
         steps = runs.get("steps")
         if isinstance(steps, list):
             for step in steps:
-                errors.extend(_check_step(step, path, allow_fallback=allow_fallback))
+                errors.extend(
+                    _check_step(
+                        step, path, allow_fallback=allow_fallback, repo_root=repo_root
+                    )
+                )
 
     return errors
 
 
-def scan_file(path: Path, allow_fallback: bool = False) -> list[str]:
+def scan_file(
+    path: Path,
+    allow_fallback: bool = False,
+    repo_root: Path | None = None,
+) -> list[str]:
     content = path.read_text(encoding="utf-8")
     if yaml is None:
         if not allow_fallback:
@@ -213,7 +271,11 @@ def scan_file(path: Path, allow_fallback: bool = False) -> list[str]:
         uses_list = _fallback_parse_uses(content)
         errors: list[str] = []
         for val in uses_list:
-            errors.extend(validate_uses_value(val, path, allow_fallback=allow_fallback))
+            errors.extend(
+                validate_uses_value(
+                    val, path, allow_fallback=allow_fallback, repo_root=repo_root
+                )
+            )
         return errors
 
     try:
@@ -223,24 +285,39 @@ def scan_file(path: Path, allow_fallback: bool = False) -> list[str]:
 
     if data is None:
         return []
-    return check_workflow_tree(data, path, allow_fallback=allow_fallback)
+    return check_workflow_tree(
+        data, path, allow_fallback=allow_fallback, repo_root=repo_root
+    )
 
 
-def scan(root: Path, allow_fallback: bool = False) -> list[str]:
+def scan(
+    root: Path,
+    allow_fallback: bool = False,
+    repo_root: Path | None = None,
+) -> list[str]:
     errors: list[str] = []
     paths: set[Path] = set()
-    if root.is_file():
-        paths.add(root)
-    elif root.is_dir():
+    root_resolved = root.resolve()
+    effective_repo_root = repo_root or _find_repo_root(root_resolved)
+
+    if root_resolved.is_file():
+        paths.add(root_resolved)
+    elif root_resolved.is_dir():
         for ext in ("*.yml", "*.yaml"):
-            paths.update(root.rglob(ext))
+            paths.update(p.resolve() for p in root_resolved.rglob(ext))
         # If scanning a workflows directory, also look for sibling actions directory
-        if root.name == "workflows" and (root.parent / "actions").is_dir():
+        if root_resolved.name == "workflows" and (root_resolved.parent / "actions").is_dir():
             for ext in ("*.yml", "*.yaml"):
-                paths.update((root.parent / "actions").rglob(ext))
+                paths.update(p.resolve() for p in (root_resolved.parent / "actions").rglob(ext))
     for path in sorted(paths):
-        errors.extend(scan_file(path, allow_fallback=allow_fallback))
-    return errors
+        errors.extend(
+            scan_file(
+                path,
+                allow_fallback=allow_fallback,
+                repo_root=effective_repo_root,
+            )
+        )
+    return sorted(set(errors))
 
 
 def main() -> int:

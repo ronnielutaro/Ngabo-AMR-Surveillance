@@ -56,6 +56,12 @@ class IsProtectedPathTests(unittest.TestCase):
     def test_package_json(self):
         self.assertTrue(collect_pr_files.is_protected_path("package.json"))
 
+    def test_pnpm_lock(self):
+        self.assertTrue(collect_pr_files.is_protected_path("pnpm-lock.yaml"))
+
+    def test_core_uv_lock(self):
+        self.assertTrue(collect_pr_files.is_protected_path("services/core/uv.lock"))
+
     def test_web_tsconfig(self):
         self.assertTrue(collect_pr_files.is_protected_path("apps/web/tsconfig.json"))
 
