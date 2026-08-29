@@ -191,7 +191,7 @@ refs/heads/main
 
 It is designed to require pull requests, `PR Quality Gate`, `CI Control Plane`, strict up-to-date status checks, resolved review threads, and blocked force pushes. It requires zero approving reviews so the solo-maintainer hackathon workflow remains operable; independent review remains a documented maintainer acceptance process.
 
-The contract pins GitHub's server-populated pull-request parameters explicitly (`require_extra_approval_for_unattributed_changes: false`, `required_reviewers: []`), and validation compares only the governed parameter subset, so GitHub echoing additional default fields cannot break apply/validate.
+The contract pins GitHub's server-populated pull-request parameters explicitly (`require_extra_approval_for_unattributed_changes: true` — the secure GitHub default requiring an extra approval for commits with no attributed author; `required_reviewers: []`), and validation compares only the governed parameter subset, so GitHub echoing additional default fields cannot break apply/validate.
 
 Ruleset activation is a staged post-merge acceptance step. A green implementation PR alone does not close Issue #88.
 

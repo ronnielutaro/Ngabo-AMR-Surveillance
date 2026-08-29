@@ -158,15 +158,16 @@ class RulesetTests(unittest.TestCase):
         self.assertEqual(manager.plan()["action"], "NONE")
 
     def test_github_default_unattributed_approval_is_pinned_and_drifts_to_update(self):
-        # The live GitHub API defaults require_extra_approval_for_unattributed_changes
-        # to true when omitted; the contract pins it to false, so an observed
-        # ruleset carrying the server default must be reported as drift (UPDATE).
+        # The contract pins require_extra_approval_for_unattributed_changes to the
+        # secure GitHub default (true). An observed ruleset carrying the weaker
+        # false value (a security-default downgrade) must be reported as drift
+        # (UPDATE) so apply converges it back.
         desired = pr_quality_ruleset.desired_ruleset()
         summary = {"id": 42, "name": pr_quality_ruleset.RULESET_NAME}
         detail = {"id": 42, **copy.deepcopy(desired)}
         detail["rules"][0]["parameters"][
             "require_extra_approval_for_unattributed_changes"
-        ] = True
+        ] = False
         runner = FakeRunner([result([summary]), result(detail)])
         manager = pr_quality_ruleset.RulesetManager("owner/repo", runner=runner)
         plan = manager.plan()
@@ -176,7 +177,10 @@ class RulesetTests(unittest.TestCase):
     def test_desired_contract_pins_github_managed_defaults(self):
         desired = pr_quality_ruleset.desired_ruleset()
         pull_params = desired["rules"][0]["parameters"]
-        self.assertFalse(pull_params["require_extra_approval_for_unattributed_changes"])
+        self.assertTrue(
+            pull_params["require_extra_approval_for_unattributed_changes"],
+            "secure GitHub default (extra approval for unattributed commits) must be pinned",
+        )
         self.assertEqual(pull_params["required_reviewers"], [])
 
     def test_teardown_rehearsal(self):
