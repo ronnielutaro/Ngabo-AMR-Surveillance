@@ -7,3 +7,5 @@ repository's active `Ngabo Required PR Quality` ruleset can be proven
 behaviorally with a harmless documentation-only pull request.
 
 **DO NOT MERGE.** The owning probe PR is closed unmerged after certification.
+
+Probe phase C: fresh-head approval-path evidence (marker bound to this head).
