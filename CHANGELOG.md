@@ -8,6 +8,7 @@ The project uses Semantic Versioning and Conventional Commits.
 
 ### Added
 
+- `docs/LEAN_CANVAS.md`, `docs/COMPETITOR_ANALYSIS.md` and `docs/VALUE_PROPOSITION_CANVAS.md` for evidence-disciplined product strategy, competitive positioning, segment-specific value propositions and post-hackathon validation priorities.
 - Product/release roadmap and release governance.
 - Clean Architecture + monorepo contract and ADR.
 - Hackathon alignment, ADK runtime, graph-first orchestration, long-running state/freshness, UI/UX, data/safety/evaluation and implementation contracts.

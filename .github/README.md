@@ -124,6 +124,22 @@ Ngabo is the agent built to automate that fragmented workflow in the background.
 
 See [`docs/BYOF_FRICTION.md`](./docs/BYOF_FRICTION.md) and [`docs/OPERATIONAL_UTILITY_EVALUATION.md`](./docs/OPERATIONAL_UTILITY_EVALUATION.md).
 
+## Product Strategy and Market Position
+
+Ngabo enters an active AMR technology landscape. WHONET, AMASS, laboratory information systems, national platforms and commercial surveillance products already support data management, analysis, reporting, alerts and parts of infection-management workflows. Ngabo does not position itself as their replacement.
+
+Its intended wedge begins after a usable signal exists:
+
+> **Turn a suspicious AMR signal into a proof-verified investigation package and one authorized, acknowledged safe-coordination action.**
+
+The current product-strategy documents are:
+
+- [`docs/LEAN_CANVAS.md`](./docs/LEAN_CANVAS.md) — problem, customer, solution, channels, sustainability, costs, metrics, advantage and validation assumptions;
+- [`docs/COMPETITOR_ANALYSIS.md`](./docs/COMPETITOR_ANALYSIS.md) — public and commercial alternatives, Uganda-specific context, qualitative practitioner pain signals, capability matrices and competitive claim guardrails;
+- [`docs/VALUE_PROPOSITION_CANVAS.md`](./docs/VALUE_PROPOSITION_CANVAS.md) — separate value propositions for the primary surveillance practitioner, institutional adopter/governor and upstream platform or implementation partner.
+
+These documents distinguish research-supported problems from unvalidated product, customer, adoption and partnership hypotheses. They do not establish clinical validation, product-market fit, institutional adoption or market superiority.
+
 ## Architecture
 
 Ngabo uses **Clean Architecture inside a monorepo**.
