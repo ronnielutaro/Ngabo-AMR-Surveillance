@@ -157,21 +157,24 @@ def canonical_contract(
     rules = _rule_map(ruleset)
     pull = rules.get("pull_request", {}).get("parameters", {})
     checks = rules.get("required_status_checks", {}).get("parameters", {})
-    # The contract covers exactly the parameters the desired payload declares.
-    # GitHub may echo additional server-populated parameters (for example
-    # `require_extra_approval_for_unattributed_changes` in pull_request), so
-    # compare only the governed subset instead of the full dict.
-    desired_rules = {rule["type"]: rule for rule in desired_ruleset(integration_id)["rules"]}
-    desired_pull = desired_rules["pull_request"]["parameters"]
-    desired_checks = desired_rules["required_status_checks"]["parameters"]
+    # Fail closed on undeclared enforcement state. The complete governed
+    # parameter dictionaries, every observed rule type, and the raw rule
+    # count are compared verbatim: unknown parameters, unknown rule types,
+    # duplicated or type-less rules must surface as drift rather than being
+    # silently discarded. GitHub no longer echoes un-pinned server defaults
+    # (the two previously-populated fields are now pinned explicitly), so no
+    # normalization is needed. Server metadata (ids, URLs, timestamps) is not
+    # part of this contract.
     return {
         "name": ruleset.get("name"),
         "target": ruleset.get("target"),
         "enforcement": ruleset.get("enforcement"),
         "bypass_actors": ruleset.get("bypass_actors", []),
         "conditions": ruleset.get("conditions"),
-        "pull_request": {key: pull.get(key) for key in desired_pull},
-        "required_status_checks": {key: checks.get(key) for key in desired_checks},
+        "pull_request": pull,
+        "required_status_checks": checks,
+        "rule_types": sorted(rules.keys()),
+        "rule_count": len(ruleset.get("rules", [])),
         "non_fast_forward": "non_fast_forward" in rules,
         "expected_check_entries": required_check_entries(integration_id),
     }

@@ -145,17 +145,72 @@ class RulesetTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "INSPECTION_FAILED"):
             manager.plan()
 
-    def test_unknown_github_populated_params_do_not_break_validation(self):
-        # GitHub may echo server-populated pull_request parameters that the
-        # desired payload never declared; validation must compare only the
-        # governed subset and still report convergence.
+    def test_unknown_pull_request_parameter_fails_closed(self):
+        # An undeclared enforcement parameter — from API evolution or an
+        # out-of-band change — must be surfaced as drift (UPDATE), never
+        # silently discarded by projection.
         desired = pr_quality_ruleset.desired_ruleset()
         summary = {"id": 42, "name": pr_quality_ruleset.RULESET_NAME}
         detail = {"id": 42, **copy.deepcopy(desired)}
-        detail["rules"][0]["parameters"]["some_future_github_field"] = "x"
+        detail["rules"][0]["parameters"]["some_future_github_field"] = True
+        runner = FakeRunner([result([summary]), result(detail)])
+        manager = pr_quality_ruleset.RulesetManager("owner/repo", runner=runner)
+        self.assertEqual(manager.plan()["action"], "UPDATE")
+
+    def test_unknown_status_check_parameter_fails_closed(self):
+        desired = pr_quality_ruleset.desired_ruleset()
+        summary = {"id": 42, "name": pr_quality_ruleset.RULESET_NAME}
+        detail = {"id": 42, **copy.deepcopy(desired)}
+        detail["rules"][1]["parameters"]["some_future_status_policy"] = True
+        runner = FakeRunner([result([summary]), result(detail)])
+        manager = pr_quality_ruleset.RulesetManager("owner/repo", runner=runner)
+        self.assertEqual(manager.plan()["action"], "UPDATE")
+
+    def test_unknown_rule_type_fails_closed(self):
+        # A live rule type that is not part of the desired contract must
+        # surface as drift; it must not be silently ignored by _rule_map.
+        desired = pr_quality_ruleset.desired_ruleset()
+        summary = {"id": 42, "name": pr_quality_ruleset.RULESET_NAME}
+        detail = {"id": 42, **copy.deepcopy(desired)}
+        detail["rules"].append(
+            {"type": "some_future_enforcement_rule", "parameters": {}}
+        )
+        runner = FakeRunner([result([summary]), result(detail)])
+        manager = pr_quality_ruleset.RulesetManager("owner/repo", runner=runner)
+        self.assertEqual(manager.plan()["action"], "UPDATE")
+
+    def test_secure_unattributed_approval_converges(self):
+        # The contract pins the secure GitHub default (true); an observed
+        # ruleset carrying exactly that value converges.
+        desired = pr_quality_ruleset.desired_ruleset()
+        summary = {"id": 42, "name": pr_quality_ruleset.RULESET_NAME}
+        detail = {"id": 42, **copy.deepcopy(desired)}
+        self.assertTrue(
+            detail["rules"][0]["parameters"][
+                "require_extra_approval_for_unattributed_changes"
+            ]
+        )
         runner = FakeRunner([result([summary]), result(detail)])
         manager = pr_quality_ruleset.RulesetManager("owner/repo", runner=runner)
         self.assertEqual(manager.plan()["action"], "NONE")
+
+    def test_required_reviewers_empty_converges(self):
+        desired = pr_quality_ruleset.desired_ruleset()
+        summary = {"id": 42, "name": pr_quality_ruleset.RULESET_NAME}
+        detail = {"id": 42, **copy.deepcopy(desired)}
+        self.assertEqual(detail["rules"][0]["parameters"]["required_reviewers"], [])
+        runner = FakeRunner([result([summary]), result(detail)])
+        manager = pr_quality_ruleset.RulesetManager("owner/repo", runner=runner)
+        self.assertEqual(manager.plan()["action"], "NONE")
+
+    def test_required_reviewers_nonempty_drifts(self):
+        desired = pr_quality_ruleset.desired_ruleset()
+        summary = {"id": 42, "name": pr_quality_ruleset.RULESET_NAME}
+        detail = {"id": 42, **copy.deepcopy(desired)}
+        detail["rules"][0]["parameters"]["required_reviewers"] = ["someone"]
+        runner = FakeRunner([result([summary]), result(detail)])
+        manager = pr_quality_ruleset.RulesetManager("owner/repo", runner=runner)
+        self.assertEqual(manager.plan()["action"], "UPDATE")
 
     def test_github_default_unattributed_approval_is_pinned_and_drifts_to_update(self):
         # The contract pins require_extra_approval_for_unattributed_changes to the
