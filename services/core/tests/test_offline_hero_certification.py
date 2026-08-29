@@ -25,6 +25,7 @@ from ngabo.application.commands.certify_offline_hero_command import (
 from ngabo.application.enums.import_outcome_disposition import ImportOutcomeDisposition
 from ngabo.application.value_objects.offline_hero_certification_result import (
     GOVERNED_HERO_COMPONENTS,
+    GOVERNED_HERO_EVENT_ID,
     GOVERNED_HERO_IMPORTED_RECORD_IDS,
     GOVERNED_HERO_RAW_DIGEST,
     GOVERNED_HERO_SCORE,
@@ -36,6 +37,7 @@ from ngabo.bootstrap.certify_hero import certify_hero, create_offline_hero_use_c
 from ngabo.domain.enums.signal_status import SignalReason, SignalStatus
 from ngabo.domain.events.investigation_priority_signal_event import (
     InvestigationPrioritySignalEvent,
+    compute_signal_event_id,
 )
 from ngabo.domain.value_objects.deterministic_finding_evidence import (
     DeterministicFindingEvidence,
@@ -646,6 +648,379 @@ class TestAdversarialAndEdgeScenarios:
                 algorithm_version=valid_res.algorithm_version,
                 event=valid_res.event,
                 event_id="evt-mismatch",
+            )
+
+    def test_event_id_tampering_fails_closed(self) -> None:
+        """InvestigationPrioritySignalEvent rejects tampered or arbitrary event IDs."""
+        use_case = create_offline_hero_use_case()
+        res = use_case.execute(
+            CertifyOfflineHeroCommand(
+                source_location=str(HERO_CSV_PATH),
+                logical_source_id="data/synthetic/canonical_hero.csv",
+            )
+        )
+        assert res.event is not None
+        valid_event = res.event
+
+        with pytest.raises(
+            ValueError, match="does not match expected deterministic event ID"
+        ):
+            InvestigationPrioritySignalEvent(
+                event_id="evt-0000000000000000",
+                event_type=valid_event.event_type,
+                contract_version=valid_event.contract_version,
+                signal_id=valid_event.signal_id,
+                source_watermark=valid_event.source_watermark,
+                facility_id=valid_event.facility_id,
+                ward=valid_event.ward,
+                organism_code=valid_event.organism_code,
+                window_start=valid_event.window_start,
+                window_end=valid_event.window_end,
+                signal_score=valid_event.signal_score,
+                policy_version=valid_event.policy_version,
+                config_version=valid_event.config_version,
+                algorithm_version=valid_event.algorithm_version,
+                supporting_finding_refs=valid_event.supporting_finding_refs,
+                supporting_isolate_refs=valid_event.supporting_isolate_refs,
+            )
+
+    @pytest.mark.parametrize(
+        "field_name,tampered_value",
+        [
+            (
+                "source_watermark",
+                "ngabo-source-v1:sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            ),
+            ("signal_score", 0.5),
+            ("facility_id", "TAMPERED-FACILITY"),
+            ("ward", "TAMPERED-WARD"),
+            ("organism_code", "eco"),
+            ("policy_version", "tampered-policy-v2"),
+            ("config_version", "tampered-config-v2"),
+            ("algorithm_version", "tampered-alg-v2"),
+            (
+                "supporting_finding_refs",
+                ("lconc-1d3ff528db1484f0", "tconc-ed312ddb0844c9ca"),
+            ),
+            ("supporting_isolate_refs", ("ISO-031", "ISO-034")),
+        ],
+    )
+    def test_event_payload_tampering_fails_closed(
+        self, field_name: str, tampered_value: Any
+    ) -> None:
+        """Event ID validation fails closed when semantic payload is tampered with."""
+        use_case = create_offline_hero_use_case()
+        res = use_case.execute(
+            CertifyOfflineHeroCommand(
+                source_location=str(HERO_CSV_PATH),
+                logical_source_id="data/synthetic/canonical_hero.csv",
+            )
+        )
+        assert res.event is not None
+        event_kwargs: dict[str, Any] = {
+            "event_id": GOVERNED_HERO_EVENT_ID,
+            "event_type": res.event.event_type,
+            "contract_version": res.event.contract_version,
+            "signal_id": res.event.signal_id,
+            "source_watermark": res.event.source_watermark,
+            "facility_id": res.event.facility_id,
+            "ward": res.event.ward,
+            "organism_code": res.event.organism_code,
+            "window_start": res.event.window_start,
+            "window_end": res.event.window_end,
+            "signal_score": res.event.signal_score,
+            "policy_version": res.event.policy_version,
+            "config_version": res.event.config_version,
+            "algorithm_version": res.event.algorithm_version,
+            "supporting_finding_refs": res.event.supporting_finding_refs,
+            "supporting_isolate_refs": res.event.supporting_isolate_refs,
+        }
+        event_kwargs[field_name] = tampered_value
+
+        with pytest.raises(
+            ValueError, match="does not match expected deterministic event ID"
+        ):
+            InvestigationPrioritySignalEvent(**event_kwargs)
+
+    def test_event_type_and_contract_tampering_fails_closed(self) -> None:
+        """InvestigationPrioritySignalEvent rejects non-governed event types and contracts."""
+        use_case = create_offline_hero_use_case()
+        res = use_case.execute(
+            CertifyOfflineHeroCommand(
+                source_location=str(HERO_CSV_PATH),
+                logical_source_id="data/synthetic/canonical_hero.csv",
+            )
+        )
+        assert res.event is not None
+        valid_event = res.event
+
+        # 1. Tampered event_type
+        with pytest.raises(
+            ValueError, match="event_type must be 'INVESTIGATION_PRIORITY_SIGNAL'"
+        ):
+            InvestigationPrioritySignalEvent(
+                event_id="evt-any",
+                event_type="OUTBREAK_CONFIRMED",
+                contract_version=valid_event.contract_version,
+                signal_id=valid_event.signal_id,
+                source_watermark=valid_event.source_watermark,
+                facility_id=valid_event.facility_id,
+                ward=valid_event.ward,
+                organism_code=valid_event.organism_code,
+                window_start=valid_event.window_start,
+                window_end=valid_event.window_end,
+                signal_score=valid_event.signal_score,
+                policy_version=valid_event.policy_version,
+                config_version=valid_event.config_version,
+                algorithm_version=valid_event.algorithm_version,
+                supporting_finding_refs=valid_event.supporting_finding_refs,
+                supporting_isolate_refs=valid_event.supporting_isolate_refs,
+            )
+
+        # 2. Tampered contract_version
+        with pytest.raises(
+            ValueError, match="contract_version must be 'ngabo-signal-event-v1'"
+        ):
+            InvestigationPrioritySignalEvent(
+                event_id="evt-any",
+                event_type=valid_event.event_type,
+                contract_version="ngabo-signal-event-v2",
+                signal_id=valid_event.signal_id,
+                source_watermark=valid_event.source_watermark,
+                facility_id=valid_event.facility_id,
+                ward=valid_event.ward,
+                organism_code=valid_event.organism_code,
+                window_start=valid_event.window_start,
+                window_end=valid_event.window_end,
+                signal_score=valid_event.signal_score,
+                policy_version=valid_event.policy_version,
+                config_version=valid_event.config_version,
+                algorithm_version=valid_event.algorithm_version,
+                supporting_finding_refs=valid_event.supporting_finding_refs,
+                supporting_isolate_refs=valid_event.supporting_isolate_refs,
+            )
+
+    def test_event_unsorted_refs_fails_closed(self) -> None:
+        """InvestigationPrioritySignalEvent requires canonical sorted order for refs."""
+        use_case = create_offline_hero_use_case()
+        res = use_case.execute(
+            CertifyOfflineHeroCommand(
+                source_location=str(HERO_CSV_PATH),
+                logical_source_id="data/synthetic/canonical_hero.csv",
+            )
+        )
+        assert res.event is not None
+        valid_event = res.event
+
+        unsorted_findings = tuple(reversed(valid_event.supporting_finding_refs))
+        with pytest.raises(
+            ValueError, match="supporting_finding_refs must be in canonical sorted order"
+        ):
+            InvestigationPrioritySignalEvent(
+                event_id=valid_event.event_id,
+                event_type=valid_event.event_type,
+                contract_version=valid_event.contract_version,
+                signal_id=valid_event.signal_id,
+                source_watermark=valid_event.source_watermark,
+                facility_id=valid_event.facility_id,
+                ward=valid_event.ward,
+                organism_code=valid_event.organism_code,
+                window_start=valid_event.window_start,
+                window_end=valid_event.window_end,
+                signal_score=valid_event.signal_score,
+                policy_version=valid_event.policy_version,
+                config_version=valid_event.config_version,
+                algorithm_version=valid_event.algorithm_version,
+                supporting_finding_refs=unsorted_findings,
+                supporting_isolate_refs=valid_event.supporting_isolate_refs,
+            )
+
+    def test_certification_event_substitution_fails_closed(self) -> None:
+        """OfflineHeroCertificationResult rejects hero signal with inconsistent event."""
+        use_case = create_offline_hero_use_case()
+        valid_res = use_case.execute(
+            CertifyOfflineHeroCommand(
+                source_location=str(HERO_CSV_PATH),
+                logical_source_id="data/synthetic/canonical_hero.csv",
+            )
+        )
+        assert valid_res.event is not None
+        sig = valid_res.signals[0]
+
+        # Compute a valid substitute event for a different facility
+        substitute_event_id = compute_signal_event_id(
+            contract_version=valid_res.event.contract_version,
+            event_type=valid_res.event.event_type,
+            signal_id=sig.signal_id,
+            source_watermark=valid_res.event.source_watermark,
+            facility_id="SYNTH-FACILITY-002",
+            ward=sig.ward,
+            organism_code=sig.organism_code,
+            window_start=sig.window_start,
+            window_end=sig.window_end,
+            signal_score=sig.signal_score,
+            precision=4,
+            policy_version=sig.policy_version,
+            config_version=sig.config_version,
+            algorithm_version=sig.algorithm_version,
+            supporting_finding_refs=sig.supporting_finding_refs,
+            supporting_isolate_refs=sig.supporting_isolate_refs,
+        )
+        substitute_event = InvestigationPrioritySignalEvent(
+            event_id=substitute_event_id,
+            event_type=valid_res.event.event_type,
+            contract_version=valid_res.event.contract_version,
+            signal_id=sig.signal_id,
+            source_watermark=valid_res.event.source_watermark,
+            facility_id="SYNTH-FACILITY-002",
+            ward=sig.ward,
+            organism_code=sig.organism_code,
+            window_start=sig.window_start,
+            window_end=sig.window_end,
+            signal_score=sig.signal_score,
+            policy_version=sig.policy_version,
+            config_version=sig.config_version,
+            algorithm_version=sig.algorithm_version,
+            supporting_finding_refs=sig.supporting_finding_refs,
+            supporting_isolate_refs=sig.supporting_isolate_refs,
+        )
+
+        with pytest.raises(
+            ValueError, match="event.facility_id must match hero_signal.facility_id"
+        ):
+            OfflineHeroCertificationResult(
+                execution_succeeded=True,
+                certified=True,
+                input_location=valid_res.input_location,
+                raw_source_digest=valid_res.raw_source_digest,
+                source_watermark=valid_res.source_watermark,
+                import_disposition=valid_res.import_disposition,
+                imported_record_count=valid_res.imported_record_count,
+                imported_record_ids=valid_res.imported_record_ids,
+                exact_duplicate_count=valid_res.exact_duplicate_count,
+                signal_count=valid_res.signal_count,
+                signals=valid_res.signals,
+                policy_version=valid_res.policy_version,
+                config_version=valid_res.config_version,
+                algorithm_version=valid_res.algorithm_version,
+                event=substitute_event,
+                event_id=substitute_event.event_id,
+                finding_evidence=valid_res.finding_evidence,
+            )
+
+    def test_missing_finding_evidence_fails_closed(self) -> None:
+        """OfflineHeroCertificationResult rejects certified=True when evidence is missing."""
+        use_case = create_offline_hero_use_case()
+        valid_res = use_case.execute(
+            CertifyOfflineHeroCommand(
+                source_location=str(HERO_CSV_PATH),
+                logical_source_id="data/synthetic/canonical_hero.csv",
+            )
+        )
+        assert valid_res.certified is True
+
+        with pytest.raises(
+            ValueError,
+            match="finding_evidence must exactly match hero_signal.to_finding_evidence()",
+        ):
+            OfflineHeroCertificationResult(
+                execution_succeeded=True,
+                certified=True,
+                input_location=valid_res.input_location,
+                raw_source_digest=valid_res.raw_source_digest,
+                source_watermark=valid_res.source_watermark,
+                import_disposition=valid_res.import_disposition,
+                imported_record_count=valid_res.imported_record_count,
+                imported_record_ids=valid_res.imported_record_ids,
+                exact_duplicate_count=valid_res.exact_duplicate_count,
+                signal_count=valid_res.signal_count,
+                signals=valid_res.signals,
+                policy_version=valid_res.policy_version,
+                config_version=valid_res.config_version,
+                algorithm_version=valid_res.algorithm_version,
+                event=valid_res.event,
+                event_id=valid_res.event_id,
+                finding_evidence=(),
+            )
+
+    @pytest.mark.parametrize(
+        "mutation_type",
+        ["finding_id", "finding_type", "policy_version", "input_refs"],
+    )
+    def test_altered_finding_evidence_fails_closed(self, mutation_type: str) -> None:
+        """OfflineHeroCertificationResult rejects certified=True when evidence is altered."""
+        use_case = create_offline_hero_use_case()
+        valid_res = use_case.execute(
+            CertifyOfflineHeroCommand(
+                source_location=str(HERO_CSV_PATH),
+                logical_source_id="data/synthetic/canonical_hero.csv",
+            )
+        )
+        assert valid_res.certified is True
+        original_evidence = valid_res.finding_evidence
+        first = original_evidence[0]
+
+        if mutation_type == "finding_id":
+            altered_first = DeterministicFindingEvidence(
+                finding_id="lconc-altered",
+                finding_type=first.finding_type,
+                policy_version=first.policy_version,
+                algorithm_version=first.algorithm_version,
+                config_version=first.config_version,
+                input_refs=first.input_refs,
+            )
+        elif mutation_type == "finding_type":
+            altered_first = DeterministicFindingEvidence(
+                finding_id=first.finding_id,
+                finding_type="PROFILE_SIMILARITY",
+                policy_version=first.policy_version,
+                algorithm_version=first.algorithm_version,
+                config_version=first.config_version,
+                input_refs=first.input_refs,
+            )
+        elif mutation_type == "policy_version":
+            altered_first = DeterministicFindingEvidence(
+                finding_id=first.finding_id,
+                finding_type=first.finding_type,
+                policy_version="altered-policy-v2",
+                algorithm_version=first.algorithm_version,
+                config_version=first.config_version,
+                input_refs=first.input_refs,
+            )
+        else:
+            altered_first = DeterministicFindingEvidence(
+                finding_id=first.finding_id,
+                finding_type=first.finding_type,
+                policy_version=first.policy_version,
+                algorithm_version=first.algorithm_version,
+                config_version=first.config_version,
+                input_refs=("ISO-099",),
+            )
+
+        altered_evidence = (altered_first,) + original_evidence[1:]
+
+        with pytest.raises(
+            ValueError,
+            match="finding_evidence must exactly match hero_signal.to_finding_evidence()",
+        ):
+            OfflineHeroCertificationResult(
+                execution_succeeded=True,
+                certified=True,
+                input_location=valid_res.input_location,
+                raw_source_digest=valid_res.raw_source_digest,
+                source_watermark=valid_res.source_watermark,
+                import_disposition=valid_res.import_disposition,
+                imported_record_count=valid_res.imported_record_count,
+                imported_record_ids=valid_res.imported_record_ids,
+                exact_duplicate_count=valid_res.exact_duplicate_count,
+                signal_count=valid_res.signal_count,
+                signals=valid_res.signals,
+                policy_version=valid_res.policy_version,
+                config_version=valid_res.config_version,
+                algorithm_version=valid_res.algorithm_version,
+                event=valid_res.event,
+                event_id=valid_res.event_id,
+                finding_evidence=altered_evidence,
             )
 
 

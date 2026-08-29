@@ -35,7 +35,7 @@ def compute_signal_event_id(
     window_start: date,
     window_end: date,
     signal_score: float,
-    precision: int,
+    precision: int = 4,
     policy_version: str,
     config_version: str,
     algorithm_version: str,
@@ -58,8 +58,8 @@ def compute_signal_event_id(
         "signal_id": signal_id,
         "signal_score": f"{signal_score:.{precision}f}",
         "source_watermark": source_watermark,
-        "supporting_finding_refs": list(supporting_finding_refs),
-        "supporting_isolate_refs": list(supporting_isolate_refs),
+        "supporting_finding_refs": sorted(supporting_finding_refs),
+        "supporting_isolate_refs": sorted(supporting_isolate_refs),
         "ward": ward,
         "window_end": window_end.isoformat(),
         "window_start": window_start.isoformat(),
@@ -100,7 +100,18 @@ class InvestigationPrioritySignalEvent:
             raise ValueError(f"event_id must start with 'evt-'; got {self.event_id!r}")
 
         _require_opaque_id(self.event_type, "event_type")
+        if self.event_type != DEFAULT_SIGNAL_EVENT_TYPE:
+            raise ValueError(
+                f"event_type must be {DEFAULT_SIGNAL_EVENT_TYPE!r}; got {self.event_type!r}"
+            )
+
         _require_opaque_id(self.contract_version, "contract_version")
+        if self.contract_version != DEFAULT_SIGNAL_EVENT_CONTRACT_VERSION:
+            raise ValueError(
+                f"contract_version must be {DEFAULT_SIGNAL_EVENT_CONTRACT_VERSION!r}; "
+                f"got {self.contract_version!r}"
+            )
+
         _require_opaque_id(self.signal_id, "signal_id")
         _require_opaque_id(self.source_watermark, "source_watermark")
         _require_opaque_id(self.facility_id, "facility_id")
@@ -126,6 +137,8 @@ class InvestigationPrioritySignalEvent:
             raise TypeError("supporting_finding_refs must be a tuple")
         if not self.supporting_finding_refs:
             raise ValueError("supporting_finding_refs cannot be empty")
+        if self.supporting_finding_refs != tuple(sorted(self.supporting_finding_refs)):
+            raise ValueError("supporting_finding_refs must be in canonical sorted order")
         for ref in self.supporting_finding_refs:
             _require_opaque_id(ref, "supporting_finding_ref")
 
@@ -133,8 +146,35 @@ class InvestigationPrioritySignalEvent:
             raise TypeError("supporting_isolate_refs must be a tuple")
         if not self.supporting_isolate_refs:
             raise ValueError("supporting_isolate_refs cannot be empty")
+        if self.supporting_isolate_refs != tuple(sorted(self.supporting_isolate_refs)):
+            raise ValueError("supporting_isolate_refs must be in canonical sorted order")
         for ref in self.supporting_isolate_refs:
             _require_opaque_id(ref, "supporting_isolate_ref")
+
+        # Self-verifying event identity: recompute expected ID and fail closed if inconsistent
+        expected_event_id = compute_signal_event_id(
+            contract_version=self.contract_version,
+            event_type=self.event_type,
+            signal_id=self.signal_id,
+            source_watermark=self.source_watermark,
+            facility_id=self.facility_id,
+            ward=self.ward,
+            organism_code=self.organism_code,
+            window_start=self.window_start,
+            window_end=self.window_end,
+            signal_score=self.signal_score,
+            precision=4,
+            policy_version=self.policy_version,
+            config_version=self.config_version,
+            algorithm_version=self.algorithm_version,
+            supporting_finding_refs=self.supporting_finding_refs,
+            supporting_isolate_refs=self.supporting_isolate_refs,
+        )
+        if self.event_id != expected_event_id:
+            raise ValueError(
+                f"event_id ({self.event_id}) does not match expected deterministic "
+                f"event ID ({expected_event_id}) for semantic payload"
+            )
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize event to a canonical dictionary."""
@@ -173,6 +213,19 @@ def create_investigation_priority_signal_event(
         raise TypeError("signal must be an exact InvestigationPrioritySignal instance")
     if not isinstance(source_watermark, str) or not source_watermark.strip():
         raise ValueError("source_watermark must be a non-empty string")
+    if event_type != DEFAULT_SIGNAL_EVENT_TYPE:
+        raise ValueError(
+            f"event_type must be {DEFAULT_SIGNAL_EVENT_TYPE!r}; got {event_type!r}"
+        )
+    if contract_version != DEFAULT_SIGNAL_EVENT_CONTRACT_VERSION:
+        raise ValueError(
+            f"contract_version must be {DEFAULT_SIGNAL_EVENT_CONTRACT_VERSION!r}; "
+            f"got {contract_version!r}"
+        )
+
+    # Ensure canonical sorted order of references for event identity
+    sorted_findings = tuple(sorted(signal.supporting_finding_refs))
+    sorted_isolates = tuple(sorted(signal.supporting_isolate_refs))
 
     event_id = compute_signal_event_id(
         contract_version=contract_version,
@@ -189,8 +242,8 @@ def create_investigation_priority_signal_event(
         policy_version=signal.policy_version,
         config_version=signal.config_version,
         algorithm_version=signal.algorithm_version,
-        supporting_finding_refs=signal.supporting_finding_refs,
-        supporting_isolate_refs=signal.supporting_isolate_refs,
+        supporting_finding_refs=sorted_findings,
+        supporting_isolate_refs=sorted_isolates,
     )
 
     return InvestigationPrioritySignalEvent(
@@ -208,6 +261,6 @@ def create_investigation_priority_signal_event(
         policy_version=signal.policy_version,
         config_version=signal.config_version,
         algorithm_version=signal.algorithm_version,
-        supporting_finding_refs=signal.supporting_finding_refs,
-        supporting_isolate_refs=signal.supporting_isolate_refs,
+        supporting_finding_refs=sorted_findings,
+        supporting_isolate_refs=sorted_isolates,
     )

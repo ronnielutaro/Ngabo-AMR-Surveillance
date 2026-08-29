@@ -24,6 +24,7 @@ from ngabo.application.use_cases.orchestrate_canonical_import import (
 )
 from ngabo.application.value_objects.offline_hero_certification_result import (
     GOVERNED_HERO_COMPONENTS,
+    GOVERNED_HERO_EVENT_ID,
     GOVERNED_HERO_IMPORTED_RECORD_IDS,
     GOVERNED_HERO_RAW_DIGEST,
     GOVERNED_HERO_SCORE,
@@ -169,6 +170,8 @@ class CertifyOfflineHero:
             and len(records) == 8
             and record_ids == GOVERNED_HERO_IMPORTED_RECORD_IDS
             and event is not None
+            and event.event_id == GOVERNED_HERO_EVENT_ID
+            and finding_evidence == signals[0].to_finding_evidence()
             and import_res.disposition in (
                 ImportOutcomeDisposition.FIRST_IMPORT,
                 ImportOutcomeDisposition.EXACT_REPLAY,

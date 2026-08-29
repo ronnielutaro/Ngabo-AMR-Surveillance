@@ -15,6 +15,7 @@ from ngabo.application.enums.import_outcome_disposition import ImportOutcomeDisp
 from ngabo.domain.enums.signal_status import SignalReason, SignalStatus
 from ngabo.domain.events.investigation_priority_signal_event import (
     DEFAULT_SIGNAL_EVENT_CONTRACT_VERSION,
+    DEFAULT_SIGNAL_EVENT_TYPE,
     InvestigationPrioritySignalEvent,
 )
 from ngabo.domain.value_objects.deterministic_finding_evidence import (
@@ -25,6 +26,9 @@ from ngabo.domain.value_objects.investigation_priority_signal import (
 )
 
 GOVERNED_HERO_SIGNAL_ID = "sig-c4180061263e7207"
+GOVERNED_HERO_EVENT_ID = "evt-a44635c546dfc667"
+GOVERNED_HERO_EVENT_TYPE = DEFAULT_SIGNAL_EVENT_TYPE
+GOVERNED_HERO_EVENT_CONTRACT = DEFAULT_SIGNAL_EVENT_CONTRACT_VERSION
 GOVERNED_HERO_SCORE = 0.9375
 GOVERNED_HERO_RAW_DIGEST = (
     "sha256:6b6bbc9a8d1f0e44419aee4ed4bdd073d965bab7507961307dcd051b4dae926b"
@@ -111,24 +115,80 @@ class OfflineHeroCertificationResult:
         if not self.execution_succeeded and self.certified:
             raise ValueError("certified cannot be True when execution_succeeded is False")
 
+        if self.event is not None and self.event_id != self.event.event_id:
+            raise ValueError(
+                f"event_id ({self.event_id}) must match event.event_id ({self.event.event_id})"
+            )
+
         if self.certified:
             if not self.execution_succeeded:
                 raise ValueError("certified requires execution_succeeded=True")
             if self.errors:
                 raise ValueError("certified requires errors to be empty")
-            if not self.verify_hero_expectations():
-                raise ValueError("certified requires all canonical hero expectations to pass")
+            if self.signal_count != 1 or len(self.signals) != 1 or self.hero_signal is None:
+                raise ValueError("certified requires exactly one hero signal")
+            if self.event is None:
+                raise ValueError("certified requires a non-null event")
 
-        if self.event is not None:
-            if self.event_id != self.event.event_id:
-                raise ValueError(
-                    f"event_id ({self.event_id}) must match event.event_id ({self.event.event_id})"
-                )
-            if self.signals and self.event.signal_id != self.signals[0].signal_id:
+            sig = self.hero_signal
+            if self.event.signal_id != sig.signal_id:
                 raise ValueError(
                     f"event.signal_id ({self.event.signal_id}) must match "
-                    f"signal.signal_id ({self.signals[0].signal_id})"
+                    f"hero_signal.signal_id ({sig.signal_id})"
                 )
+            if self.event.source_watermark != self.source_watermark:
+                raise ValueError(
+                    f"event.source_watermark ({self.event.source_watermark}) must match "
+                    f"source_watermark ({self.source_watermark})"
+                )
+            if self.event.facility_id != sig.facility_id:
+                raise ValueError("event.facility_id must match hero_signal.facility_id")
+            if self.event.ward != sig.ward:
+                raise ValueError("event.ward must match hero_signal.ward")
+            if self.event.organism_code != sig.organism_code:
+                raise ValueError("event.organism_code must match hero_signal.organism_code")
+            if self.event.window_start != sig.window_start:
+                raise ValueError("event.window_start must match hero_signal.window_start")
+            if self.event.window_end != sig.window_end:
+                raise ValueError("event.window_end must match hero_signal.window_end")
+            if self.event.signal_score != sig.signal_score:
+                raise ValueError("event.signal_score must match hero_signal.signal_score")
+            if self.event.policy_version != sig.policy_version:
+                raise ValueError("event.policy_version must match hero_signal.policy_version")
+            if self.event.config_version != sig.config_version:
+                raise ValueError("event.config_version must match hero_signal.config_version")
+            if self.event.algorithm_version != sig.algorithm_version:
+                raise ValueError("event.algorithm_version must match hero_signal.algorithm_version")
+            if self.event.supporting_finding_refs != sig.supporting_finding_refs:
+                raise ValueError(
+                    "event.supporting_finding_refs must match hero_signal.supporting_finding_refs"
+                )
+            if self.event.supporting_isolate_refs != sig.supporting_isolate_refs:
+                raise ValueError(
+                    "event.supporting_isolate_refs must match hero_signal.supporting_isolate_refs"
+                )
+            if self.event.contract_version != self.event_contract_version:
+                raise ValueError(
+                    "event.contract_version must match result.event_contract_version"
+                )
+
+            # Finding evidence manifest consistency
+            expected_evidence = sig.to_finding_evidence()
+            if self.finding_evidence != expected_evidence:
+                raise ValueError(
+                    "finding_evidence must exactly match hero_signal.to_finding_evidence()"
+                )
+            if not self.finding_evidence:
+                raise ValueError("certified requires non-empty finding_evidence manifest")
+            evidence_finding_ids = tuple(f.finding_id for f in self.finding_evidence)
+            if evidence_finding_ids != sig.supporting_finding_refs:
+                raise ValueError(
+                    f"finding_evidence IDs {evidence_finding_ids!r} must match "
+                    f"supporting_finding_refs {sig.supporting_finding_refs!r}"
+                )
+
+            if not self.verify_hero_expectations():
+                raise ValueError("certified requires all canonical hero expectations to pass")
 
     @property
     def hero_signal(self) -> InvestigationPrioritySignal | None:
@@ -191,13 +251,58 @@ class OfflineHeroCertificationResult:
             return False
         if self.imported_record_ids != GOVERNED_HERO_IMPORTED_RECORD_IDS:
             return False
-        if self.event is None or not self.event.event_id.startswith("evt-"):
-            return False
         if self.import_disposition not in (
             ImportOutcomeDisposition.FIRST_IMPORT,
             ImportOutcomeDisposition.EXACT_REPLAY,
         ):
             return False
+
+        # Full event contract and semantic agreement verification
+        if self.event is None:
+            return False
+        if self.event_id != self.event.event_id:
+            return False
+        if self.event.event_id != GOVERNED_HERO_EVENT_ID:
+            return False
+        if self.event.event_type != GOVERNED_HERO_EVENT_TYPE:
+            return False
+        if self.event.contract_version != GOVERNED_HERO_EVENT_CONTRACT:
+            return False
+        if self.event.signal_id != sig.signal_id:
+            return False
+        if self.event.source_watermark != self.source_watermark:
+            return False
+        if self.event.facility_id != sig.facility_id:
+            return False
+        if self.event.ward != sig.ward:
+            return False
+        if self.event.organism_code != sig.organism_code:
+            return False
+        if self.event.window_start != sig.window_start:
+            return False
+        if self.event.window_end != sig.window_end:
+            return False
+        if self.event.signal_score != sig.signal_score:
+            return False
+        if self.event.policy_version != sig.policy_version:
+            return False
+        if self.event.config_version != sig.config_version:
+            return False
+        if self.event.algorithm_version != sig.algorithm_version:
+            return False
+        if self.event.supporting_finding_refs != sig.supporting_finding_refs:
+            return False
+        if self.event.supporting_isolate_refs != sig.supporting_isolate_refs:
+            return False
+
+        # Finding evidence manifest verification
+        if not self.finding_evidence:
+            return False
+        if self.finding_evidence != sig.to_finding_evidence():
+            return False
+        if tuple(f.finding_id for f in self.finding_evidence) != sig.supporting_finding_refs:
+            return False
+
         if (
             self.model_required
             or self.network_required
