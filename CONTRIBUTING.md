@@ -136,7 +136,7 @@ Before merge:
 
 PRs into `develop` or `main` run the repository-owned quality contract described in `docs/CI_QUALITY_GATES.md`.
 
-The stable required result is `PR Quality Gate`. It always runs; path classification may skip an expensive core/web/infra lane only after the workflow has started. Shared CI/toolchain changes run the cross-cutting lanes, while docs-only changes still produce `CI Policy`, `Dependency Security`, and the final gate.
+The stable required result is `PR Quality Gate`. It always runs; path classification may skip an expensive core/web/infra lane only after the workflow has started. Lockfile-only changes (`pnpm-lock.yaml`) trigger Web Quality. Unknown non-documentation paths fail closed to full applicable validation. Shared CI/toolchain changes run the cross-cutting lanes, while docs-only changes still produce `CI Policy`, `Dependency Review`, `Dependency Security`, and the final gate.
 
 Use the same local contracts before review:
 
@@ -156,7 +156,7 @@ pnpm ci:test
 pnpm ci:pins
 ```
 
-CI dependency installs are frozen. Caches are performance aids only and never replace lockfile or validation checks. `Dependency Security` runs the frozen uv audit and a high-severity pnpm audit. Native GitHub Dependency Review is not treated as passing while the repository Dependency Graph remains disabled; see `docs/CI_QUALITY_GATES.md`.
+CI dependency installs are frozen. Caches are performance aids only and never replace lockfile or validation checks. Every PR runs dual dependency security validation: pinned native GitHub `Dependency Review` (`actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294`) and package-manager `Dependency Security` (frozen uv audit and high-severity pnpm audit); see `docs/CI_QUALITY_GATES.md`.
 
 Changes to CI control-plane files are separately inspected by `CI Control Plane`. That metadata-only workflow never checks out PR-head code. An owner-authored protected change requires an explicit approval marker bound to the exact current PR head SHA:
 

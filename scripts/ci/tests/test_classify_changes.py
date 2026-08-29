@@ -52,6 +52,61 @@ class ClassificationTests(unittest.TestCase):
         self.assertTrue(result.web_required)
         self.assertTrue(result.infra_required)
         self.assertTrue(result.ci_control_plane_changed)
+        self.assertTrue(result.conservative_fallback)
+
+    def test_pnpm_lock_only_requires_web_and_dependency(self):
+        result = classify_changes.classify(["pnpm-lock.yaml"])
+        self.assertTrue(result.web_required)
+        self.assertTrue(result.dependency_changed)
+        self.assertFalse(result.core_required)
+        self.assertFalse(result.infra_required)
+        self.assertFalse(result.docs_only)
+        self.assertFalse(result.conservative_fallback)
+
+    def test_apps_web_package_json_requires_web_and_dependency(self):
+        result = classify_changes.classify(["apps/web/package.json"])
+        self.assertTrue(result.web_required)
+        self.assertTrue(result.dependency_changed)
+        self.assertFalse(result.core_required)
+        self.assertFalse(result.infra_required)
+        self.assertFalse(result.docs_only)
+
+    def test_pnpm_lock_and_docs_requires_web_and_is_not_docs_only(self):
+        result = classify_changes.classify(["pnpm-lock.yaml", "docs/CI_QUALITY_GATES.md"])
+        self.assertTrue(result.web_required)
+        self.assertTrue(result.dependency_changed)
+        self.assertFalse(result.docs_only)
+        self.assertFalse(result.conservative_fallback)
+
+    def test_unknown_dockerfile_fails_closed(self):
+        result = classify_changes.classify(["Dockerfile"])
+        self.assertTrue(result.core_required)
+        self.assertTrue(result.web_required)
+        self.assertTrue(result.infra_required)
+        self.assertTrue(result.shared_required)
+        self.assertFalse(result.docs_only)
+        self.assertTrue(result.conservative_fallback)
+
+    def test_unknown_new_root_config_fails_closed(self):
+        result = classify_changes.classify(["new-root-config.toml"])
+        self.assertTrue(result.core_required)
+        self.assertTrue(result.web_required)
+        self.assertTrue(result.infra_required)
+        self.assertTrue(result.conservative_fallback)
+
+    def test_unknown_github_dependabot_fails_closed(self):
+        result = classify_changes.classify([".github/dependabot.yml"])
+        self.assertTrue(result.core_required)
+        self.assertTrue(result.web_required)
+        self.assertTrue(result.infra_required)
+        self.assertTrue(result.conservative_fallback)
+
+    def test_unknown_nested_config_fails_closed(self):
+        result = classify_changes.classify(["unknown/path/config.xyz"])
+        self.assertTrue(result.core_required)
+        self.assertTrue(result.web_required)
+        self.assertTrue(result.infra_required)
+        self.assertTrue(result.conservative_fallback)
 
 
 if __name__ == "__main__":

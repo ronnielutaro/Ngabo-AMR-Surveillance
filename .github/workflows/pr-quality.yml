@@ -74,6 +74,23 @@ jobs:
           python -m unittest discover -s infra/github/tests -p 'test_*.py'
           python scripts/ci/check_workflow_pins.py .github/workflows
 
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Review dependency changes
+        # actions/dependency-review-action v5.0.0
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294
+        with:
+          fail-on-severity: high
+
   dependency-security:
     name: Dependency Security
     runs-on: ubuntu-24.04
@@ -365,6 +382,7 @@ jobs:
     needs:
       - changed-paths
       - policy
+      - dependency-review
       - dependency-security
       - core
       - web
@@ -374,6 +392,7 @@ jobs:
     env:
       CHANGED_RESULT: ${{ needs.changed-paths.result }}
       POLICY_RESULT: ${{ needs.policy.result }}
+      DEPENDENCY_REVIEW_RESULT: ${{ needs.dependency-review.result }}
       SECURITY_RESULT: ${{ needs.dependency-security.result }}
       CORE_REQUIRED: ${{ needs.changed-paths.outputs.core_required }}
       WEB_REQUIRED: ${{ needs.changed-paths.outputs.web_required }}
@@ -402,6 +421,7 @@ jobs:
           status=0
           require_success "Changed Paths" "${CHANGED_RESULT}" || status=1
           require_success "CI Policy" "${POLICY_RESULT}" || status=1
+          require_success "Dependency Review" "${DEPENDENCY_REVIEW_RESULT}" || status=1
           require_success "Dependency Security" "${SECURITY_RESULT}" || status=1
           require_lane "Core Quality" "${CORE_REQUIRED}" "${CORE_RESULT}" || status=1
           require_lane "Web Quality" "${WEB_REQUIRED}" "${WEB_RESULT}" || status=1
@@ -413,6 +433,7 @@ jobs:
             echo "| --- | --- | --- |"
             echo "| Changed Paths | yes | ${CHANGED_RESULT} |"
             echo "| CI Policy | yes | ${POLICY_RESULT} |"
+            echo "| Dependency Review | yes | ${DEPENDENCY_REVIEW_RESULT} |"
             echo "| Dependency Security | yes | ${SECURITY_RESULT} |"
             echo "| Core Quality | ${CORE_REQUIRED:-unknown} | ${CORE_RESULT} |"
             echo "| Web Quality | ${WEB_REQUIRED:-unknown} | ${WEB_RESULT} |"

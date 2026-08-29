@@ -10,13 +10,14 @@ import argparse
 import json
 import os
 import subprocess
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Callable, Sequence
 
 RULESET_NAME = "Ngabo Required PR Quality"
 TARGET_BRANCHES = ("refs/heads/develop", "refs/heads/main")
 REQUIRED_CHECKS = ("PR Quality Gate", "CI Control Plane")
 API_VERSION = "2026-03-10"
+GITHUB_ACTIONS_INTEGRATION_ID = 15368
 
 
 @dataclass(frozen=True)
@@ -46,7 +47,9 @@ def run_gh(args: Sequence[str], input_text: str | None = None) -> CommandResult:
     return CommandResult(proc.returncode, proc.stdout, proc.stderr)
 
 
-def required_check_entries(integration_id: int | None) -> list[dict[str, object]]:
+def required_check_entries(
+    integration_id: int | None = GITHUB_ACTIONS_INTEGRATION_ID,
+) -> list[dict[str, object]]:
     entries: list[dict[str, object]] = []
     for context in REQUIRED_CHECKS:
         item: dict[str, object] = {"context": context}
@@ -56,7 +59,9 @@ def required_check_entries(integration_id: int | None) -> list[dict[str, object]
     return entries
 
 
-def desired_ruleset(integration_id: int | None = None) -> dict[str, object]:
+def desired_ruleset(
+    integration_id: int | None = GITHUB_ACTIONS_INTEGRATION_ID,
+) -> dict[str, object]:
     return {
         "name": RULESET_NAME,
         "target": "branch",
@@ -72,7 +77,7 @@ def desired_ruleset(integration_id: int | None = None) -> dict[str, object]:
             {
                 "type": "pull_request",
                 "parameters": {
-                    "allowed_merge_methods": ["merge", "squash", "rebase"],
+                    "allowed_merge_methods": ["merge"],
                     "dismiss_stale_reviews_on_push": False,
                     "require_code_owner_review": False,
                     "require_last_push_approval": False,
@@ -93,6 +98,42 @@ def desired_ruleset(integration_id: int | None = None) -> dict[str, object]:
     }
 
 
+def verify_check_run_integration(
+    repo: str,
+    commit_sha: str,
+    expected_context: str = "PR Quality Gate",
+    expected_app_slug: str = "github-actions",
+    expected_app_id: int = GITHUB_ACTIONS_INTEGRATION_ID,
+    runner: Runner = run_gh,
+) -> int:
+    result = runner([f"repos/{repo}/commits/{commit_sha}/check-runs"])
+    if result.returncode != 0:
+        raise RuntimeError(
+            "INSPECTION_FAILED: check-runs query failed: "
+            + (result.stderr.strip() or result.stdout.strip())
+        )
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("INSPECTION_FAILED: invalid check-runs JSON") from exc
+
+    check_runs = data.get("check_runs", [])
+    for check in check_runs:
+        if check.get("name") == expected_context:
+            app = check.get("app") or {}
+            slug = app.get("slug")
+            app_id = app.get("id")
+            if slug == expected_app_slug and app_id == expected_app_id:
+                return int(app_id)
+            raise RuntimeError(
+                f"CHECK_INTEGRATION_MISMATCH: expected app {expected_app_slug}:{expected_app_id}, "
+                f"observed {slug}:{app_id}"
+            )
+    raise RuntimeError(
+        f"CHECK_RUN_NOT_FOUND: no check run named {expected_context!r} found on commit {commit_sha}"
+    )
+
+
 def _rule_map(ruleset: dict[str, object]) -> dict[str, dict[str, object]]:
     result: dict[str, dict[str, object]] = {}
     for raw in ruleset.get("rules", []):
@@ -103,7 +144,7 @@ def _rule_map(ruleset: dict[str, object]) -> dict[str, dict[str, object]]:
 
 def canonical_contract(
     ruleset: dict[str, object],
-    integration_id: int | None = None,
+    integration_id: int | None = GITHUB_ACTIONS_INTEGRATION_ID,
 ) -> dict[str, object]:
     rules = _rule_map(ruleset)
     pull = rules.get("pull_request", {}).get("parameters", {})
@@ -125,7 +166,7 @@ class RulesetManager:
     def __init__(
         self,
         repo: str,
-        integration_id: int | None = None,
+        integration_id: int | None = GITHUB_ACTIONS_INTEGRATION_ID,
         runner: Runner = run_gh,
     ) -> None:
         self.repo = repo
@@ -243,8 +284,8 @@ class RulesetManager:
         }
 
 
-def _integration_id(value: str | None) -> int | None:
-    return int(value) if value else None
+def _integration_id(value: str | None) -> int:
+    return int(value) if value else GITHUB_ACTIONS_INTEGRATION_ID
 
 
 def main() -> int:

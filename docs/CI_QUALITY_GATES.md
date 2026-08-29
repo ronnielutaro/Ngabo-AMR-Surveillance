@@ -18,10 +18,12 @@ CI does **not** prove deployed behavior and receives no GCP credentials, OIDC pe
 
 - `services/core/**` and `data/**` require the core lane.
 - `apps/web/**` requires the web lane.
+- `pnpm-lock.yaml`-only changes require the web lane (`web_required = true` and `dependency_changed = true`) because the root pnpm lockfile governs web package installations.
 - `infra/gcp/**` requires the infrastructure regression lane.
 - `.github/workflows/**`, `scripts/ci/**`, `infra/github/**`, and shared repository/toolchain configuration are cross-cutting and require all relevant lanes.
-- documentation-only changes may skip core/web/infra, but `CI Policy`, `Dependency Security`, and `PR Quality Gate` still produce real checks.
-- an empty/unclassifiable diff fails safe by requiring every lane.
+- documentation-only changes may skip core/web/infra, but `CI Policy`, `Dependency Review`, `Dependency Security`, and `PR Quality Gate` still produce real checks.
+- unknown non-documentation paths (such as `Dockerfile`, `new-root-config.toml`, `.github/dependabot.yml`, or unrecognized configuration) fail closed by conservatively requiring all executable lanes (`core`, `web`, `infra`, and `shared`), setting `conservative_fallback = true`.
+- an empty diff fails safe by requiring every lane.
 
 The workflow itself never uses `paths:` or `paths-ignore:` to disappear a required check.
 
@@ -40,7 +42,9 @@ uv run pytest
 uv build
 ```
 
-`uv lock --check` and `uv sync --frozen` prevent manifest/lock drift. The architecture checker enforces the frozen Clean Architecture dependency rule from `docs/CLEAN_ARCHITECTURE.md`: domain cannot depend on application/interfaces/infrastructure/bootstrap or framework/cloud/network SDKs; application cannot depend on interfaces/infrastructure/bootstrap or those vendor SDKs.
+`uv lock --check` and `uv sync --frozen` prevent manifest/lock drift. The architecture checker (`scripts/ci/check_architecture.py`) enforces the Clean Architecture dependency rule from `docs/CLEAN_ARCHITECTURE.md`. It resolves both absolute and relative `ImportFrom` statements (including `node.level`, `node.module`, aliases, and package resolution via `importlib.util.resolve_name`) into their effective targets:
+- `domain` cannot depend on `application`, `interfaces`, `infrastructure`, `bootstrap`, or vendor SDKs (rejecting absolute imports such as `from ngabo import infrastructure` as well as relative imports such as `from ..infrastructure import repository` and `from .. import infrastructure`).
+- `application` cannot depend on `interfaces`, `infrastructure`, `bootstrap`, or vendor SDKs.
 
 ## Web lane
 
@@ -70,20 +74,26 @@ uv run pytest ../../infra/gcp/tests
 
 Any changed `infra/gcp/*.py` file is additionally passed to Ruff. Normal PR CI never runs `gcloud`, `infra:apply`, `identity:apply`, or any cloud mutation.
 
-## Dependency security
+## Dependency security and native Dependency Review
 
-Every PR runs the always-blocking `Dependency Security` job:
+Every PR runs dual defense-in-depth dependency validation:
 
-```bash
-cd services/core
-uv --preview audit --frozen
-cd ../..
-pnpm audit --audit-level=high
-```
+1. **Native GitHub Dependency Review**:
+   - Job: `Dependency Review`
+   - Action: `actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294` (v5.0.0 pinned to full 40-hex commit SHA)
+   - Configuration: `fail-on-severity: high`
+   - Investigation diagnosis: The initial unsupported result (`Dependency review is not supported on this repository`) was resolved by enabling repository `vulnerability-alerts` on this public repository, which opened the REST API `dependency-graph/compare` and SBOM export endpoints.
+2. **Package-Manager Audit Defense-in-Depth**:
+   - Job: `Dependency Security`
+   - Commands:
+     ```bash
+     cd services/core
+     uv --preview audit --frozen
+     cd ../..
+     pnpm audit --audit-level=high
+     ```
 
-The Python audit fails on any vulnerability reported by uv, which is stricter than the Issue #88 high-severity floor. The pnpm audit fails on high/critical findings. Audit execution failures fail closed.
-
-A first live #88 run also attempted GitHub's native `actions/dependency-review-action`, but GitHub returned `Dependency review is not supported on this repository` because the repository Dependency Graph is currently disabled. The connector available to this implementation has no repository security-analysis settings mutation. #88 therefore does not disguise that platform setting as a passing check: package-manager audits are the blocking dependency-security contract until the Dependency Graph is enabled and native Dependency Review can be added honestly.
+The Python audit fails on any vulnerability reported by uv, which is stricter than the Issue #88 high-severity floor. The pnpm audit fails on high/critical findings. Both jobs are strictly required in the final `PR Quality Gate` aggregator.
 
 ## Action pinning and caches
 
