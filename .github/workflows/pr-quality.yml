@@ -35,16 +35,17 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Compute changed files
+      - name: Compute changed files (rename-aware)
         shell: bash
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          git diff --name-only "${BASE_SHA}" "${HEAD_SHA}" > changed-files.txt
-          echo "Changed files:"
-          cat changed-files.txt
+          python3 scripts/ci/collect_changed_paths.py \
+            --base-sha "${BASE_SHA}" \
+            --head-sha "${HEAD_SHA}" \
+            --output changed-files.txt
 
       - name: Classify change scope
         id: classify

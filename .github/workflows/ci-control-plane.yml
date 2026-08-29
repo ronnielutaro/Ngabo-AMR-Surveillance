@@ -38,7 +38,8 @@ jobs:
           set -euo pipefail
           gh api --paginate \
             "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files?per_page=100" \
-            --jq '.[].filename' > "${RUNNER_TEMP}/changed-files.txt"
+            --jq '.[] | .filename, (.previous_filename // empty)' \
+            | sort -u > "${RUNNER_TEMP}/changed-files.txt"
 
           is_protected_path() {
             case "$1" in

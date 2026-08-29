@@ -1,6 +1,6 @@
 # Ngabo PR Quality Gates
 
-**Status:** Issue #88 implementation contract  
+**Status:** Issue #88 — Cloud Foundation 1A.4: Enforce monorepo PR quality gates in GitHub Actions  
 **Scope:** deterministic pull-request validation only  
 **Cloud authority:** none
 
@@ -13,6 +13,22 @@ After staged post-merge activation, the repository ruleset also requires `CI Con
 CI does **not** prove deployed behavior and receives no GCP credentials, OIDC permission, service-account identity, Secret Manager access, or deployment authority.
 
 ## Change classification
+
+### Rename-aware changed-path collection
+
+`scripts/ci/collect_changed_paths.py` runs `git diff --name-status -z --find-renames` and parses the NUL-separated output to capture **both** source and destination for renames and copies. This prevents a rename such as `services/core/ngabo/domain/foo.py → docs/foo.py` from bypassing the core lane.
+
+Required semantics per status letter:
+
+| Status | Paths emitted |
+|--------|---------------|
+| M, A, D, T | single path |
+| R (rename) | old path + new path |
+| C (copy) | old path + new path |
+
+Filenames with spaces are handled safely via NUL-delimited parsing.
+
+### Classification rules
 
 `scripts/ci/classify_changes.py` owns path classification.
 
@@ -105,6 +121,18 @@ Caches may contain package-manager download/store data only. Frozen installs and
 
 `.github/workflows/ci-control-plane.yml` uses `pull_request_target` **only for GitHub metadata inspection**. It never checks out or executes PR-head code.
 
+### Rename-aware file enumeration
+
+The control-plane workflow extracts **both** `filename` and `previous_filename` from the PR files API for each file object. This prevents a rename such as `.github/workflows/wif-auth-proof.yml → docs/wif-auth-proof.yml` from evading protected-path detection.
+
+The `scripts/ci/collect_pr_files.py` utility provides testable `extract_all_paths()` and `classify_pr_files()` functions with offline unit tests covering:
+- protected source → unprotected destination
+- unprotected source → protected destination
+- protected → protected rename
+- ordinary unprotected modification
+
+### Protected paths
+
 Protected control-plane paths include workflows, `scripts/ci/**`, `infra/github/**`, package/toolchain manifests, and web lint/type/test/build configuration. A protected change must be authored by the repository owner and the PR body must contain an approval bound to the exact current head SHA:
 
 ```text
@@ -161,3 +189,43 @@ refs/heads/main
 It is designed to require pull requests, `PR Quality Gate`, `CI Control Plane`, strict up-to-date status checks, resolved review threads, and blocked force pushes. It requires zero approving reviews so the solo-maintainer hackathon workflow remains operable; independent review remains a documented maintainer acceptance process.
 
 Ruleset activation is a staged post-merge acceptance step. A green implementation PR alone does not close Issue #88.
+
+## Machine-readable evidence
+
+`infra/github/ci_quality_evidence.py` generates `ci-quality-evidence.json` with strict PR/run attribution validation. The output separates:
+
+- **`observed`**: values fetched from the GitHub API (PR head SHA, run ID, run conclusion, job conclusions, duration)
+- **`contract`**: repository policy assertions verified by tests (classifier contracts, architecture checker, merge governance, `privacy_review_status = EXTERNAL_REVIEW_REQUIRED`)
+- **`historical_negative_proofs`**: explicit run IDs/descriptions for bypass proofs (architecture import bypass, high-severity dependency, rename bypass)
+
+Before emitting evidence, the generator validates:
+- PR exists and number matches
+- Run ID matches, name is `PR Quality`, event is `pull_request`
+- Run status is `completed` with conclusion `success`
+- Run head SHA matches PR head SHA
+- Run is associated with the requested PR
+- All required jobs (`Changed Paths`, `CI Policy`, `Dependency Review`, `Dependency Security`, `PR Quality Gate`) completed successfully
+- Optional lanes (`Core Quality`, `Web Quality`, `Infrastructure Regression`) are `success` or `skipped`
+
+Fails closed with `EVIDENCE_VALIDATION_FAILED:` on any mismatch.
+
+## Post-merge acceptance procedure
+
+The correct staged acceptance after merge must include enforcement proof:
+
+1. Merge PR into develop with expected-head protection
+2. Synchronize develop
+3. Verify both workflows exist on the default branch
+4. Apply `Ngabo Required PR Quality` ruleset
+5. Validate exact ruleset state
+6. Create a temporary harmless probe branch + PR into develop
+7. Verify GitHub reports both required checks: `PR Quality Gate` and `CI Control Plane`
+8. Verify the PR is not merge-eligible while required checks are pending/failing
+9. Verify a normal harmless/docs-only PR receives real success for both required checks
+10. Perform a bounded protected-control-plane metadata proof
+11. Verify required checks originate from GitHub Actions integration ID 15368
+12. Close probe PR without merging
+13. Inspect active ruleset again
+14. Only then update Issue #88 acceptance criteria and close
+
+Issue #88 must not be closed merely because the ruleset API returns expected JSON. Enforcement behavior — not configuration-only proof — is required.
