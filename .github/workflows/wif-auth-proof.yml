@@ -2,6 +2,10 @@ name: WIF Auth Proof
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - feature/cloud-1a-3-keyless-iam
+      - develop
 
 permissions:
   contents: read
