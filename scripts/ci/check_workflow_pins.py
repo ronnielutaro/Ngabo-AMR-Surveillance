@@ -53,8 +53,8 @@ def _fallback_parse_uses(content: str) -> list[str]:
             i += 1
             continue
 
-        # Single-line mapping key 'uses: action@ref' or '- uses: action@ref' at start of line
-        m = re.match(r"""^\s*(?:-\s*)?uses\s*:\s*(['"]?)([^'"\n#]+)\1""", line_raw, re.IGNORECASE)
+        # Single-line mapping key 'uses: action@ref', '"uses": action@ref', or '- "uses": action@ref' at start of line
+        m = re.match(r"""^\s*(?:-\s*)?(?:["']?uses["']?)\s*:\s*(['"]?)([^'"\n#]+)\1""", line_raw, re.IGNORECASE)
         if m:
             val = m.group(2).strip()
             if val and val not in ("read", "write", "none"):
@@ -62,8 +62,8 @@ def _fallback_parse_uses(content: str) -> list[str]:
                 i += 1
                 continue
 
-        # Multiline mapping key 'uses:\n  action@ref' at start of line
-        m_multi = re.match(r"""^\s*(?:-\s*)?uses\s*:\s*$""", line_raw, re.IGNORECASE)
+        # Multiline mapping key 'uses:\n  action@ref' or '"uses":\n  action@ref' at start of line
+        m_multi = re.match(r"""^\s*(?:-\s*)?(?:["']?uses["']?)\s*:\s*$""", line_raw, re.IGNORECASE)
         if m_multi and i + 1 < len(lines):
             next_line_raw = lines[i + 1]
             next_line = next_line_raw.strip()
