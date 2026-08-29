@@ -85,7 +85,11 @@ def desired_ruleset(
                     "required_review_thread_resolution": True,
                     # GitHub populates these server-side defaults when omitted;
                     # pin them explicitly so the contract is deterministic.
-                    "require_extra_approval_for_unattributed_changes": False,
+                    # require_extra_approval_for_unattributed_changes stays at the
+                    # secure GitHub default (true): an extra approval is required
+                    # for commits with no attributed author, which is orthogonal
+                    # to the zero-approving-review solo-maintainer workflow.
+                    "require_extra_approval_for_unattributed_changes": True,
                     "required_reviewers": [],
                 },
             },
