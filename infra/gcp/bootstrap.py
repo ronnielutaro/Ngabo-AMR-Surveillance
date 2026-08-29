@@ -15,7 +15,7 @@ import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 
 # Ensure repository root is on sys.path for direct CLI execution
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -380,9 +380,18 @@ class GcpInspector:
 class GcpBootstrapper:
     """Idempotent orchestrator for GCP foundation provisioning."""
 
-    def __init__(self, config: GcpBootstrapConfig) -> None:
+    def __init__(
+        self,
+        config: GcpBootstrapConfig,
+        progress_stream: TextIO | None = None,
+    ) -> None:
         self.config = config
         self.inspector = GcpInspector(config)
+        self.progress_stream = progress_stream or sys.stdout
+
+    def _log(self, msg: str) -> None:
+        """Emit human-readable progress message to designated stream."""
+        print(msg, file=self.progress_stream)
 
     def update_project_labels(self, labels: dict[str, str]) -> None:
         """Update project labels using Cloud Resource Manager API."""
@@ -579,7 +588,7 @@ class GcpBootstrapper:
         # 1. Project Creation
         if not self.inspector.project_exists():
             labels_str = ",".join(f"{k}={v}" for k, v in STANDARD_LABELS.items())
-            print(f"[apply] Creating canonical project: {self.config.project_id}...")
+            self._log(f"[apply] Creating canonical project: {self.config.project_id}...")
             run_gcloud_command(
                 [
                     "projects",
@@ -592,23 +601,23 @@ class GcpBootstrapper:
             results["operations"].append("PROJECT_CREATED")
             results["noop"] = False
         else:
-            print(f"[apply] Project {self.config.project_id} already exists.")
+            self._log(f"[apply] Project {self.config.project_id} already exists.")
             # Check for project label reconciliation
             proj_labels = self.inspector.get_project_labels()
             if not all(proj_labels.get(k) == v for k, v in STANDARD_LABELS.items()):
-                print("[apply] Reconciling project labels to standard foundation set...")
+                self._log("[apply] Reconciling project labels to standard foundation set...")
                 merged_labels = dict(proj_labels)
                 merged_labels.update(STANDARD_LABELS)
                 self.update_project_labels(merged_labels)
                 results["operations"].append("PROJECT_LABELS_RECONCILED")
                 results["noop"] = False
             else:
-                print("[apply] Project labels match standard set (idempotent no-op).")
+                self._log("[apply] Project labels match standard set (idempotent no-op).")
 
         # 2. Billing Link Verification & Application
         actual_linked = self.inspector.get_linked_billing_account()
         if not actual_linked:
-            print(f"[apply] Linking billing account to {self.config.project_id}...")
+            self._log(f"[apply] Linking billing account to {self.config.project_id}...")
             run_gcloud_command(
                 [
                     "billing",
@@ -628,24 +637,26 @@ class GcpBootstrapper:
                 f"which does NOT match intended account '{intended_r}'. Relinking is blocked."
             )
         else:
-            print("[apply] Billing linked to intended account (idempotent no-op).")
+            self._log("[apply] Billing linked to intended account (idempotent no-op).")
 
         # 3. Enable Required APIs
         enabled_apis = self.inspector.get_enabled_apis()
         missing_apis = [api for api in REQUIRED_APIS if api not in enabled_apis]
         if missing_apis:
-            print(f"[apply] Enabling {len(missing_apis)} missing APIs...")
+            self._log(f"[apply] Enabling {len(missing_apis)} missing APIs...")
             run_gcloud_command(
                 ["services", "enable", *missing_apis, f"--project={self.config.project_id}"]
             )
             results["operations"].append(f"APIS_ENABLED:{len(missing_apis)}")
             results["noop"] = False
         else:
-            print("[apply] All required APIs already enabled (idempotent no-op).")
+            self._log("[apply] All required APIs already enabled (idempotent no-op).")
 
         # 4. Artifact Registry Repository
         if not self.inspector.artifact_registry_exists():
-            print(f"[apply] Creating repo '{ARTIFACT_REGISTRY_REPO}' in {self.config.region}...")
+            self._log(
+                f"[apply] Creating repo '{ARTIFACT_REGISTRY_REPO}' in {self.config.region}..."
+            )
             labels_str = ",".join(f"{k}={v}" for k, v in STANDARD_LABELS.items())
             run_gcloud_command(
                 [
@@ -663,13 +674,13 @@ class GcpBootstrapper:
             results["operations"].append("ARTIFACT_REGISTRY_CREATED")
             results["noop"] = False
         else:
-            print(f"[apply] Repository '{ARTIFACT_REGISTRY_REPO}' exists.")
+            self._log(f"[apply] Repository '{ARTIFACT_REGISTRY_REPO}' exists.")
             # Check Artifact Registry configuration and labels
             ar_valid, ar_mismatches = self.inspector.validate_artifact_registry_config()
             if not ar_valid:
                 ar_labels = self.inspector.get_artifact_registry_labels()
                 if not all(ar_labels.get(k) == v for k, v in STANDARD_LABELS.items()):
-                    print("[apply] Reconciling Artifact Registry labels...")
+                    self._log("[apply] Reconciling Artifact Registry labels...")
                     self.update_artifact_registry_labels(STANDARD_LABELS)
                     results["operations"].append("ARTIFACT_REGISTRY_LABELS_UPDATED")
                     results["noop"] = False
@@ -679,7 +690,7 @@ class GcpBootstrapper:
                         f"Artifact Registry has incompatible immutable configuration: {joined_mis}"
                     )
             else:
-                print(
+                self._log(
                     "[apply] Artifact Registry configuration and labels valid (idempotent no-op)."
                 )
 
@@ -694,7 +705,10 @@ class GcpBootstrapper:
         )
 
         if not existing_budget:
-            print(f"[apply] Creating Budget '{BUDGET_DISPLAY_NAME}' ($300 USD custom period)...")
+            self._log(
+                f"[apply] Creating Budget '{BUDGET_DISPLAY_NAME}' "
+                "($300 USD custom period)..."
+            )
             threshold_args = [
                 f"--threshold-rule=percent={t['percent']},basis={t['basis']}"
                 for t in BUDGET_THRESHOLDS
@@ -718,31 +732,21 @@ class GcpBootstrapper:
             results["operations"].append("BUDGET_ALERT_CREATED")
             results["noop"] = False
         elif not budget_valid:
-            print(
-                f"[apply] Reconciling budget alert '{BUDGET_DISPLAY_NAME}' "
-                "to match Free Trial contract..."
+            self._log(
+                f"[apply] Updating existing budget alert '{BUDGET_DISPLAY_NAME}' "
+                "in-place to match Free Trial contract..."
             )
             budget_id = str(existing_budget.get("name", "")).split("/")[-1]
-            run_gcloud_command(
-                [
-                    "billing",
-                    "budgets",
-                    "delete",
-                    budget_id,
-                    f"--billing-account={billing_acc}",
-                    f"--billing-project={self.config.project_id}",
-                    "--quiet",
-                ]
-            )
             threshold_args = [
-                f"--threshold-rule=percent={t['percent']},basis={t['basis']}"
+                f"--add-threshold-rule=percent={t['percent']},basis={t['basis']}"
                 for t in BUDGET_THRESHOLDS
             ]
             run_gcloud_command(
                 [
                     "billing",
                     "budgets",
-                    "create",
+                    "update",
+                    budget_id,
                     f"--billing-account={billing_acc}",
                     f"--billing-project={self.config.project_id}",
                     f"--display-name={BUDGET_DISPLAY_NAME}",
@@ -751,13 +755,14 @@ class GcpBootstrapper:
                     f"--start-date={BUDGET_START_DATE}",
                     f"--end-date={BUDGET_END_DATE}",
                     f"--credit-types-treatment={BUDGET_CREDIT_TREATMENT}",
+                    "--clear-threshold-rules",
                     *threshold_args,
                 ]
             )
-            results["operations"].append("BUDGET_ALERT_RECONCILED")
+            results["operations"].append("BUDGET_ALERT_UPDATED")
             results["noop"] = False
         else:
-            print(
+            self._log(
                 f"[apply] Budget '{BUDGET_DISPLAY_NAME}' matches governance contract "
                 "(idempotent no-op)."
             )
@@ -770,7 +775,15 @@ class GcpBootstrapper:
         report: dict[str, Any] = {
             "project_id": self.config.project_id,
             "region": self.config.region,
-            "checks": {},
+            "checks": {
+                "project_exists": False,
+                "project_labels_valid": False,
+                "billing_linked": False,
+                "billing_matches_intended": False,
+                "required_apis_enabled": False,
+                "artifact_registry_valid": False,
+                "budget_contract_valid": False,
+            },
             "passed": True,
             "failures": [],
         }
@@ -794,27 +807,37 @@ class GcpBootstrapper:
             report["passed"] = False
 
         # Check 3: Billing Linked to Intended Account
-        billing_acc = self.inspector.discover_billing_account()
+        try:
+            billing_acc = self.inspector.discover_billing_account()
+        except RuntimeError as exc:
+            billing_acc = None
+            report["checks"]["billing_matches_intended"] = False
+            report["failures"].append(
+                f"Billing account discovery failure: {redact_sensitive(str(exc))}"
+            )
+            report["passed"] = False
+
         actual_linked = self.inspector.get_linked_billing_account()
         billing_linked = actual_linked is not None
-        billing_matches = bool(
-            billing_acc and actual_linked and billing_acc.upper() == actual_linked.upper()
-        )
         report["checks"]["billing_linked"] = billing_linked
-        report["checks"]["billing_matches_intended"] = billing_matches
-        if not billing_linked:
+        if not actual_linked:
             report["failures"].append(
                 f"Project '{self.config.project_id}' does not have active billing linked."
             )
             report["passed"] = False
-        elif not billing_matches:
-            actual_r = redact_sensitive(actual_linked or "")
-            expected_r = redact_sensitive(billing_acc or "")
-            report["failures"].append(
-                f"Project '{self.config.project_id}' is linked to unexpected billing account "
-                f"[{actual_r}], expected [{expected_r}]."
-            )
-            report["passed"] = False
+        elif billing_acc is not None:
+            billing_matches = actual_linked.upper() == billing_acc.upper()
+            report["checks"]["billing_matches_intended"] = billing_matches
+            if not billing_matches:
+                actual_r = redact_sensitive(actual_linked or "")
+                expected_r = redact_sensitive(billing_acc or "")
+                report["failures"].append(
+                    f"Project '{self.config.project_id}' is linked to unexpected billing account "
+                    f"[{actual_r}], expected [{expected_r}]."
+                )
+                report["passed"] = False
+        else:
+            report["checks"]["billing_matches_intended"] = False
 
         # Check 4: APIs Enabled
         enabled_apis = self.inspector.get_enabled_apis()
@@ -835,19 +858,27 @@ class GcpBootstrapper:
             report["passed"] = False
 
         # Check 6: Budget Monitoring Contract
-        proj_details = self.inspector.get_project_details()
-        proj_number = str(proj_details.get("projectNumber", "")) if proj_details else None
-        budget = self.inspector.get_budget(billing_acc) if billing_acc else None
-        budget_valid, budget_mismatches = (
-            self.inspector.validate_budget_contract(budget, project_number=proj_number)
-            if budget
-            else (False, ["Budget alert not found."])
-        )
-        report["checks"]["budget_contract_valid"] = budget_valid
-        if not budget_valid:
-            for mis in budget_mismatches:
-                report["failures"].append(f"Budget contract error: {mis}")
+        if not billing_acc:
+            report["checks"]["budget_contract_valid"] = False
+            report["failures"].append(
+                "Budget validation skipped: Billing account could not be "
+                "deterministically determined."
+            )
             report["passed"] = False
+        else:
+            proj_details = self.inspector.get_project_details()
+            proj_number = str(proj_details.get("projectNumber", "")) if proj_details else None
+            budget = self.inspector.get_budget(billing_acc)
+            budget_valid, budget_mismatches = (
+                self.inspector.validate_budget_contract(budget, project_number=proj_number)
+                if budget
+                else (False, ["Budget alert not found."])
+            )
+            report["checks"]["budget_contract_valid"] = budget_valid
+            if not budget_valid:
+                for mis in budget_mismatches:
+                    report["failures"].append(f"Budget contract error: {mis}")
+                report["passed"] = False
 
         return report
 
@@ -920,6 +951,7 @@ class GcpBootstrapper:
         target.parent.mkdir(parents=True, exist_ok=True)
 
         val = self.validate()
+        td = self.teardown_rehearsal()
         proj_details = self.inspector.get_project_details() or {}
         ar_details = self.inspector.get_artifact_registry_details() or {}
 
@@ -983,12 +1015,14 @@ class GcpBootstrapper:
             },
             "verification_results": {
                 "validation_passed": val["passed"],
-                "teardown_rehearsal_passed": True,
-                "teardown_mode": "PLAN_ONLY",
-                "destructive_actions_executed": False,
-                "cessation_verification_executed": False,
-                "cessation_verification_required_on_real_teardown": True,
-                "privacy_audit_clean": True,
+                "teardown_rehearsal_passed": td.get("teardown_rehearsal_passed", False),
+                "teardown_mode": td.get("teardown_mode", "UNKNOWN"),
+                "destructive_actions_executed": td.get("destructive_actions_executed", True),
+                "cessation_verification_executed": td.get("cessation_verification_executed", True),
+                "cessation_verification_required_on_real_teardown": td.get(
+                    "cessation_verification_required_on_real_teardown", True
+                ),
+                "privacy_audit_status": "EXTERNAL_REVIEW_REQUIRED",
             },
         }
 
@@ -1048,7 +1082,8 @@ def main(argv: list[str] | None = None) -> int:
         dry_run=getattr(args, "dry_run", False),
     )
 
-    bootstrapper = GcpBootstrapper(config)
+    progress_stream = sys.stderr if getattr(args, "format", "text") == "json" else sys.stdout
+    bootstrapper = GcpBootstrapper(config, progress_stream=progress_stream)
 
     if args.command == "plan":
         plan_res = bootstrapper.plan()

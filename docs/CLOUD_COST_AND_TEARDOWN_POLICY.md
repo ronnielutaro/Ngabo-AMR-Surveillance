@@ -1,9 +1,9 @@
 # Ngabo — Cloud Cost, Privacy, and Teardown Policy
 
 **Status:** Governed Cloud Boundary Contract  
-**Version:** 1.1  
+**Version:** 1.2  
 **Date:** 2026-08-29  
-**Issue Reference:** #85 (Cloud Foundation 1A.1)  
+**Issue Reference:** #85 (Cloud Foundation 1A.1), #86 (Cloud Foundation 1A.2)  
 **Parent Epic:** #84 (Epic 1A: GCP Foundation and Incremental Delivery Skeleton)  
 
 ---
@@ -125,7 +125,13 @@ Issues #86 through #92 must strictly uphold the following constraints:
    - Cloud Storage buckets must configure object lifecycle rules (deleting ephemeral objects after 7 days).
    - Firestore and Pub/Sub retention must be minimized.
    - Cloud Logging retention must be constrained to the default standard period.
-5. **Resource Labeling**: All provisioned GCP resources must carry standardized attribution labels (`project:ngabo`, `environment:hackathon`, `managed-by:opentofu-or-gcloud`).
+5. **Resource Labeling**: All provisioned GCP resources must carry standardized attribution labels:
+   - `app: ngabo`
+   - `environment: dev | judge | shared`
+   - `lifecycle: hackathon`
+   - `managed-by: ngabo-bootstrap`
+   - `owner: ngabo-maintainer`
+   Shared project-level and foundation resources carry `environment: shared`; development resources carry `environment: dev`; judged-release resources carry `environment: judge`.
 6. **Keyless Identity**: GitHub Actions deployment must utilize Workload Identity Federation (WIF). Storing long-lived service account JSON keys in GitHub Secrets is strictly prohibited.
 7. **Canonical Project Boundary**: The Google-created signup placeholder project (identifier intentionally omitted) is an account-creation artifact only. Issue #86 will establish the canonical project hierarchy.
 8. **Budget Alerts**: Cloud Billing budget alerts must be configured in later infrastructure issues (#86+) to monitor Free Trial consumption and notify the maintainer (e.g., at 50%, 90%, and 100% of credits, and on any forecasted net payable spend), ensuring the `$10` credit threshold is detected in advance.

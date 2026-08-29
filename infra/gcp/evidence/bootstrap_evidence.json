@@ -132,6 +132,6 @@
     "destructive_actions_executed": false,
     "cessation_verification_executed": false,
     "cessation_verification_required_on_real_teardown": true,
-    "privacy_audit_clean": true
+    "privacy_audit_status": "EXTERNAL_REVIEW_REQUIRED"
   }
 }

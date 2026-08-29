@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
@@ -54,6 +55,24 @@ VALID_SAMPLE_BUDGET: dict[str, Any] = {
         {"thresholdPercent": 1.0, "spendBasis": "CURRENT_SPEND"},
     ],
 }
+
+
+@pytest.fixture(autouse=True)
+def guard_offline_unit_test(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Guard ensuring unit tests never invoke real gcloud or make network calls."""
+
+    def _fail_unmocked(cmd: list[str]) -> tuple[int, str, str]:
+        raise AssertionError(f"Accidental unmocked gcloud call in unit test: {cmd}")
+
+    monkeypatch.setattr("infra.gcp.bootstrap.run_gcloud_command", _fail_unmocked)
+
+
+def test_guard_catches_unmocked_gcloud() -> None:
+    """Prove that unmocked run_gcloud_command calls fail loudly in unit tests."""
+    from infra.gcp.bootstrap import run_gcloud_command
+
+    with pytest.raises(AssertionError, match="Accidental unmocked gcloud call in unit test"):
+        run_gcloud_command(["projects", "list"])
 
 
 def test_config_validation_success() -> None:
@@ -452,6 +471,7 @@ def test_cli_plan_json(capsys: pytest.CaptureFixture[str]) -> None:
             return_value=SAMPLE_BILLING_ID,
         ),
         patch("infra.gcp.bootstrap.GcpInspector.project_exists", return_value=False),
+        patch("infra.gcp.bootstrap.GcpInspector.get_budget", return_value=None),
     ):
         exit_code = main(["plan", "--project-id=ngabo-amr-2026", "--format=json"])
         assert exit_code == 0
@@ -459,3 +479,266 @@ def test_cli_plan_json(capsys: pytest.CaptureFixture[str]) -> None:
         data = json.loads(captured.out)
         assert data["project_id"] == "ngabo-amr-2026"
         assert SAMPLE_BILLING_ID not in captured.out
+
+
+def test_cli_apply_json_clean_stdout(capsys: pytest.CaptureFixture[str]) -> None:
+    """Test that apply --format=json emits parseable JSON on stdout and progress on stderr."""
+    with (
+        patch(
+            "infra.gcp.bootstrap.GcpInspector.discover_billing_account",
+            return_value=SAMPLE_BILLING_ID,
+        ),
+        patch("infra.gcp.bootstrap.GcpInspector.project_exists", return_value=True),
+        patch(
+            "infra.gcp.bootstrap.GcpInspector.get_project_details",
+            return_value={"labels": STANDARD_LABELS},
+        ),
+        patch(
+            "infra.gcp.bootstrap.GcpInspector.get_project_labels",
+            return_value=STANDARD_LABELS,
+        ),
+        patch(
+            "infra.gcp.bootstrap.GcpInspector.get_linked_billing_account",
+            return_value=SAMPLE_BILLING_ID,
+        ),
+        patch(
+            "infra.gcp.bootstrap.GcpInspector.get_enabled_apis",
+            return_value=set(REQUIRED_APIS),
+        ),
+        patch("infra.gcp.bootstrap.GcpInspector.artifact_registry_exists", return_value=True),
+        patch(
+            "infra.gcp.bootstrap.GcpInspector.validate_artifact_registry_config",
+            return_value=(True, []),
+        ),
+        patch("infra.gcp.bootstrap.GcpInspector.get_budget", return_value=VALID_SAMPLE_BUDGET),
+        patch("infra.gcp.bootstrap.GcpBootstrapper.export_evidence"),
+    ):
+        exit_code = main(["apply", "--project-id=ngabo-amr-2026", "--format=json"])
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        # Stdout must parse directly as valid JSON
+        data = json.loads(captured.out)
+        assert data["success"] is True
+        assert data["noop"] is True
+        # No progress text on stdout
+        assert "[apply]" not in captured.out
+        # Progress text appears on stderr
+        assert "[apply] Project ngabo-amr-2026 already exists." in captured.err
+
+
+def test_cli_validate_json_success(capsys: pytest.CaptureFixture[str]) -> None:
+    """Test CLI validate with json format on valid infrastructure."""
+    with (
+        patch(
+            "infra.gcp.bootstrap.GcpInspector.discover_billing_account",
+            return_value=SAMPLE_BILLING_ID,
+        ),
+        patch("infra.gcp.bootstrap.GcpInspector.project_exists", return_value=True),
+        patch(
+            "infra.gcp.bootstrap.GcpInspector.get_project_details",
+            return_value={"labels": STANDARD_LABELS},
+        ),
+        patch(
+            "infra.gcp.bootstrap.GcpInspector.get_project_labels",
+            return_value=STANDARD_LABELS,
+        ),
+        patch(
+            "infra.gcp.bootstrap.GcpInspector.get_linked_billing_account",
+            return_value=SAMPLE_BILLING_ID,
+        ),
+        patch(
+            "infra.gcp.bootstrap.GcpInspector.get_enabled_apis",
+            return_value=set(REQUIRED_APIS),
+        ),
+        patch(
+            "infra.gcp.bootstrap.GcpInspector.validate_artifact_registry_config",
+            return_value=(True, []),
+        ),
+        patch("infra.gcp.bootstrap.GcpInspector.get_budget", return_value=VALID_SAMPLE_BUDGET),
+    ):
+        exit_code = main(["validate", "--project-id=ngabo-amr-2026", "--format=json"])
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["passed"] is True
+        assert data["checks"]["project_exists"] is True
+
+
+def test_cli_validate_missing_project_text(capsys: pytest.CaptureFixture[str]) -> None:
+    """Test CLI validate with missing project in text format exits 1 without KeyError."""
+    with patch("infra.gcp.bootstrap.GcpInspector.project_exists", return_value=False):
+        exit_code = main(["validate", "--project-id=ngabo-amr-2026", "--format=text"])
+        assert exit_code == 1
+        captured = capsys.readouterr()
+        assert "Status:   FAILED" in captured.out
+        assert "Project 'ngabo-amr-2026' does not exist." in captured.out
+
+
+def test_cli_validate_missing_project_json(capsys: pytest.CaptureFixture[str]) -> None:
+    """Test CLI validate with missing project in json format exits 1 with stable schema."""
+    with patch("infra.gcp.bootstrap.GcpInspector.project_exists", return_value=False):
+        exit_code = main(["validate", "--project-id=ngabo-amr-2026", "--format=json"])
+        assert exit_code == 1
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["passed"] is False
+        assert data["checks"]["project_exists"] is False
+        assert data["checks"]["project_labels_valid"] is False
+        assert data["checks"]["billing_linked"] is False
+        assert data["checks"]["billing_matches_intended"] is False
+        assert data["checks"]["required_apis_enabled"] is False
+        assert data["checks"]["artifact_registry_valid"] is False
+        assert data["checks"]["budget_contract_valid"] is False
+        assert any("does not exist" in f for f in data["failures"])
+
+
+def test_validate_ambiguous_billing_discovery_fails_cleanly(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Test that ambiguous billing discovery produces a structured validation failure."""
+    with (
+        patch(
+            "infra.gcp.bootstrap.GcpInspector.discover_billing_account",
+            side_effect=RuntimeError(
+                "Disambiguation required: multiple open billing accounts found."
+            ),
+        ),
+        patch("infra.gcp.bootstrap.GcpInspector.project_exists", return_value=True),
+        patch(
+            "infra.gcp.bootstrap.GcpInspector.get_project_labels",
+            return_value=STANDARD_LABELS,
+        ),
+        patch(
+            "infra.gcp.bootstrap.GcpInspector.get_linked_billing_account",
+            return_value=SAMPLE_BILLING_ID,
+        ),
+        patch(
+            "infra.gcp.bootstrap.GcpInspector.get_enabled_apis",
+            return_value=set(REQUIRED_APIS),
+        ),
+        patch(
+            "infra.gcp.bootstrap.GcpInspector.validate_artifact_registry_config",
+            return_value=(True, []),
+        ),
+    ):
+        exit_code = main(["validate", "--project-id=ngabo-amr-2026", "--format=json"])
+        assert exit_code == 1
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["passed"] is False
+        assert any("Billing account discovery failure" in f for f in data["failures"])
+        assert any("Budget validation skipped" in f for f in data["failures"])
+
+
+def test_cli_teardown_json(capsys: pytest.CaptureFixture[str]) -> None:
+    """Test CLI teardown invocation with json format."""
+    with (
+        patch(
+            "infra.gcp.bootstrap.GcpInspector.discover_billing_account",
+            return_value=SAMPLE_BILLING_ID,
+        ),
+        patch("infra.gcp.bootstrap.GcpInspector.get_budget", return_value=VALID_SAMPLE_BUDGET),
+    ):
+        exit_code = main(
+            ["teardown", "--dry-run", "--project-id=ngabo-amr-2026", "--format=json"]
+        )
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["teardown_mode"] == "PLAN_ONLY"
+        assert data["destructive_actions_executed"] is False
+        assert data["cessation_verification_executed"] is False
+        assert data["cessation_verification_required_on_real_teardown"] is True
+        assert SAMPLE_BILLING_ID not in captured.out
+
+
+def test_apply_updates_budget_in_place_when_drift_detected() -> None:
+    """Test that apply performs an in-place update on budget drift rather than deleting first."""
+    cfg = GcpBootstrapConfig(project_id="ngabo-amr-2026", region=PRIMARY_REGION)
+    bootstrapper = GcpBootstrapper(cfg)
+
+    drifted_budget = json.loads(json.dumps(VALID_SAMPLE_BUDGET))
+    drifted_budget["amount"]["specifiedAmount"]["units"] = "150"
+
+    captured_commands: list[list[str]] = []
+
+    def mock_gcloud(cmd: list[str]) -> tuple[int, str, str]:
+        captured_commands.append(cmd)
+        return (0, "{}", "")
+
+    with (
+        patch.object(bootstrapper.inspector, "project_exists", return_value=True),
+        patch.object(bootstrapper.inspector, "get_project_labels", return_value=STANDARD_LABELS),
+        patch.object(
+            bootstrapper.inspector, "get_linked_billing_account", return_value=SAMPLE_BILLING_ID
+        ),
+        patch.object(bootstrapper.inspector, "get_enabled_apis", return_value=set(REQUIRED_APIS)),
+        patch.object(bootstrapper.inspector, "artifact_registry_exists", return_value=True),
+        patch.object(
+            bootstrapper.inspector, "validate_artifact_registry_config", return_value=(True, [])
+        ),
+        patch.object(
+            bootstrapper.inspector, "discover_billing_account", return_value=SAMPLE_BILLING_ID
+        ),
+        patch.object(
+            bootstrapper.inspector,
+            "get_project_details",
+            return_value={"projectNumber": "907313480935"},
+        ),
+        patch.object(bootstrapper.inspector, "get_budget", return_value=drifted_budget),
+        patch("infra.gcp.bootstrap.run_gcloud_command", side_effect=mock_gcloud),
+    ):
+        res = bootstrapper.apply()
+        assert res["success"] is True
+        assert "BUDGET_ALERT_UPDATED" in res["operations"]
+        # Ensure budgets delete was NOT called
+        assert not any("delete" in cmd for cmd in captured_commands)
+        # Ensure budgets update WAS called
+        assert any(cmd[0:3] == ["billing", "budgets", "update"] for cmd in captured_commands)
+
+
+def test_export_evidence_executable_derivation(tmp_path: Path) -> None:
+    """Test export_evidence derives verification_results dynamically and marks privacy audit."""
+    cfg = GcpBootstrapConfig(project_id="ngabo-amr-2026", region=PRIMARY_REGION)
+    bootstrapper = GcpBootstrapper(cfg)
+    target = tmp_path / "test_evidence.json"
+
+    with (
+        patch.object(
+            bootstrapper,
+            "validate",
+            return_value={"passed": True, "checks": {"project_exists": True}},
+        ),
+        patch.object(
+            bootstrapper,
+            "teardown_rehearsal",
+            return_value={
+                "teardown_rehearsal_passed": True,
+                "teardown_mode": "PLAN_ONLY",
+                "destructive_actions_executed": False,
+                "cessation_verification_executed": False,
+                "cessation_verification_required_on_real_teardown": True,
+            },
+        ),
+        patch.object(
+            bootstrapper.inspector,
+            "get_project_details",
+            return_value={"labels": STANDARD_LABELS},
+        ),
+        patch.object(
+            bootstrapper.inspector,
+            "get_artifact_registry_details",
+            return_value=VALID_SAMPLE_AR_DETAILS,
+        ),
+    ):
+        out_path = bootstrapper.export_evidence(target)
+        assert out_path.exists()
+        data = json.loads(out_path.read_text(encoding="utf-8"))
+        vr = data["verification_results"]
+        assert vr["validation_passed"] is True
+        assert vr["teardown_rehearsal_passed"] is True
+        assert vr["teardown_mode"] == "PLAN_ONLY"
+        assert vr["destructive_actions_executed"] is False
+        assert vr["cessation_verification_executed"] is False
+        assert vr["cessation_verification_required_on_real_teardown"] is True
+        assert vr["privacy_audit_status"] == "EXTERNAL_REVIEW_REQUIRED"
