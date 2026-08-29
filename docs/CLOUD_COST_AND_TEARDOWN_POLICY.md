@@ -93,7 +93,7 @@ Resources in the dedicated Google Cloud environment must be destroyed/disabled u
 1. **Submission Freeze & Judging Conclusion**: Hackathon judging finishes and frozen evidence is archived.
 2. **Credit Threshold**: Remaining Free Trial credit drops below `$10.00 USD`.
 3. **Expiry Proximity**: Active trial approaches within 7 days of expiration (November 21, 2026).
-4. **Unexpected Billing**: Any non-zero charges or billing anomalies are observed.
+4. **Unexpected Billing**: Any unexpected net amount payable, uncredited charges, or billing anomalies not covered by trial credits are observed.
 5. **Project Abandonment / Maintainer Discretion**: The maintainer explicitly calls for environment destruction.
 
 ### 5.2 Teardown Mechanism
@@ -128,6 +128,7 @@ Issues #86 through #92 must strictly uphold the following constraints:
 5. **Resource Labeling**: All provisioned GCP resources must carry standardized attribution labels (`project:ngabo`, `environment:hackathon`, `managed-by:opentofu-or-gcloud`).
 6. **Keyless Identity**: GitHub Actions deployment must utilize Workload Identity Federation (WIF). Storing long-lived service account JSON keys in GitHub Secrets is strictly prohibited.
 7. **Canonical Project Boundary**: The Google-created signup placeholder project (identifier intentionally omitted) is an account-creation artifact only. Issue #86 will establish the canonical project hierarchy.
+8. **Budget Alerts**: Cloud Billing budget alerts must be configured in later infrastructure issues (#86+) to monitor Free Trial consumption and notify the maintainer (e.g., at 50%, 90%, and 100% of credits, and on any forecasted net payable spend), ensuring the `$10` credit threshold is detected in advance.
 
 ---
 
