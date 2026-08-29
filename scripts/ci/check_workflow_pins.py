@@ -68,17 +68,20 @@ def validate_uses_value(uses_val: Any, path: Path) -> list[str]:
     return errors
 
 
-def traverse_yaml_tree(node: Any, path: Path) -> list[str]:
+def traverse_yaml_tree(node: Any, path: Path, parent_key: str | None = None) -> list[str]:
     errors: list[str] = []
     if isinstance(node, dict):
         for k, v in node.items():
-            if str(k) == "uses":
+            k_str = str(k)
+            if k_str == "uses":
+                # Only validate 'uses' if it's a step/job action/reusable workflow reference
+                # (i.e. not top-level workflow keys or permissions)
                 errors.extend(validate_uses_value(v, path))
-            else:
-                errors.extend(traverse_yaml_tree(v, path))
+            elif k_str != "permissions":
+                errors.extend(traverse_yaml_tree(v, path, parent_key=k_str))
     elif isinstance(node, list):
         for item in node:
-            errors.extend(traverse_yaml_tree(item, path))
+            errors.extend(traverse_yaml_tree(item, path, parent_key=parent_key))
     return errors
 
 
