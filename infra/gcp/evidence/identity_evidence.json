@@ -207,6 +207,11 @@
     "cessation_verification_required_on_real_teardown": true,
     "positive_wif_proof_status": "PENDING_POST_MERGE",
     "runtime_payload_access": "DEFERRED_UNTIL_FIRST_REAL_SECRET_VERSION",
-    "privacy_audit_status": "EXTERNAL_REVIEW_REQUIRED"
+    "privacy_audit_status": "EXTERNAL_REVIEW_REQUIRED",
+    "secret_probe_mode": "IAM_POLICY_BOUNDARY",
+    "core_runtime_resource_scoped_accessor_binding": "PRESENT",
+    "web_runtime_resource_scoped_accessor_binding": "ABSENT",
+    "deployer_resource_scoped_accessor_binding": "ABSENT",
+    "project_wide_secret_accessor": "ABSENT"
   }
 }

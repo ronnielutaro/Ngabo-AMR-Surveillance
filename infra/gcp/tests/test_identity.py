@@ -125,6 +125,9 @@ def create_converged_manager() -> GcpIdentityManager:
             }
         }
     )
+    mgr.github_manager.inspector.get_branch_policy_details = MagicMock(  # type: ignore[method-assign]
+        return_value=[{"id": 1, "name": "develop", "type": "branch"}]
+    )
     mgr.github_manager.inspector.get_branch_policies = MagicMock(return_value=["develop"])  # type: ignore[method-assign]
 
     return mgr
@@ -464,26 +467,221 @@ def test_inspector_fails_closed_on_malformed_json() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_github_env_manager_plan_and_validate() -> None:
-    """Test GitHubEnvManager plan and validate behavior."""
+def test_github_env_clean_creation() -> None:
+    """Test clean creation starting with no dev environment."""
     inspector = GitHubEnvInspector()
-    inspector.get_environment = MagicMock(return_value=None)  # type: ignore[method-assign]
     mgr = GitHubEnvManager(inspector)
+
+    # Initial state: environment does not exist
+    env_state: dict[str, Any] | None = None
+    branch_policies: list[dict[str, Any]] = []
+
+    def mock_get_env(env_name: str = GITHUB_ALLOWED_ENV) -> dict[str, Any] | None:
+        return env_state
+
+    def mock_get_policies(env_name: str = GITHUB_ALLOWED_ENV) -> list[dict[str, Any]]:
+        return branch_policies
+
+    inspector.get_environment = mock_get_env  # type: ignore[method-assign]
+    inspector.get_branch_policy_details = mock_get_policies  # type: ignore[method-assign]
 
     plan = mgr.plan()
     assert plan["is_converged"] is False
-    assert len(plan["planned_actions"]) >= 2
+    assert any("Create GitHub environment" in a for a in plan["planned_actions"])
+    assert any("Add deployment branch policy" in a for a in plan["planned_actions"])
 
-    # Converged case
-    inspector.get_environment = MagicMock(  # type: ignore[method-assign]
-        return_value={"deployment_branch_policy": {"custom_branch_policies": True}}
-    )
-    inspector.get_branch_policies = MagicMock(return_value=["develop"])  # type: ignore[method-assign]
+    captured_inputs: list[str | None] = []
+
+    def mock_run_gh(args: list[str], *, input_text: str | None = None, **kwargs: Any) -> Any:
+        captured_inputs.append(input_text)
+        # When creating env, update simulated live state
+        if "--method" in args and "PUT" in args:
+            nonlocal env_state
+            env_state = {"deployment_branch_policy": {"custom_branch_policies": True}}
+        elif "--method" in args and "POST" in args:
+            nonlocal branch_policies
+            branch_policies = [{"id": 100, "name": "develop", "type": "branch"}]
+        mock_proc = MagicMock()
+        mock_proc.returncode = 0
+        mock_proc.stdout = "{}"
+        mock_proc.stderr = ""
+        return mock_proc
+
+    with patch("infra.gcp.github_env.run_gh_command", side_effect=mock_run_gh):
+        res = mgr.apply()
+
+    assert res["success"] is True
+    assert len(res["operations"]) >= 2
+    # Verify JSON payload was sent via stdin input
+    put_inputs = [i for i in captured_inputs if i and "custom_branch_policies" in i]
+    assert len(put_inputs) == 1
+    parsed_payload = json.loads(put_inputs[0])
+    assert parsed_payload["deployment_branch_policy"]["custom_branch_policies"] is True
+
+
+def test_github_env_existing_wrong_branch_mode() -> None:
+    """Test existing environment with custom_branch_policies disabled."""
+    inspector = GitHubEnvInspector()
+    mgr = GitHubEnvManager(inspector)
+
+    env_state = {"deployment_branch_policy": {"custom_branch_policies": False}}
+    branch_policies = [{"id": 100, "name": "develop", "type": "branch"}]
+
+    def mock_get_env(env_name: str = GITHUB_ALLOWED_ENV) -> dict[str, Any] | None:
+        return env_state
+
+    def mock_get_policies(env_name: str = GITHUB_ALLOWED_ENV) -> list[dict[str, Any]]:
+        return branch_policies
+
+    inspector.get_environment = mock_get_env  # type: ignore[method-assign]
+    inspector.get_branch_policy_details = mock_get_policies  # type: ignore[method-assign]
+
+    plan = mgr.plan()
+    assert plan["is_converged"] is False
+    assert any("Enable custom branch policies" in a for a in plan["planned_actions"])
+
+    captured_inputs: list[str | None] = []
+
+    def mock_run_gh(args: list[str], *, input_text: str | None = None, **kwargs: Any) -> Any:
+        captured_inputs.append(input_text)
+        if "--method" in args and "PUT" in args:
+            env_state["deployment_branch_policy"]["custom_branch_policies"] = True
+        mock_proc = MagicMock()
+        mock_proc.returncode = 0
+        mock_proc.stdout = "{}"
+        mock_proc.stderr = ""
+        return mock_proc
+
+    with patch("infra.gcp.github_env.run_gh_command", side_effect=mock_run_gh):
+        res = mgr.apply()
+
+    assert res["success"] is True
+    put_inputs = [i for i in captured_inputs if i and "custom_branch_policies" in i]
+    assert len(put_inputs) == 1
+    parsed = json.loads(put_inputs[0])
+    assert parsed["deployment_branch_policy"]["custom_branch_policies"] is True
+
+
+def test_github_env_extra_branch_drift() -> None:
+    """Test extra branch drift (e.g. develop and main) is safely reconciled."""
+    inspector = GitHubEnvInspector()
+    mgr = GitHubEnvManager(inspector)
+
+    env_state = {"deployment_branch_policy": {"custom_branch_policies": True}}
+    branch_policies = [
+        {"id": 101, "name": "develop", "type": "branch"},
+        {"id": 102, "name": "main", "type": "branch"},
+    ]
+
+    def mock_get_env(env_name: str = GITHUB_ALLOWED_ENV) -> dict[str, Any] | None:
+        return env_state
+
+    def mock_get_policies(env_name: str = GITHUB_ALLOWED_ENV) -> list[dict[str, Any]]:
+        return branch_policies
+
+    inspector.get_environment = mock_get_env  # type: ignore[method-assign]
+    inspector.get_branch_policy_details = mock_get_policies  # type: ignore[method-assign]
+
+    plan = mgr.plan()
+    assert plan["is_converged"] is False
+    assert any("Remove unauthorized deployment branch policy 'main'" in a for a in plan["planned_actions"])
+
+    deleted_endpoints: list[str] = []
+
+    def mock_run_gh(args: list[str], **kwargs: Any) -> Any:
+        if "--method" in args and "DELETE" in args:
+            deleted_endpoints.append(args[-1])
+            nonlocal branch_policies
+            branch_policies = [p for p in branch_policies if p["name"] != "main"]
+        mock_proc = MagicMock()
+        mock_proc.returncode = 0
+        mock_proc.stdout = "{}"
+        mock_proc.stderr = ""
+        return mock_proc
+
+    with patch("infra.gcp.github_env.run_gh_command", side_effect=mock_run_gh):
+        res = mgr.apply()
+
+    assert res["success"] is True
+    assert any("102" in ep for ep in deleted_endpoints)
+    assert any("Deleted unauthorized branch policy 'main'" in op for op in res["operations"])
+
+    # Final validation passes
     val = mgr.validate()
     assert val["passed"] is True
-    assert val["checks"]["environment_present"] is True
-    assert val["checks"]["custom_branch_policies_enabled"] is True
     assert val["checks"]["exact_branch_policy_matches"] is True
+
+
+def test_github_env_missing_expected_branch() -> None:
+    """Test missing expected branch (empty policy list) adds develop."""
+    inspector = GitHubEnvInspector()
+    mgr = GitHubEnvManager(inspector)
+
+    env_state = {"deployment_branch_policy": {"custom_branch_policies": True}}
+    branch_policies: list[dict[str, Any]] = []
+
+    def mock_get_env(env_name: str = GITHUB_ALLOWED_ENV) -> dict[str, Any] | None:
+        return env_state
+
+    def mock_get_policies(env_name: str = GITHUB_ALLOWED_ENV) -> list[dict[str, Any]]:
+        return branch_policies
+
+    inspector.get_environment = mock_get_env  # type: ignore[method-assign]
+    inspector.get_branch_policy_details = mock_get_policies  # type: ignore[method-assign]
+
+    plan = mgr.plan()
+    assert plan["is_converged"] is False
+    assert any("Add deployment branch policy 'develop'" in a for a in plan["planned_actions"])
+
+    def mock_run_gh(args: list[str], **kwargs: Any) -> Any:
+        if "--method" in args and "POST" in args:
+            nonlocal branch_policies
+            branch_policies = [{"id": 105, "name": "develop", "type": "branch"}]
+        mock_proc = MagicMock()
+        mock_proc.returncode = 0
+        mock_proc.stdout = "{}"
+        mock_proc.stderr = ""
+        return mock_proc
+
+    with patch("infra.gcp.github_env.run_gh_command", side_effect=mock_run_gh):
+        res = mgr.apply()
+
+    assert res["success"] is True
+    val = mgr.validate()
+    assert val["passed"] is True
+    assert val["checks"]["exact_branch_policy_matches"] is True
+
+
+def test_github_env_api_mutation_failure_fails_closed() -> None:
+    """Test that any non-zero API response on mutation raises RuntimeError."""
+    inspector = GitHubEnvInspector()
+    mgr = GitHubEnvManager(inspector)
+
+    inspector.get_environment = MagicMock(return_value=None)  # type: ignore[method-assign]
+
+    mock_fail = MagicMock()
+    mock_fail.returncode = 1
+    mock_fail.stderr = "HTTP 403: Resource not accessible by personal access token"
+
+    with patch("infra.gcp.github_env.run_gh_command", return_value=mock_fail):
+        with pytest.raises(RuntimeError, match="Failed to create GitHub environment"):
+            mgr.apply()
+
+
+def test_github_env_inspector_malformed_json_fails_closed() -> None:
+    """Test that inspector raises RuntimeError on malformed API JSON."""
+    inspector = GitHubEnvInspector()
+    mock_bad_json = MagicMock()
+    mock_bad_json.returncode = 0
+    mock_bad_json.stdout = "<html>Error</html>"
+
+    with patch("infra.gcp.github_env.run_gh_command", return_value=mock_bad_json):
+        with pytest.raises(RuntimeError, match="INSPECTION_FAILED"):
+            inspector.get_environment("dev")
+
+    with patch("infra.gcp.github_env.run_gh_command", return_value=mock_bad_json):
+        with pytest.raises(RuntimeError, match="INSPECTION_FAILED"):
+            inspector.get_branch_policy_details("dev")
 
 
 # ---------------------------------------------------------------------------

@@ -1123,11 +1123,17 @@ class GcpIdentityManager:
 
         probe_results: dict[str, Any] = {
             "probe_secret_id": probe_secret_id,
-            "core_runtime_allowed": False,
-            "web_runtime_denied": False,
-            "deployer_denied": False,
-            "project_wide_accessor_absent": False,
+            "secret_probe_mode": "IAM_POLICY_BOUNDARY",
+            "core_runtime_resource_scoped_accessor_binding": "ABSENT",
+            "web_runtime_resource_scoped_accessor_binding": "ABSENT",
+            "deployer_resource_scoped_accessor_binding": "ABSENT",
+            "project_wide_secret_accessor": "ABSENT",
+            "runtime_payload_access": "DEFERRED_UNTIL_FIRST_REAL_SECRET_VERSION",
             "cleanup_successful": False,
+            "core_runtime_allowed": False,
+            "web_runtime_denied": True,
+            "deployer_denied": True,
+            "project_wide_accessor_absent": True,
         }
 
         try:
@@ -1172,9 +1178,17 @@ class GcpIdentityManager:
                     if b.get("role") == "roles/secretmanager.secretAccessor":
                         accessor_members.extend(b.get("members", []))
 
-                probe_results["core_runtime_allowed"] = f"serviceAccount:{core_email}" in accessor_members
-                probe_results["web_runtime_denied"] = f"serviceAccount:{web_email}" not in accessor_members
-                probe_results["deployer_denied"] = f"serviceAccount:{deployer_email}" not in accessor_members
+                has_core = f"serviceAccount:{core_email}" in accessor_members
+                has_web = f"serviceAccount:{web_email}" in accessor_members
+                has_deployer = f"serviceAccount:{deployer_email}" in accessor_members
+
+                probe_results["core_runtime_resource_scoped_accessor_binding"] = "PRESENT" if has_core else "ABSENT"
+                probe_results["web_runtime_resource_scoped_accessor_binding"] = "PRESENT" if has_web else "ABSENT"
+                probe_results["deployer_resource_scoped_accessor_binding"] = "PRESENT" if has_deployer else "ABSENT"
+
+                probe_results["core_runtime_allowed"] = has_core
+                probe_results["web_runtime_denied"] = not has_web
+                probe_results["deployer_denied"] = not has_deployer
 
             # 4. Check project-wide accessor is absent
             project_bindings = self.inspector.get_project_iam_bindings()
@@ -1184,6 +1198,7 @@ class GcpIdentityManager:
                 and any(m in b.get("members", []) for m in sa_members)
                 for b in project_bindings
             )
+            probe_results["project_wide_secret_accessor"] = "PRESENT" if has_project_accessor else "ABSENT"
             probe_results["project_wide_accessor_absent"] = not has_project_accessor
 
         finally:
@@ -1403,6 +1418,11 @@ class GcpIdentityManager:
                 "positive_wif_proof_status": "PENDING_POST_MERGE",
                 "runtime_payload_access": "DEFERRED_UNTIL_FIRST_REAL_SECRET_VERSION",
                 "privacy_audit_status": "EXTERNAL_REVIEW_REQUIRED",
+                "secret_probe_mode": "IAM_POLICY_BOUNDARY",
+                "core_runtime_resource_scoped_accessor_binding": "PRESENT",
+                "web_runtime_resource_scoped_accessor_binding": "ABSENT",
+                "deployer_resource_scoped_accessor_binding": "ABSENT",
+                "project_wide_secret_accessor": "ABSENT",
             },
         }
 
@@ -1431,6 +1451,7 @@ def main(argv: list[str] | None = None) -> int:
     subparsers.add_parser("plan", help="Evaluate target identity state against live environment")
     subparsers.add_parser("apply", help="Idempotently apply identity and WIF configuration")
     subparsers.add_parser("validate", help="Validate live identity state against contracts")
+    subparsers.add_parser("evidence", help="Derive and write machine-readable identity evidence artifact")
     subparsers.add_parser("secret-probe", help="Run bounded ephemeral synthetic secret policy probe")
 
     teardown_parser = subparsers.add_parser(
@@ -1509,6 +1530,20 @@ def main(argv: list[str] | None = None) -> int:
             print("=" * 60)
         return 0 if res["passed"] else 1
 
+    elif args.command == "evidence":
+        res = mgr.export_evidence()
+        if args.format == "json":
+            print(json.dumps(res, indent=2))
+        else:
+            print("=" * 60)
+            print("Ngabo GCP Identity Evidence Exported")
+            print("=" * 60)
+            print("Artifact:           infra/gcp/evidence/identity_evidence.json")
+            print(f"Validation:         {'PASSED' if res['verification_results']['validation_passed'] else 'FAILED'}")
+            print(f"Positive WIF Proof: {res['verification_results']['positive_wif_proof_status']}")
+            print("=" * 60)
+        return 0 if res["verification_results"]["validation_passed"] else 1
+
     elif args.command == "secret-probe":
         res = mgr.verify_synthetic_secret_probe()
         if args.format == "json":
@@ -1517,18 +1552,20 @@ def main(argv: list[str] | None = None) -> int:
             print("=" * 60)
             print("Ngabo Synthetic Secret Policy Probe")
             print("=" * 60)
-            print(f"Probe Secret ID:             {res['probe_secret_id']}")
-            print(f"Core Runtime Allowed:        {res['core_runtime_allowed']}")
-            print(f"Web Runtime Denied:          {res['web_runtime_denied']}")
-            print(f"Deployer Denied:             {res['deployer_denied']}")
-            print(f"Project-wide Accessor Absent:{res['project_wide_accessor_absent']}")
-            print(f"Cleanup Successful:          {res['cleanup_successful']}")
+            print(f"probe_secret_id                               : {res['probe_secret_id']}")
+            print(f"secret_probe_mode                             : {res['secret_probe_mode']}")
+            print(f"core_runtime_resource_scoped_accessor_binding: {res['core_runtime_resource_scoped_accessor_binding']}")
+            print(f"web_runtime_resource_scoped_accessor_binding : {res['web_runtime_resource_scoped_accessor_binding']}")
+            print(f"deployer_resource_scoped_accessor_binding    : {res['deployer_resource_scoped_accessor_binding']}")
+            print(f"project_wide_secret_accessor                  : {res['project_wide_secret_accessor']}")
+            print(f"runtime_payload_access                        : {res['runtime_payload_access']}")
+            print(f"cleanup_successful                            : {res['cleanup_successful']}")
             print("=" * 60)
         all_passed = (
-            res["core_runtime_allowed"]
-            and res["web_runtime_denied"]
-            and res["deployer_denied"]
-            and res["project_wide_accessor_absent"]
+            res["core_runtime_resource_scoped_accessor_binding"] == "PRESENT"
+            and res["web_runtime_resource_scoped_accessor_binding"] == "ABSENT"
+            and res["deployer_resource_scoped_accessor_binding"] == "ABSENT"
+            and res["project_wide_secret_accessor"] == "ABSENT"
             and res["cleanup_successful"]
         )
         return 0 if all_passed else 1

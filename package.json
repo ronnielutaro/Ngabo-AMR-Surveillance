@@ -30,6 +30,7 @@
     "infra:identity:plan": "python infra/gcp/identity.py plan",
     "infra:identity:apply": "python infra/gcp/identity.py apply",
     "infra:identity:validate": "python infra/gcp/identity.py validate",
+    "infra:identity:evidence": "python infra/gcp/identity.py evidence",
     "infra:identity:secret-probe": "python infra/gcp/identity.py secret-probe",
     "infra:identity:teardown:dry-run": "python infra/gcp/identity.py teardown --dry-run",
     "infra:test": "cd services/core && uv run pytest ../../infra/gcp/tests"
