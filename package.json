@@ -17,10 +17,16 @@
     "web:lint": "pnpm --filter ngabo-web lint",
     "web:typecheck": "pnpm --filter ngabo-web typecheck",
     "web:test": "pnpm --filter ngabo-web test",
+    "web:audit": "pnpm audit --audit-level=high",
     "core:install": "cd services/core && uv sync",
+    "core:lock:check": "cd services/core && uv lock --check",
+    "core:sync:frozen": "cd services/core && uv sync --frozen",
     "core:lint": "cd services/core && uv run ruff check .",
     "core:typecheck": "cd services/core && uv run mypy ngabo tests",
     "core:test": "cd services/core && uv run pytest",
+    "core:architecture": "cd services/core && uv run python ../../scripts/ci/check_architecture.py ngabo",
+    "core:build": "cd services/core && uv build",
+    "core:audit": "cd services/core && uv --preview audit --frozen",
     "core:health": "cd services/core && uv run ngabo-health",
     "core:certify-hero": "cd services/core && uv run ngabo-certify-hero",
     "infra:plan": "python infra/gcp/bootstrap.py plan",
@@ -33,6 +39,13 @@
     "infra:identity:evidence": "python infra/gcp/identity.py evidence",
     "infra:identity:secret-probe": "python infra/gcp/identity.py secret-probe",
     "infra:identity:teardown:dry-run": "python infra/gcp/identity.py teardown --dry-run",
-    "infra:test": "cd services/core && uv run pytest ../../infra/gcp/tests"
+    "infra:lint": "cd services/core && uv run ruff check ../../infra/gcp ../../infra/github",
+    "infra:typecheck": "cd services/core && uv run mypy ../../infra/gcp ../../infra/github",
+    "infra:test": "cd services/core && uv run pytest ../../infra/gcp/tests",
+    "ci:test": "python -m unittest discover -s scripts/ci/tests -p test_*.py && python -m unittest discover -s infra/github/tests -p test_*.py",
+    "ci:pins": "python scripts/ci/check_workflow_pins.py .github/workflows",
+    "ci:ruleset:plan": "python infra/github/pr_quality_ruleset.py plan",
+    "ci:ruleset:validate": "python infra/github/pr_quality_ruleset.py validate",
+    "ci:ruleset:teardown:dry-run": "python infra/github/pr_quality_ruleset.py teardown --dry-run"
   }
 }

@@ -190,6 +190,42 @@ Before merge:
 - documentation reflects changed contracts;
 - architecture/safety invariants remain intact.
 
+### Required PR quality gates
+
+PRs into `develop` or `main` run the repository-owned quality contract described in `docs/CI_QUALITY_GATES.md`.
+
+The stable required result is `PR Quality Gate`. It always runs; path classification may skip an expensive core/web/infra lane only after the workflow has started. Shared CI/toolchain changes run the cross-cutting lanes, while docs-only changes still produce the policy, dependency-review and final-gate checks.
+
+Use the same local contracts before review:
+
+```bash
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm web:build
+pnpm core:lock:check
+pnpm core:sync:frozen
+pnpm core:architecture
+pnpm core:build
+pnpm core:audit
+pnpm web:audit
+pnpm infra:test
+pnpm ci:test
+pnpm ci:pins
+```
+
+CI dependency installs are frozen. Caches are performance aids only and never replace lockfile or validation checks. High-severity dependency findings fail the web/Dependency Review gates; the core uv audit currently fails on any reported vulnerability.
+
+Changes to CI control-plane files are separately inspected by `CI Control Plane`. That metadata-only workflow never checks out PR-head code. An owner-authored protected change requires an explicit approval marker bound to the exact current PR head SHA:
+
+```text
+CI-Control-Plane-Approval: <PR_HEAD_SHA>
+```
+
+Any new push changes the SHA and requires a fresh marker. This is an auditable control, not a hidden bypass. See `docs/CI_QUALITY_GATES.md` for the complete path and ruleset contract.
+
+CI validates source/build quality; it does not prove deployed behavior.
+
 ---
 
 ## Architecture Decisions
