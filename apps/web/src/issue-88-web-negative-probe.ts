@@ -1,2 +1,2 @@
-// Temporary Issue #88 web-lane negative probe. Deliberate lint failure. DO NOT MERGE.
-const unusedProbeVariable = 1;
+// Temporary Issue #88 web-lane negative probe. Deliberate type failure. DO NOT MERGE.
+const deliberateTypeError: number = "not a number";
