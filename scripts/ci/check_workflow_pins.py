@@ -21,14 +21,40 @@ def _fallback_parse_uses(content: str) -> list[str]:
     uses_list: list[str] = []
     lines = content.splitlines()
     i = 0
+    in_run_block = False
+    run_indent = 0
+
     while i < len(lines):
-        line = lines[i].strip()
-        if line.startswith("#") or "permissions:" in line:
+        line_raw = lines[i]
+        line = line_raw.strip()
+
+        if not line or line.startswith("#"):
             i += 1
             continue
 
-        # Single-line 'uses: action@ref'
-        m = re.search(r"""(?:["']?uses["']?|\buses)\s*:\s*(['"]?)([^'"\n#]+)\1""", line, re.IGNORECASE)
+        indent = len(line_raw) - len(line_raw.lstrip())
+
+        if in_run_block:
+            if indent > run_indent:
+                i += 1
+                continue
+            else:
+                in_run_block = False
+
+        # Ignore 'run:' steps and multiline script blocks ('run: |', 'run: >')
+        if re.match(r"""^\s*(?:-\s*)?run\s*:\s*[|>]?""", line_raw, re.IGNORECASE):
+            in_run_block = True
+            run_indent = indent
+            i += 1
+            continue
+
+        # Ignore permission/env blocks
+        if re.match(r"""^\s*(?:permissions|env)\s*:""", line_raw, re.IGNORECASE):
+            i += 1
+            continue
+
+        # Single-line mapping key 'uses: action@ref' or '- uses: action@ref' at start of line
+        m = re.match(r"""^\s*(?:-\s*)?uses\s*:\s*(['"]?)([^'"\n#]+)\1""", line_raw, re.IGNORECASE)
         if m:
             val = m.group(2).strip()
             if val and val not in ("read", "write", "none"):
@@ -36,12 +62,13 @@ def _fallback_parse_uses(content: str) -> list[str]:
                 i += 1
                 continue
 
-        # Multiline 'uses:\n  action@ref'
-        m_multi = re.search(r"""(?:["']?uses["']?|\buses)\s*:\s*$""", line, re.IGNORECASE)
+        # Multiline mapping key 'uses:\n  action@ref' at start of line
+        m_multi = re.match(r"""^\s*(?:-\s*)?uses\s*:\s*$""", line_raw, re.IGNORECASE)
         if m_multi and i + 1 < len(lines):
-            next_line = lines[i + 1].strip()
-            if not next_line.startswith("#"):
-                m_val = re.search(r"""^(['"]?)([^'"\n#]+)\1$""", next_line)
+            next_line_raw = lines[i + 1]
+            next_line = next_line_raw.strip()
+            if next_line and not next_line.startswith("#"):
+                m_val = re.match(r"""^\s*(['"]?)([^'"\n#]+)\1$""", next_line_raw)
                 if m_val:
                     val = m_val.group(2).strip()
                     if val and val not in ("read", "write", "none"):

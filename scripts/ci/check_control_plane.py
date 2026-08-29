@@ -163,8 +163,28 @@ def post_commit_status(
     head_sha: str,
     state: str,
     description: str,
+    pr_number: int | None = None,
+    repo_owner: str | None = None,
+    protected_paths: list[str] | None = None,
     runner: Callable[[Sequence[str]], subprocess.CompletedProcess[str]] | None = None,
 ) -> None:
+    # Atomic re-check directly before posting final status to eliminate TOCTOU window
+    if state == "success" and pr_number is not None and protected_paths and repo_owner:
+        live = fetch_live_pr(repo, pr_number, runner=runner)
+        if live.head_sha != head_sha:
+            raise ControlPlaneValidationError(
+                f"TOCTOU RACE DETECTED: PR #{pr_number} live head SHA changed to '{live.head_sha}' immediately before status post."
+            )
+        if live.user_login != repo_owner:
+            raise ControlPlaneValidationError(
+                f"TOCTOU RACE DETECTED: PR #{pr_number} author changed to '{live.user_login}' immediately before status post."
+            )
+        approval_sha = extract_approval_sha(live.body)
+        if not approval_sha or approval_sha != head_sha:
+            raise ControlPlaneValidationError(
+                f"TOCTOU RACE DETECTED: PR #{pr_number} approval marker removed immediately before status post."
+            )
+
     endpoint = f"repos/{repo}/statuses/{head_sha}"
     cmd = [
         "gh",
@@ -288,6 +308,9 @@ def main() -> int:
             final_meta.head_sha,
             "success",
             "CI Control Plane checks passed against live PR metadata.",
+            pr_number=pr_number,
+            repo_owner=repo_owner,
+            protected_paths=protected,
         )
         print(f"Control plane check passed for PR #{pr_number} (head SHA {final_meta.head_sha}).")
         return 0

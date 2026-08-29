@@ -106,11 +106,23 @@ class WorkflowPinTests(unittest.TestCase):
             path.write_text(
                 "steps:\n  - uses:\n      actions/checkout@v7\n", encoding="utf-8"
             )
-            # Temporarily simulate missing PyYAML
             orig_yaml = check_workflow_pins.yaml
             check_workflow_pins.yaml = None
             try:
                 self.assertEqual(len(check_workflow_pins.scan_file(path)), 1)
+            finally:
+                check_workflow_pins.yaml = orig_yaml
+
+    def test_fallback_ignores_uses_in_run_script_block(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = pathlib.Path(temp) / "ci.yml"
+            path.write_text(
+                'steps:\n  - run: echo "uses: documentation"\n', encoding="utf-8"
+            )
+            orig_yaml = check_workflow_pins.yaml
+            check_workflow_pins.yaml = None
+            try:
+                self.assertEqual(check_workflow_pins.scan_file(path), [])
             finally:
                 check_workflow_pins.yaml = orig_yaml
 
