@@ -143,6 +143,13 @@ def verify_check_run_integration(
 
 
 def _rule_map(ruleset: dict[str, object]) -> dict[str, dict[str, object]]:
+    """Map rule type -> rule, retaining unknown types so they surface as drift.
+
+    Unknown *typed* rules stay in the map and are compared via the
+    ``rule_types`` canonical field; rules without a string ``type`` are
+    dropped here but their absence is caught by the ``rule_count`` field, so
+    no enforcement state can disappear silently.
+    """
     result: dict[str, dict[str, object]] = {}
     for raw in ruleset.get("rules", []):
         if isinstance(raw, dict) and isinstance(raw.get("type"), str):
