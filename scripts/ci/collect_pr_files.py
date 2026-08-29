@@ -57,6 +57,7 @@ def extract_all_paths(files: list[dict[str, Any]]) -> set[str]:
 
 PROTECTED_PREFIXES = (
     ".github/workflows/",
+    ".github/actions/",
     "scripts/ci/",
     "infra/github/",
 )

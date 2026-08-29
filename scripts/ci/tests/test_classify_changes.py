@@ -33,6 +33,24 @@ class ClassificationTests(unittest.TestCase):
         self.assertTrue(result.infra_required)
         self.assertTrue(result.ci_control_plane_changed)
 
+    def test_local_action_manifest_runs_all_lanes_and_is_control_plane(self):
+        result = classify_changes.classify([".github/actions/build/action.yml"])
+        self.assertTrue(result.ci_control_plane_changed)
+        self.assertFalse(result.docs_only)
+        self.assertTrue(result.core_required)
+        self.assertTrue(result.web_required)
+        self.assertTrue(result.infra_required)
+        self.assertTrue(result.shared_required)
+        self.assertFalse(result.conservative_fallback)
+
+    def test_local_action_helper_script_is_control_plane(self):
+        result = classify_changes.classify([".github/actions/build/build.sh"])
+        self.assertTrue(result.ci_control_plane_changed)
+        self.assertFalse(result.docs_only)
+        self.assertTrue(result.core_required)
+        self.assertTrue(result.web_required)
+        self.assertTrue(result.infra_required)
+
     def test_root_package_change_runs_all_lanes(self):
         result = classify_changes.classify(["package.json"])
         self.assertTrue(result.core_required)

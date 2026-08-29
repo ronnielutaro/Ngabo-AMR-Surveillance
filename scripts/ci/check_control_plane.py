@@ -99,6 +99,7 @@ def is_protected_path(path: str) -> bool:
     path = path.strip()
     if (
         path.startswith(".github/workflows/")
+        or path.startswith(".github/actions/")
         or path.startswith("scripts/ci/")
         or path.startswith("infra/github/")
     ):

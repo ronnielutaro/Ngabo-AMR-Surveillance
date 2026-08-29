@@ -164,6 +164,14 @@ class ControlPlaneRaceTests(unittest.TestCase):
         self.assertTrue(check_control_plane.is_protected_path("services/core/pyproject.toml"))
         self.assertFalse(check_control_plane.is_protected_path("docs/README.md"))
 
+    def test_local_action_subtree_is_protected(self):
+        # Entire .github/actions/** subtree is CI control-plane code: manifests
+        # and any helper scripts they invoke are executable in the runner.
+        self.assertTrue(check_control_plane.is_protected_path(".github/actions/build/action.yml"))
+        self.assertTrue(check_control_plane.is_protected_path(".github/actions/build/action.yaml"))
+        self.assertTrue(check_control_plane.is_protected_path(".github/actions/build/build.sh"))
+        self.assertTrue(check_control_plane.is_protected_path(".github/actions/build/nested/bar.py"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -40,7 +40,7 @@
     "infra:identity:secret-probe": "cd services/core && uv run python ../../infra/gcp/identity.py secret-probe",
     "infra:identity:teardown:dry-run": "cd services/core && uv run python ../../infra/gcp/identity.py teardown --dry-run",
     "infra:lint": "cd services/core && uv run ruff check ../../infra/gcp ../../infra/github",
-    "infra:typecheck": "cd services/core && uv run mypy ../../infra/gcp ../../infra/github",
+    "infra:typecheck": "cd services/core && uv run mypy ../../infra/gcp",
     "infra:test": "cd services/core && uv run pytest ../../infra/gcp/tests",
     "ci:test": "cd services/core && uv run python -m unittest discover -s ../../scripts/ci/tests -p test_*.py && uv run python -m unittest discover -s ../../infra/github/tests -p test_*.py",
     "ci:pins": "cd services/core && uv run python ../../scripts/ci/check_workflow_pins.py ../../.github/workflows",

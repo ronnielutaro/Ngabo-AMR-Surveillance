@@ -36,7 +36,7 @@ Filenames with spaces are handled safely via NUL-delimited parsing.
 - `apps/web/**` requires the web lane.
 - `pnpm-lock.yaml`-only changes require the web lane (`web_required = true` and `dependency_changed = true`) because the root pnpm lockfile governs web package installations.
 - `infra/gcp/**` requires the infrastructure regression lane.
-- `.github/workflows/**`, `scripts/ci/**`, `infra/github/**`, and shared repository/toolchain configuration are cross-cutting and require all relevant lanes.
+- `.github/workflows/**`, `.github/actions/**`, `scripts/ci/**`, `infra/github/**`, and shared repository/toolchain configuration are cross-cutting and require all relevant lanes.
 - documentation-only changes may skip core/web/infra, but `CI Policy`, `Dependency Review`, `Dependency Security`, and `PR Quality Gate` still produce real checks.
 - unknown non-documentation paths (such as `Dockerfile`, `new-root-config.toml`, `.github/dependabot.yml`, or unrecognized configuration) fail closed by conservatively requiring all executable lanes (`core`, `web`, `infra`, and `shared`), setting `conservative_fallback = true`.
 - an empty diff fails safe by requiring every lane.
@@ -88,6 +88,8 @@ uv run mypy ../../infra/gcp
 uv run pytest ../../infra/gcp/tests
 ```
 
+Local equivalents for this lane are `pnpm infra:typecheck` (runs `cd services/core && uv run mypy ../../infra/gcp` — the exact hosted lane mypy command) and `pnpm infra:test` (`cd services/core && uv run pytest ../../infra/gcp/tests`).
+
 Any changed `infra/gcp/*.py` file is additionally passed to Ruff. Normal PR CI never runs `gcloud`, `infra:apply`, `identity:apply`, or any cloud mutation.
 
 ## Dependency security and native Dependency Review
@@ -133,7 +135,7 @@ The `scripts/ci/collect_pr_files.py` utility provides testable `extract_all_path
 
 ### Protected paths
 
-Protected control-plane paths include workflows, `scripts/ci/**`, `infra/github/**`, package/toolchain manifests, and web lint/type/test/build configuration. A protected change must be authored by the repository owner and the PR body must contain an approval bound to the exact current head SHA:
+Protected control-plane paths include workflows, local composite actions under `.github/actions/**` (both `action.yml`/`action.yaml` manifests and any helper scripts they invoke), `scripts/ci/**`, `infra/github/**`, package/toolchain manifests, and web lint/type/test/build configuration. A protected change must be authored by the repository owner and the PR body must contain an approval bound to the exact current head SHA:
 
 ```text
 CI-Control-Plane-Approval: <PR_HEAD_SHA>
@@ -162,6 +164,7 @@ pnpm core:architecture
 pnpm core:build
 pnpm core:audit
 pnpm web:audit
+pnpm infra:typecheck
 pnpm infra:test
 pnpm ci:test
 pnpm ci:pins

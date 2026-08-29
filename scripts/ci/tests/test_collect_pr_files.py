@@ -47,6 +47,14 @@ class IsProtectedPathTests(unittest.TestCase):
     def test_github_workflow(self):
         self.assertTrue(collect_pr_files.is_protected_path(".github/workflows/pr-quality.yml"))
 
+    def test_github_actions_subtree(self):
+        # Whole .github/actions/** subtree is protected: manifests plus any
+        # helper scripts invoked from composite action steps.
+        self.assertTrue(collect_pr_files.is_protected_path(".github/actions/build/action.yml"))
+        self.assertTrue(collect_pr_files.is_protected_path(".github/actions/build/action.yaml"))
+        self.assertTrue(collect_pr_files.is_protected_path(".github/actions/build/build.sh"))
+        self.assertTrue(collect_pr_files.is_protected_path(".github/actions/build/nested/bar.py"))
+
     def test_scripts_ci(self):
         self.assertTrue(collect_pr_files.is_protected_path("scripts/ci/check_architecture.py"))
 
@@ -141,6 +149,26 @@ class ClassifyPrFilesRenameTests(unittest.TestCase):
         }]
         protected, _all = collect_pr_files.classify_pr_files(files)
         self.assertIn("package.json", protected)
+
+    def test_local_action_to_docs_rename(self):
+        """Renaming .github/actions/foo/action.yml -> docs/action.yml must be protected."""
+        files = [{
+            "filename": "docs/action.yml",
+            "previous_filename": ".github/actions/foo/action.yml",
+            "status": "renamed",
+        }]
+        protected, _all = collect_pr_files.classify_pr_files(files)
+        self.assertIn(".github/actions/foo/action.yml", protected)
+
+    def test_docs_to_local_action_rename(self):
+        """Renaming docs/foo.yml -> .github/actions/foo/action.yml must be protected."""
+        files = [{
+            "filename": ".github/actions/foo/action.yml",
+            "previous_filename": "docs/foo.yml",
+            "status": "renamed",
+        }]
+        protected, _all = collect_pr_files.classify_pr_files(files)
+        self.assertIn(".github/actions/foo/action.yml", protected)
 
 
 if __name__ == "__main__":

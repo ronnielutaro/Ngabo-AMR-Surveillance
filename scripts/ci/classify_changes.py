@@ -22,7 +22,12 @@ SHARED_FILES = {
 }
 WEB_DEPENDENCY_FILES = {"pnpm-lock.yaml", "apps/web/package.json"}
 CORE_DEPENDENCY_FILES = {"services/core/pyproject.toml", "services/core/uv.lock"}
-CI_CONTROL_PREFIXES = (".github/workflows/", "scripts/ci/", "infra/github/")
+CI_CONTROL_PREFIXES = (
+    ".github/workflows/",
+    ".github/actions/",
+    "scripts/ci/",
+    "infra/github/",
+)
 CI_CONTROL_FILES = {
     "package.json",
     "pnpm-lock.yaml",
