@@ -1,7 +1,7 @@
 # Ngabo — Cloud Cost, Privacy, and Teardown Policy
 
 **Status:** Governed Cloud Boundary Contract  
-**Version:** 1.0  
+**Version:** 1.1  
 **Date:** 2026-08-29  
 **Issue Reference:** #85 (Cloud Foundation 1A.1)  
 **Parent Epic:** #84 (Epic 1A: GCP Foundation and Incremental Delivery Skeleton)  
@@ -50,13 +50,20 @@ To ensure complete cost predictability, Ngabo distinguishes three separate usage
 - Applied automatically by Google Cloud to eligible services during the 90-day active window.
 - Covers ephemeral Cloud Run compute, container builds, temporary storage, and live demonstration endpoints.
 
-### 3.2 Tier 2: Google Cloud Free Tier (Always-Free Monthly Allowances)
-- Ongoing service-specific free quotas that apply independent of trial credits:
-  - **Cloud Run**: 2 million requests/month, 360,000 GB-seconds of memory, 180,000 vCPU-seconds.
-  - **Cloud Storage**: 5 GB-months of standard storage in US regions.
-  - **Firestore**: 1 GB storage, 50,000 document reads, 20,000 document writes, 20,000 deletes/day.
-  - **Cloud Pub/Sub**: 10 GB of message ingestion/delivery per month.
-- All architecture designs must prioritize staying within Free Tier quotas wherever feasible.
+### 3.2 Tier 2: Google Cloud Free Tier
+
+Google Cloud provides service-specific free usage allowances that may apply during and after the Free Trial.
+
+These limits are not governed constants in Ngabo because Google may change them and some vary by region, billing mode, edition, or billing account.
+
+Before provisioning or changing any billable service, the owning issue must:
+
+1. re-check the current official Google Cloud pricing/free-tier documentation;
+2. record the relevant service, region, billing mode, and observed free allowance;
+3. configure explicit cost/usage controls appropriate to that service;
+4. preserve the project-wide `OUT_OF_POCKET_LIMIT_USD = 0` boundary.
+
+Free Tier allowances are an optimization, not Ngabo's primary safety control.
 
 ### 3.3 Tier 3: Out-of-Pocket Paid Spend Boundary
 - **Approved Limit**: `OUT_OF_POCKET_LIMIT_USD = 0` (Strict maintainer-authorized zero-cash spend).
@@ -67,11 +74,13 @@ To ensure complete cost predictability, Ngabo distinguishes three separate usage
 
 ## 4. Fallback Policy
 
-If Google Cloud Free Trial credits are exhausted, expire, or become restricted prior to hackathon submission:
-1. **No Automatic Debt**: The account will NOT be converted to a paid billing account.
-2. **Offline Mode Fallback**: Ngabo falls back entirely to its certified deterministic offline core (as certified by Milestone 2 / Issue #48).
-3. **Local Simulation**: Verification and judge demonstrations utilize local replay fixtures (`data/synthetic/canonical_hero.csv`) and in-memory repositories.
-4. **Transparent Documentation**: Any inability to host live endpoints will be disclosed honestly in submission materials without faking cloud state.
+If Free Trial credits are exhausted, expire, or become restricted:
+
+1. Ngabo must not automatically upgrade to paid billing.
+2. The certified deterministic offline core remains available for local testing, replay, scientific verification, and development continuity.
+3. The offline core is NOT a substitute for the Google Cloud / Google agent framework / Gemini requirements of the hackathon submission.
+4. If the required Google Cloud backend and deployment evidence cannot be restored within the approved zero-cash boundary before submission freeze, the condition is treated as a submission blocker.
+5. Submission materials must never imply cloud execution occurred when only local/offline execution was available.
 
 ---
 
@@ -88,8 +97,20 @@ Resources in the dedicated Google Cloud environment must be destroyed/disabled u
 5. **Project Abandonment / Maintainer Discretion**: The maintainer explicitly calls for environment destruction.
 
 ### 5.2 Teardown Mechanism
-- Infrastructure scripts in `#86` must provide an idempotent cleanup/teardown command (`destroy` or `cleanup` scripts).
-- Deletion of the hackathon GCP project cleanly revokes all provisioned service accounts, storage, and endpoints in a single atomic action.
+
+Later infrastructure issues must provide an explicit, reproducible teardown procedure for Ngabo-managed resources.
+
+The preferred sequence is:
+
+1. stop externally reachable workloads;
+2. disable or detach billing where appropriate;
+3. delete or disable explicitly managed resources through the governed infrastructure/runbook;
+4. verify that traffic, background execution, and billable usage have stopped;
+5. optionally shut down the dedicated GCP project as the final environment-level action.
+
+Google Cloud project shutdown is not treated as an instantaneous atomic resource deletion primitive. Project shutdown moves the project into Google's deletion lifecycle and associated resources can have service-specific deletion and recovery behavior.
+
+Final teardown evidence must verify lifecycle state and billing/traffic cessation rather than merely proving that a delete command was submitted.
 
 ---
 
@@ -106,7 +127,7 @@ Issues #86 through #92 must strictly uphold the following constraints:
    - Cloud Logging retention must be constrained to the default standard period.
 5. **Resource Labeling**: All provisioned GCP resources must carry standardized attribution labels (`project:ngabo`, `environment:hackathon`, `managed-by:opentofu-or-gcloud`).
 6. **Keyless Identity**: GitHub Actions deployment must utilize Workload Identity Federation (WIF). Storing long-lived service account JSON keys in GitHub Secrets is strictly prohibited.
-7. **Canonical Project Boundary**: The default placeholder project generated during signup (`project-3fd33d75-...`) is an account-creation artifact only. Issue #86 will establish the canonical project hierarchy.
+7. **Canonical Project Boundary**: The Google-created signup placeholder project (identifier intentionally omitted) is an account-creation artifact only. Issue #86 will establish the canonical project hierarchy.
 
 ---
 
