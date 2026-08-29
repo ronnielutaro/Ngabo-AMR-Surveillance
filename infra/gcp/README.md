@@ -48,7 +48,7 @@ Every foundation component is strictly classified to preserve boundaries with do
 |---|---|---|---|
 | **GCP Project** | `CREATE_NOW` | #86 | Creates canonical project boundary (`ngabo-amr-2026`). |
 | **Billing Link** | `CREATE_NOW` | #86 | Links project to verified Free Trial billing account. |
-| **API Allow-list** | `CREATE_NOW` | #86 | Enables the 14 allow-listed Google Cloud APIs. |
+| **API Allow-list** | `CREATE_NOW` | #86 | Enables the 14 Ngabo-managed required Google Cloud APIs. |
 | **Artifact Registry** | `CREATE_NOW` | #86 | Provisions Docker repository `ngabo-artifacts` (`us-central1`). |
 | **Billing Budget Alerts** | `CREATE_NOW` | #86 | Configures budget monitor alerts at $150, $270, $290, and $300 thresholds over the Free Trial window. |
 | **Cloud Run API** | `ENABLE_API_ONLY` | #86 | Enables `run.googleapis.com`. Service deployment belongs to #90. |

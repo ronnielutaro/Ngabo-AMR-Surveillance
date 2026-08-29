@@ -475,6 +475,8 @@ class GcpBootstrapper:
 
         enabled_apis = self.inspector.get_enabled_apis() if project_exists else set()
         missing_apis = sorted(set(REQUIRED_APIS) - enabled_apis)
+        additional_apis = sorted(enabled_apis - set(REQUIRED_APIS))
+        required_apis_enabled = len(missing_apis) == 0
 
         ar_details = (
             self.inspector.get_artifact_registry_details()
@@ -549,6 +551,12 @@ class GcpBootstrapper:
             "billing_linked": billing_linked,
             "billing_matches_intended": billing_matches_intended,
             "project_labels_valid": project_labels_match,
+            "required_apis_count": len(REQUIRED_APIS),
+            "required_apis_enabled": required_apis_enabled,
+            "missing_required_apis": missing_apis,
+            "total_enabled_apis_count": len(enabled_apis),
+            "additional_enabled_apis_count": len(additional_apis),
+            "additional_enabled_apis": additional_apis,
             "enabled_apis_count": len(enabled_apis),
             "missing_apis": missing_apis,
             "artifact_registry_valid": ar_valid,
@@ -781,6 +789,12 @@ class GcpBootstrapper:
                 "billing_linked": False,
                 "billing_matches_intended": False,
                 "required_apis_enabled": False,
+                "required_apis_count": len(REQUIRED_APIS),
+                "missing_required_apis": [],
+                "total_enabled_apis_count": 0,
+                "additional_enabled_apis_count": 0,
+                "additional_enabled_apis": [],
+                "enabled_apis_count": 0,
                 "artifact_registry_valid": False,
                 "budget_contract_valid": False,
             },
@@ -842,11 +856,20 @@ class GcpBootstrapper:
         # Check 4: APIs Enabled
         enabled_apis = self.inspector.get_enabled_apis()
         missing_apis = sorted(set(REQUIRED_APIS) - enabled_apis)
-        report["checks"]["required_apis_enabled"] = len(missing_apis) == 0
+        additional_apis = sorted(enabled_apis - set(REQUIRED_APIS))
+        apis_valid = len(missing_apis) == 0
+        report["checks"]["required_apis_enabled"] = apis_valid
+        report["checks"]["required_apis_count"] = len(REQUIRED_APIS)
+        report["checks"]["missing_required_apis"] = missing_apis
+        report["checks"]["total_enabled_apis_count"] = len(enabled_apis)
+        report["checks"]["additional_enabled_apis_count"] = len(additional_apis)
+        report["checks"]["additional_enabled_apis"] = additional_apis
         report["checks"]["enabled_apis_count"] = len(enabled_apis)
-        if missing_apis:
+        if not apis_valid:
             joined = ", ".join(missing_apis)
-            report["failures"].append(f"Missing required APIs ({len(missing_apis)}): {joined}")
+            report["failures"].append(
+                f"Missing required APIs ({len(missing_apis)}/{len(REQUIRED_APIS)}): {joined}"
+            )
             report["passed"] = False
 
         # Check 5: Artifact Registry Configuration & Labels
@@ -978,6 +1001,15 @@ class GcpBootstrapper:
                 "auto_upgrade_to_paid": False,
             },
             "api_allowlist": {
+                "required_apis_count": len(REQUIRED_APIS),
+                "required_apis_enabled": val["checks"].get("required_apis_enabled", False),
+                "missing_required_apis": val["checks"].get("missing_required_apis", []),
+                "required_apis": list(REQUIRED_APIS),
+                "total_enabled_apis_count": val["checks"].get("total_enabled_apis_count", 0),
+                "additional_enabled_apis_count": val["checks"].get(
+                    "additional_enabled_apis_count", 0
+                ),
+                "additional_enabled_apis": val["checks"].get("additional_enabled_apis", []),
                 "required_count": len(REQUIRED_APIS),
                 "all_required_enabled": val["checks"].get("required_apis_enabled", False),
                 "apis": list(REQUIRED_APIS),
@@ -1100,9 +1132,18 @@ def main(argv: list[str] | None = None) -> int:
             match_str = f"Matches Intended: {plan_res.get('billing_matches_intended')}"
             print(f"Billing Linked:    {plan_res['billing_linked']} ({match_str})")
             print(f"Project Labels:    {plan_res.get('project_labels_valid')}")
-            cnt = plan_res["enabled_apis_count"]
-            missing_cnt = len(plan_res["missing_apis"])
-            print(f"Enabled APIs:      {cnt} (Missing: {missing_cnt})")
+            req_cnt = plan_res.get("required_apis_count", len(REQUIRED_APIS))
+            missing_cnt = len(
+                plan_res.get("missing_required_apis", plan_res.get("missing_apis", []))
+            )
+            total_cnt = plan_res.get(
+                "total_enabled_apis_count", plan_res.get("enabled_apis_count", 0)
+            )
+            add_cnt = plan_res.get("additional_enabled_apis_count", 0)
+            print(
+                f"APIs:              {req_cnt} Required Enabled "
+                f"(Missing: {missing_cnt}) | Total Active: {total_cnt} ({add_cnt} platform/default)"
+            )
             print(f"Artifact Registry: {plan_res['artifact_registry_valid']}")
             print(f"Budget Alert:      {plan_res['budget_alert_valid']}")
             print(f"Converged (No-op): {plan_res['is_converged']}")
@@ -1150,7 +1191,16 @@ def main(argv: list[str] | None = None) -> int:
             match_str = f"Matches Intended: {val_res['checks']['billing_matches_intended']}"
             print(f"Billing:  Linked: {val_res['checks']['billing_linked']} ({match_str})")
             apis_ok = val_res["checks"]["required_apis_enabled"]
-            print(f"APIs:     All 14 Required Enabled: {apis_ok}")
+            req_cnt = val_res["checks"].get("required_apis_count", len(REQUIRED_APIS))
+            total_cnt = val_res["checks"].get(
+                "total_enabled_apis_count", val_res["checks"].get("enabled_apis_count", 0)
+            )
+            add_cnt = val_res["checks"].get("additional_enabled_apis_count", 0)
+            print(
+                f"APIs:     14 Ngabo-Managed Required Enabled: {apis_ok} "
+                f"({req_cnt}/{req_cnt} required, {total_cnt} total active "
+                f"[{add_cnt} platform/default])"
+            )
             ar_ok = val_res["checks"]["artifact_registry_valid"]
             print(f"Registry: Artifact Registry Valid: {ar_ok}")
             b_ok = val_res["checks"]["budget_contract_valid"]

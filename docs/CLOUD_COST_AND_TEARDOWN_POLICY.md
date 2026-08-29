@@ -1,7 +1,7 @@
 # Ngabo — Cloud Cost, Privacy, and Teardown Policy
 
 **Status:** Governed Cloud Boundary Contract  
-**Version:** 1.2  
+**Version:** 1.3  
 **Date:** 2026-08-29  
 **Issue Reference:** #85 (Cloud Foundation 1A.1), #86 (Cloud Foundation 1A.2)  
 **Parent Epic:** #84 (Epic 1A: GCP Foundation and Incremental Delivery Skeleton)  
@@ -12,7 +12,7 @@
 
 This document defines the maintainer-owned cloud account, cost, privacy, and teardown boundaries for the Ngabo Antimicrobial Resistance Surveillance hackathon deployment.
 
-It establishes strict operational boundaries prior to any infrastructure provisioning in Issue #86, ensuring that:
+It establishes and governs the cloud boundary introduced through Issues #85–#86 and inherited by subsequent infrastructure issues, ensuring that:
 1. Cloud resources reside in a dedicated, isolated Google Cloud environment.
 2. The funding source is strictly bounded to confirmed Google Cloud Free Trial credits and ongoing Free Tier allowances.
 3. Out-of-pocket cash spend is capped at **$0 USD**.
@@ -125,7 +125,7 @@ Issues #86 through #92 must strictly uphold the following constraints:
    - Cloud Storage buckets must configure object lifecycle rules (deleting ephemeral objects after 7 days).
    - Firestore and Pub/Sub retention must be minimized.
    - Cloud Logging retention must be constrained to the default standard period.
-5. **Resource Labeling**: All provisioned GCP resources must carry standardized attribution labels:
+5. **Resource Labeling**: All Ngabo-managed resources that support Google Cloud labels must carry the standardized attribution labels:
    - `app: ngabo`
    - `environment: dev | judge | shared`
    - `lifecycle: hackathon`
@@ -133,8 +133,8 @@ Issues #86 through #92 must strictly uphold the following constraints:
    - `owner: ngabo-maintainer`
    Shared project-level and foundation resources carry `environment: shared`; development resources carry `environment: dev`; judged-release resources carry `environment: judge`.
 6. **Keyless Identity**: GitHub Actions deployment must utilize Workload Identity Federation (WIF). Storing long-lived service account JSON keys in GitHub Secrets is strictly prohibited.
-7. **Canonical Project Boundary**: The Google-created signup placeholder project (identifier intentionally omitted) is an account-creation artifact only. Issue #86 will establish the canonical project hierarchy.
-8. **Budget Alerts**: Cloud Billing budget alerts must be configured in later infrastructure issues (#86+) to monitor Free Trial consumption and notify the maintainer (e.g., at 50%, 90%, and 100% of credits, and on any forecasted net payable spend), ensuring the `$10` credit threshold is detected in advance.
+7. **Canonical Project Boundary**: The Google-created signup placeholder project (identifier intentionally omitted) is an account-creation artifact only. Issue #86 established the canonical Ngabo Google Cloud project boundary and reproducible bootstrap contract.
+8. **Budget Alerts**: Budget alerts must monitor the custom Free Trial window using supported actual-spend thresholds, including 50%, 90%, approximately 96.67% for the $10 reserve warning, and 100%. The budget is an asynchronous alerting mechanism, not a hard spend cap. Remaining promotional credit must also be checked through the authoritative Google Cloud Free Trial billing view.
 
 ---
 
