@@ -233,15 +233,31 @@ def fetch_run_evidence(
     return run_data, jobs_data, validate_jobs(jobs_data)
 
 
+def validate_negative_run(
+    repo: str,
+    run_id: str | int,
+    runner: Callable[[Sequence[str]], subprocess.CompletedProcess[str]] | None = None,
+) -> dict[str, Any]:
+    """Fetch and validate a negative proof run (must have conclusion 'failure')."""
+    run_data = run_gh_json([f"repos/{repo}/actions/runs/{run_id}"], runner=runner)
+    conclusion = run_data.get("conclusion")
+    if conclusion != "failure":
+        raise EvidenceValidationError(
+            f"negative proof run {run_id} conclusion is '{conclusion}', expected 'failure'"
+        )
+    return run_data
+
+
 def build_ci_evidence(
     repo: str = DEFAULT_REPO,
     pr_number: int = DEFAULT_PR,
     run_id: int | None = None,
-    direct_import_negative_run: str = "33245608901",
-    importfrom_bypass_negative_run: str | None = None,
-    high_severity_negative_run: str | None = None,
-    advisory_id: str | None = None,
+    direct_import_negative_run: str | None = "33245608901",
+    importfrom_bypass_negative_run: str | None = "33247122809",
+    high_severity_negative_run: str | None = "33247203439",
+    advisory_id: str | None = "GHSA-cpwx-vrp4-4pq7",
     rename_bypass_negative_run: str | None = None,
+    validate_negative_proofs: bool = True,
     runner: Callable[[Sequence[str]], subprocess.CompletedProcess[str]] | None = None,
 ) -> dict[str, Any]:
     """Build validated CI quality evidence.
@@ -274,6 +290,56 @@ def build_ci_evidence(
 
     # Strict validation of run/PR relationship
     validate_run_against_pr(run_data, pr_data, pr_number, run_id)
+
+    # Build validated historical negative proofs (omit any null/absent proofs)
+    historical_negative_proofs: dict[str, Any] = {}
+
+    if direct_import_negative_run:
+        if validate_negative_proofs:
+            validate_negative_run(repo, direct_import_negative_run, runner=runner)
+        historical_negative_proofs["direct_import_bypass"] = {
+            "run_id": str(direct_import_negative_run),
+            "description": (
+                "Direct 'import infrastructure' bypass — architecture "
+                "checker correctly rejects"
+            ),
+        }
+
+    if importfrom_bypass_negative_run:
+        if validate_negative_proofs:
+            validate_negative_run(repo, importfrom_bypass_negative_run, runner=runner)
+        historical_negative_proofs["importfrom_bypass"] = {
+            "run_id": str(importfrom_bypass_negative_run),
+            "description": (
+                "'from ngabo import infrastructure' bypass — architecture "
+                "checker correctly rejects via resolve_name"
+            ),
+        }
+
+    if high_severity_negative_run:
+        if validate_negative_proofs:
+            validate_negative_run(repo, high_severity_negative_run, runner=runner)
+        proof_obj: dict[str, Any] = {
+            "run_id": str(high_severity_negative_run),
+            "description": (
+                "High-severity vulnerable dependency — uv audit + "
+                "dependency review correctly reject"
+            ),
+        }
+        if advisory_id:
+            proof_obj["advisory_id"] = advisory_id
+        historical_negative_proofs["high_severity_dependency"] = proof_obj
+
+    if rename_bypass_negative_run:
+        if validate_negative_proofs:
+            validate_negative_run(repo, rename_bypass_negative_run, runner=runner)
+        historical_negative_proofs["rename_bypass"] = {
+            "run_id": str(rename_bypass_negative_run),
+            "description": (
+                "Core-to-docs rename bypass — rename-aware collector "
+                "correctly retains source path"
+            ),
+        }
 
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -362,37 +428,7 @@ def build_ci_evidence(
                 "activation_status": "PENDING_POST_MERGE",
             },
         },
-        "historical_negative_proofs": {
-            "direct_import_bypass": {
-                "run_id": direct_import_negative_run,
-                "description": (
-                    "Direct 'import infrastructure' bypass — architecture "
-                    "checker correctly rejects"
-                ),
-            },
-            "importfrom_bypass": {
-                "run_id": importfrom_bypass_negative_run,
-                "description": (
-                    "'from ngabo import infrastructure' bypass — architecture "
-                    "checker correctly rejects via resolve_name"
-                ),
-            },
-            "high_severity_dependency": {
-                "run_id": high_severity_negative_run,
-                "advisory_id": advisory_id,
-                "description": (
-                    "High-severity vulnerable dependency — uv audit + "
-                    "dependency review correctly reject"
-                ),
-            },
-            "rename_bypass": {
-                "run_id": rename_bypass_negative_run,
-                "description": (
-                    "Core-to-docs rename bypass — rename-aware collector "
-                    "correctly retains source path"
-                ),
-            },
-        },
+        "historical_negative_proofs": historical_negative_proofs,
     }
 
 
@@ -410,9 +446,9 @@ def main() -> int:
     parser.add_argument("--pr", type=int, default=DEFAULT_PR)
     parser.add_argument("--run-id", type=int, default=None)
     parser.add_argument("--direct-import-negative-run", default="33245608901")
-    parser.add_argument("--importfrom-negative-run", default=None)
-    parser.add_argument("--security-negative-run", default=None)
-    parser.add_argument("--advisory-id", default=None)
+    parser.add_argument("--importfrom-negative-run", default="33247122809")
+    parser.add_argument("--security-negative-run", default="33247203439")
+    parser.add_argument("--advisory-id", default="GHSA-cpwx-vrp4-4pq7")
     parser.add_argument("--rename-negative-run", default=None)
     parser.add_argument("--output", type=Path, default=None)
     args = parser.parse_args()

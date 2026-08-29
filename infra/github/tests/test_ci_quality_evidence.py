@@ -106,13 +106,21 @@ class ValidEvidenceTests(unittest.TestCase):
         pr = _make_pr_data()
         run = _make_run_data()
         jobs = _make_jobs_data()
+        neg_run = _make_run_data(run_id=99999, conclusion="failure")
         runner = _make_runner(
             FakeProcess(0, json.dumps(pr)),       # fetch PR
             FakeProcess(0, json.dumps(run)),       # fetch run
             FakeProcess(0, json.dumps(jobs)),      # fetch jobs
+            FakeProcess(0, json.dumps(neg_run)),   # validate direct import neg run
         )
         evidence = ci_quality_evidence.build_ci_evidence(
-            repo="owner/repo", pr_number=103, run_id=12345, runner=runner,
+            repo="owner/repo",
+            pr_number=103,
+            run_id=12345,
+            direct_import_negative_run="99999",
+            importfrom_bypass_negative_run=None,
+            high_severity_negative_run=None,
+            runner=runner,
         )
         self.assertIn("observed", evidence)
         self.assertIn("contract", evidence)
@@ -126,6 +134,8 @@ class ValidEvidenceTests(unittest.TestCase):
             evidence["issue_title"],
             "Cloud Foundation 1A.4: Enforce monorepo PR quality gates in GitHub Actions",
         )
+        self.assertIn("direct_import_bypass", evidence["historical_negative_proofs"])
+        self.assertNotIn("importfrom_bypass", evidence["historical_negative_proofs"])
 
     def test_valid_evidence_jobs_observed(self):
         pr = _make_pr_data()
@@ -137,7 +147,11 @@ class ValidEvidenceTests(unittest.TestCase):
             FakeProcess(0, json.dumps(jobs)),
         )
         evidence = ci_quality_evidence.build_ci_evidence(
-            repo="owner/repo", pr_number=103, run_id=12345, runner=runner,
+            repo="owner/repo",
+            pr_number=103,
+            run_id=12345,
+            validate_negative_proofs=False,
+            runner=runner,
         )
         observed_jobs = evidence["observed"]["jobs"]
         self.assertIn("PR Quality Gate", observed_jobs)
@@ -154,7 +168,11 @@ class ValidEvidenceTests(unittest.TestCase):
             FakeProcess(0, json.dumps(jobs)),
         )
         evidence = ci_quality_evidence.build_ci_evidence(
-            repo="owner/repo", pr_number=103, run_id=12345, runner=runner,
+            repo="owner/repo",
+            pr_number=103,
+            run_id=12345,
+            validate_negative_proofs=False,
+            runner=runner,
         )
         self.assertEqual(evidence["observed"]["duration_seconds"], 45)
 
@@ -168,7 +186,11 @@ class ValidEvidenceTests(unittest.TestCase):
             FakeProcess(0, json.dumps(jobs)),
         )
         evidence = ci_quality_evidence.build_ci_evidence(
-            repo="owner/repo", pr_number=103, run_id=12345, runner=runner,
+            repo="owner/repo",
+            pr_number=103,
+            run_id=12345,
+            validate_negative_proofs=False,
+            runner=runner,
         )
         self.assertEqual(
             evidence["contract"]["privacy_review_status"],
@@ -192,9 +214,36 @@ class ValidEvidenceTests(unittest.TestCase):
             FakeProcess(0, json.dumps(jobs)),
         )
         evidence = ci_quality_evidence.build_ci_evidence(
-            repo="owner/repo", pr_number=103, run_id=12345, runner=runner,
+            repo="owner/repo",
+            pr_number=103,
+            run_id=12345,
+            validate_negative_proofs=False,
+            runner=runner,
         )
         self.assertEqual(evidence["observed"]["run_conclusion"], "success")
+
+    def test_negative_run_must_be_failure(self):
+        pr = _make_pr_data()
+        run = _make_run_data()
+        jobs = _make_jobs_data()
+        success_neg_run = _make_run_data(run_id=99999, conclusion="success")
+        runner = _make_runner(
+            FakeProcess(0, json.dumps(pr)),
+            FakeProcess(0, json.dumps(run)),
+            FakeProcess(0, json.dumps(jobs)),
+            FakeProcess(0, json.dumps(success_neg_run)),
+        )
+        with self.assertRaises(ci_quality_evidence.EvidenceValidationError) as ctx:
+            ci_quality_evidence.build_ci_evidence(
+                repo="owner/repo",
+                pr_number=103,
+                run_id=12345,
+                direct_import_negative_run="99999",
+                importfrom_bypass_negative_run=None,
+                high_severity_negative_run=None,
+                runner=runner,
+            )
+        self.assertIn("expected 'failure'", str(ctx.exception))
 
 
 # ---------------------------------------------------------------------------

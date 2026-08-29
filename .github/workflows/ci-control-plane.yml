@@ -18,6 +18,7 @@ permissions:
   contents: read
   pull-requests: read
   issues: read
+  statuses: write
 
 jobs:
   control-plane:
@@ -89,3 +90,29 @@ jobs:
           fi
 
           echo "Head-SHA-bound maintainer approval verified." >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Attach success status to PR head SHA
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            "repos/${GITHUB_REPOSITORY}/statuses/${PR_HEAD_SHA}" \
+            -f state="success" \
+            -f context="CI Control Plane" \
+            -f description="CI Control Plane protection verified"
+
+      - name: Attach failure status to PR head SHA
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            "repos/${GITHUB_REPOSITORY}/statuses/${PR_HEAD_SHA}" \
+            -f state="failure" \
+            -f context="CI Control Plane" \
+            -f description="CI Control Plane validation failed"
