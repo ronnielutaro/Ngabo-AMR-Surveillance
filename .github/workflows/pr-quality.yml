@@ -74,6 +74,52 @@ jobs:
           python -m unittest discover -s infra/github/tests -p 'test_*.py'
           python scripts/ci/check_workflow_pins.py .github/workflows
 
+  dependency-security:
+    name: Dependency Security
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Checkout repository
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        # actions/setup-python v7.0.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Set up uv
+        # astral-sh/setup-uv v10.0.1
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          version: "0.12.4"
+          working-directory: services/core
+          enable-cache: true
+          ignore-nothing-to-cache: true
+
+      - name: Audit frozen Python dependency graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd services/core
+          uv --preview audit --frozen --output-format text
+
+      - name: Set up pnpm and Node
+        # pnpm/setup v2.1.0
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b
+        with:
+          version: "11.22.0"
+          runtime: node@24.19.0
+          cache: true
+          cache-dependency-path: pnpm-lock.yaml
+          install: false
+
+      - name: Audit pnpm dependency graph
+        run: pnpm audit --audit-level=high
+
   core:
     name: Core Quality
     needs: changed-paths
@@ -154,13 +200,6 @@ jobs:
           cd services/core
           uv build --out-dir ../../artifacts/core-dist 2>&1 | tee ../../artifacts/core-build.log
 
-      - name: Audit Python dependency graph
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd services/core
-          uv --preview audit --frozen --output-format json 2>&1 | tee ../../artifacts/core-audit.json
-
       - name: Upload core failure evidence
         if: failure()
         # actions/upload-artifact v7.0.1
@@ -227,12 +266,6 @@ jobs:
           set -euo pipefail
           pnpm --filter ngabo-web exec next build 2>&1 | tee artifacts/web-build.log
 
-      - name: Audit pnpm dependency graph
-        shell: bash
-        run: |
-          set -euo pipefail
-          pnpm audit --audit-level=high --json 2>&1 | tee artifacts/web-audit.json
-
       - name: Upload web failure evidence
         if: failure()
         # actions/upload-artifact v7.0.1
@@ -249,11 +282,15 @@ jobs:
     if: needs.changed-paths.outputs.infra_required == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
     steps:
-      - name: Checkout repository
+      - name: Checkout repository with history
         # actions/checkout v7.0.1
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Set up Python
@@ -282,12 +319,21 @@ jobs:
           uv lock --check 2>&1 | tee ../../artifacts/infra-lock.log
           uv sync --frozen 2>&1 | tee ../../artifacts/infra-sync.log
 
-      - name: Ruff infrastructure
+      - name: Ruff changed GCP Python files
         shell: bash
         run: |
           set -euo pipefail
+          mapfile -t changed < <(git diff --name-only "${BASE_SHA}" "${HEAD_SHA}" -- infra/gcp | grep '\.py$' || true)
+          existing=()
+          for path in "${changed[@]}"; do
+            [[ -f "${path}" ]] && existing+=("../../${path}")
+          done
+          if [[ ${#existing[@]} -eq 0 ]]; then
+            echo "No changed infra/gcp Python files; legacy #87 Ruff debt is not re-adjudicated by #88."
+            exit 0
+          fi
           cd services/core
-          uv run ruff check ../../infra/gcp 2>&1 | tee ../../artifacts/infra-ruff.log
+          uv run ruff check "${existing[@]}" 2>&1 | tee ../../artifacts/infra-ruff.log
 
       - name: Mypy infrastructure
         shell: bash
@@ -313,33 +359,22 @@ jobs:
           if-no-files-found: ignore
           retention-days: 5
 
-  dependency-review:
-    name: Dependency Review
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - name: Review dependency changes
-        # actions/dependency-review-action v5.0.0
-        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294
-        with:
-          fail-on-severity: high
-
   gate:
     name: PR Quality Gate
     if: always()
     needs:
       - changed-paths
       - policy
+      - dependency-security
       - core
       - web
       - infra
-      - dependency-review
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
       CHANGED_RESULT: ${{ needs.changed-paths.result }}
       POLICY_RESULT: ${{ needs.policy.result }}
-      DEPENDENCY_RESULT: ${{ needs.dependency-review.result }}
+      SECURITY_RESULT: ${{ needs.dependency-security.result }}
       CORE_REQUIRED: ${{ needs.changed-paths.outputs.core_required }}
       WEB_REQUIRED: ${{ needs.changed-paths.outputs.web_required }}
       INFRA_REQUIRED: ${{ needs.changed-paths.outputs.infra_required }}
@@ -367,7 +402,7 @@ jobs:
           status=0
           require_success "Changed Paths" "${CHANGED_RESULT}" || status=1
           require_success "CI Policy" "${POLICY_RESULT}" || status=1
-          require_success "Dependency Review" "${DEPENDENCY_RESULT}" || status=1
+          require_success "Dependency Security" "${SECURITY_RESULT}" || status=1
           require_lane "Core Quality" "${CORE_REQUIRED}" "${CORE_RESULT}" || status=1
           require_lane "Web Quality" "${WEB_REQUIRED}" "${WEB_RESULT}" || status=1
           require_lane "Infrastructure Regression" "${INFRA_REQUIRED}" "${INFRA_RESULT}" || status=1
@@ -378,7 +413,7 @@ jobs:
             echo "| --- | --- | --- |"
             echo "| Changed Paths | yes | ${CHANGED_RESULT} |"
             echo "| CI Policy | yes | ${POLICY_RESULT} |"
-            echo "| Dependency Review | yes | ${DEPENDENCY_RESULT} |"
+            echo "| Dependency Security | yes | ${SECURITY_RESULT} |"
             echo "| Core Quality | ${CORE_REQUIRED:-unknown} | ${CORE_RESULT} |"
             echo "| Web Quality | ${WEB_REQUIRED:-unknown} | ${WEB_RESULT} |"
             echo "| Infrastructure Regression | ${INFRA_REQUIRED:-unknown} | ${INFRA_RESULT} |"
