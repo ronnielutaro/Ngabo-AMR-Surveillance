@@ -55,7 +55,7 @@ class ControlPlaneRaceTests(unittest.TestCase):
     def test_old_event_has_valid_marker_but_live_body_marker_removed_fails(self):
         # Event payload was valid, but GET /repos/{repo}/pulls/{number} returns body with no approval marker
         live_pr_no_marker = _make_pr_data(
-            user_login="contributor",
+            user_login="owner",
             body="No approval marker here!",
         )
         runner = _make_runner(
@@ -67,10 +67,24 @@ class ControlPlaneRaceTests(unittest.TestCase):
             check_control_plane.validate_control_plane("owner/repo", 103, "owner", runner=runner)
         self.assertIn("lacks valid approval marker", str(ctx.exception))
 
+    def test_non_owner_author_modifying_protected_paths_fails(self):
+        live_pr_non_owner = _make_pr_data(
+            user_login="contributor",
+            body="CI-Control-Plane-Approval: b950ba3ed4126fcf0138c6b101bda34d3f9ad8df",
+        )
+        runner = _make_runner(
+            FakeProcess(0, json.dumps(live_pr_non_owner)),
+            FakeProcess(0, ""),
+            FakeProcess(0, ".github/workflows/ci.yml"),
+        )
+        with self.assertRaises(check_control_plane.ControlPlaneValidationError) as ctx:
+            check_control_plane.validate_control_plane("owner/repo", 103, "owner", runner=runner)
+        self.assertIn("is not repository owner", str(ctx.exception))
+
     def test_old_event_invalid_marker_live_body_valid_marker_evaluates_live(self):
         # Event payload had no marker, but LIVE PR body contains valid approval marker
         live_pr_valid = _make_pr_data(
-            user_login="contributor",
+            user_login="owner",
             body="CI-Control-Plane-Approval: b950ba3ed4126fcf0138c6b101bda34d3f9ad8df",
         )
         runner = _make_runner(
@@ -85,6 +99,7 @@ class ControlPlaneRaceTests(unittest.TestCase):
     def test_live_head_differs_from_event_head_binds_to_live_head(self):
         # Live head SHA is new_head_sha, approval marker matches new_head_sha
         live_pr = _make_pr_data(
+            user_login="owner",
             head_sha="1111222233334444555566667777888899990000",
             body="CI-Control-Plane-Approval: 1111222233334444555566667777888899990000",
         )

@@ -35,6 +35,14 @@ jobs:
       PR_NUMBER: ${{ github.event.pull_request.number }}
       REPOSITORY_OWNER: ${{ github.repository_owner }}
     steps:
+      - name: Checkout trusted base branch CI scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.base_ref }}
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/ci
+
       - name: Validate live PR control plane and verify against race conditions
         shell: bash
         run: |

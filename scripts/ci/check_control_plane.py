@@ -216,8 +216,11 @@ def validate_control_plane(
     if not protected_paths:
         return meta, protected_paths
 
-    if meta.user_login == repo_owner:
-        return meta, protected_paths
+    if meta.user_login != repo_owner:
+        raise ControlPlaneValidationError(
+            f"PR #{pr_number} modifies protected paths {protected_paths} but author '{meta.user_login}' "
+            f"is not repository owner '{repo_owner}'."
+        )
 
     approval_sha = extract_approval_sha(meta.body)
     if not approval_sha or approval_sha != meta.head_sha:
@@ -248,7 +251,11 @@ def verify_final_race(
         )
 
     if final_meta.updated_at != initial_meta.updated_at:
-        if protected_paths and final_meta.user_login != repo_owner:
+        if protected_paths:
+            if final_meta.user_login != repo_owner:
+                raise ControlPlaneValidationError(
+                    "RACE DETECTED: PR author changed during validation and is no longer repository owner."
+                )
             approval_sha = extract_approval_sha(final_meta.body)
             if not approval_sha or approval_sha != final_meta.head_sha:
                 raise ControlPlaneValidationError(

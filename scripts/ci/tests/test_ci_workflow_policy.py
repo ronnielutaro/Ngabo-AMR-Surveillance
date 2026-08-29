@@ -33,7 +33,7 @@ class WorkflowPolicyTests(unittest.TestCase):
     def test_control_plane_never_checks_out_or_executes_pr_head(self):
         text = CONTROL_PLANE.read_text(encoding="utf-8")
         self.assertIn("pull_request_target:", text)
-        self.assertNotIn("actions/checkout", text)
+        self.assertIn("ref: ${{ github.base_ref }}", text)
         self.assertNotIn("id-token: write", text)
         self.assertNotIn("contents: write", text)
         self.assertIn("CI-Control-Plane-Approval:", text)

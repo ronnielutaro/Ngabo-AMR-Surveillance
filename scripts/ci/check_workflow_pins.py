@@ -19,19 +19,37 @@ DOCKER_SHA_RE = re.compile(r"^docker://.*@sha256:[0-9a-f]{64}$")
 def _fallback_parse_uses(content: str) -> list[str]:
     """Fallback scanner for environments without PyYAML."""
     uses_list: list[str] = []
-    # Match any key ending with 'uses' followed by colon and value, excluding lines like 'statuses: write' or 'issues: read'
-    pattern = re.compile(r"""(?:["']?uses["']?|\buses)\s*:\s*(['"]?)([^'"\n#]+)\1""", re.IGNORECASE)
-    for line in content.splitlines():
-        line = line.strip()
+    lines = content.splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
         if line.startswith("#") or "permissions:" in line:
+            i += 1
             continue
-        m = pattern.search(line)
+
+        # Single-line 'uses: action@ref'
+        m = re.search(r"""(?:["']?uses["']?|\buses)\s*:\s*(['"]?)([^'"\n#]+)\1""", line, re.IGNORECASE)
         if m:
             val = m.group(2).strip()
-            # If the line matched something like "statuses: write" because of 'uses' in statuses, ignore
-            if val in ("read", "write", "none"):
+            if val and val not in ("read", "write", "none"):
+                uses_list.append(val)
+                i += 1
                 continue
-            uses_list.append(val)
+
+        # Multiline 'uses:\n  action@ref'
+        m_multi = re.search(r"""(?:["']?uses["']?|\buses)\s*:\s*$""", line, re.IGNORECASE)
+        if m_multi and i + 1 < len(lines):
+            next_line = lines[i + 1].strip()
+            if not next_line.startswith("#"):
+                m_val = re.search(r"""^(['"]?)([^'"\n#]+)\1$""", next_line)
+                if m_val:
+                    val = m_val.group(2).strip()
+                    if val and val not in ("read", "write", "none"):
+                        uses_list.append(val)
+                        i += 2
+                        continue
+
+        i += 1
     return uses_list
 
 
