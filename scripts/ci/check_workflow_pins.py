@@ -53,8 +53,8 @@ def _fallback_parse_uses(content: str) -> list[str]:
             i += 1
             continue
 
-        # Single-line mapping key 'uses: action@ref', '"uses": action@ref', or '- "uses": action@ref' at start of line
-        m = re.match(r"""^\s*(?:-\s*)?(?:["']?uses["']?)\s*:\s*(['"]?)([^'"\n#]+)\1""", line_raw, re.IGNORECASE)
+        # Single-line mapping key 'uses: action@ref', '"uses": action@ref', or inline '{ uses: action@ref }'
+        m = re.search(r"""(?:^\s*(?:-\s*)?|\{\s*)(?:["']?uses["']?)\s*:\s*(['"]?)([^'"\}\n#]+)\1""", line_raw, re.IGNORECASE)
         if m:
             val = m.group(2).strip()
             if val and val not in ("read", "write", "none"):
