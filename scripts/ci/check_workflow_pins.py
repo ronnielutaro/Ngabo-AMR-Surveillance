@@ -19,15 +19,19 @@ DOCKER_SHA_RE = re.compile(r"^docker://.*@sha256:[0-9a-f]{64}$")
 def _fallback_parse_uses(content: str) -> list[str]:
     """Fallback scanner for environments without PyYAML."""
     uses_list: list[str] = []
-    # Match any key ending with 'uses' followed by colon and value
+    # Match any key ending with 'uses' followed by colon and value, excluding lines like 'statuses: write' or 'issues: read'
     pattern = re.compile(r"""(?:["']?uses["']?|\buses)\s*:\s*(['"]?)([^'"\n#]+)\1""", re.IGNORECASE)
     for line in content.splitlines():
         line = line.strip()
-        if line.startswith("#"):
+        if line.startswith("#") or "permissions:" in line:
             continue
         m = pattern.search(line)
         if m:
-            uses_list.append(m.group(2).strip())
+            val = m.group(2).strip()
+            # If the line matched something like "statuses: write" because of 'uses' in statuses, ignore
+            if val in ("read", "write", "none"):
+                continue
+            uses_list.append(val)
     return uses_list
 
 
@@ -74,10 +78,10 @@ def traverse_yaml_tree(node: Any, path: Path, parent_key: str | None = None) -> 
         for k, v in node.items():
             k_str = str(k)
             if k_str == "uses":
-                # Only validate 'uses' if it's a step/job action/reusable workflow reference
-                # (i.e. not top-level workflow keys or permissions)
-                errors.extend(validate_uses_value(v, path))
-            elif k_str != "permissions":
+                # Only validate 'uses' if parent_key is 'steps' or 'jobs' or in a job/step block (not permissions)
+                if parent_key not in ("permissions", "env"):
+                    errors.extend(validate_uses_value(v, path))
+            elif k_str not in ("permissions", "env"):
                 errors.extend(traverse_yaml_tree(v, path, parent_key=k_str))
     elif isinstance(node, list):
         for item in node:
