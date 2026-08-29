@@ -434,6 +434,7 @@ def build_ci_evidence(
                 "unknown_non_doc_fail_closed": "VERIFIED_BY_TESTS",
                 "conservative_fallback": "VERIFIED_BY_TESTS",
                 "rename_aware_collector": "VERIFIED_BY_TESTS",
+                "rename_hosted_negative_proof": "NOT_RECORDED",
             },
             "architecture": {
                 "checker_present": True,
@@ -461,6 +462,7 @@ def build_ci_evidence(
             "ci_control_plane": {
                 "rename_protection": "previous_filename extracted",
                 "protected_path_evaluation": "VERIFIED_BY_TESTS",
+                "live_metadata_verification": "VALIDATED",
             },
             "evidence_attribution": {
                 "pr_run_binding": "VALIDATED",

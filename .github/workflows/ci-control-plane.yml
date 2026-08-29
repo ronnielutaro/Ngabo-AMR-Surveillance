@@ -24,6 +24,7 @@ concurrency:
   group: ci-control-plane-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
+# Validates live PR control-plane changes and enforces CI-Control-Plane-Approval: <PR_HEAD_SHA>
 jobs:
   control-plane:
     name: CI Control Plane
@@ -32,106 +33,10 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       PR_NUMBER: ${{ github.event.pull_request.number }}
-      PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-      PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-      PR_BODY: ${{ github.event.pull_request.body }}
       REPOSITORY_OWNER: ${{ github.repository_owner }}
     steps:
-      - name: Mark initial status as pending on PR head SHA
+      - name: Validate live PR control plane and verify against race conditions
         shell: bash
         run: |
           set -euo pipefail
-          gh api "repos/${GITHUB_REPOSITORY}/statuses/${PR_HEAD_SHA}" \
-            -f state="pending" \
-            -f context="CI Control Plane" \
-            -f description="Evaluating CI Control Plane protection..."
-
-      - name: Inspect CI control-plane changes without checking out PR code
-        shell: bash
-        run: |
-          set -euo pipefail
-          changed_count=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq .changed_files)
-          if (( changed_count > 3000 )); then
-            echo "::error::PR changed file count (${changed_count}) exceeds GitHub PR Files API limit of 3000 files."
-            exit 1
-          fi
-
-          gh api --paginate \
-            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files?per_page=100" \
-            --jq '.[] | .filename, (.previous_filename // empty)' \
-            | sort -u > "${RUNNER_TEMP}/changed-files.txt"
-
-          is_protected_path() {
-            case "$1" in
-              .github/workflows/*|scripts/ci/*|infra/github/*|package.json|pnpm-workspace.yaml|services/core/pyproject.toml|apps/web/package.json|apps/web/tsconfig*.json|apps/web/eslint.config.*|apps/web/vitest.config.*|apps/web/next.config.*|apps/web/postcss.config.*)
-                return 0
-                ;;
-              *)
-                return 1
-                ;;
-            esac
-          }
-
-          protected=()
-          while IFS= read -r path; do
-            if is_protected_path "${path}"; then
-              protected+=("${path}")
-            fi
-          done < "${RUNNER_TEMP}/changed-files.txt"
-
-          if [[ ${#protected[@]} -eq 0 ]]; then
-            echo "No CI control-plane paths changed." >> "${GITHUB_STEP_SUMMARY}"
-            exit 0
-          fi
-
-          {
-            echo "## CI Control Plane"
-            echo
-            echo "Protected paths changed:"
-            printf -- '- `%s`\n' "${protected[@]}"
-          } >> "${GITHUB_STEP_SUMMARY}"
-
-          if [[ "${PR_AUTHOR}" != "${REPOSITORY_OWNER}" ]]; then
-            echo "::error::CI control-plane changes must be authored by the repository owner."
-            exit 1
-          fi
-
-          approval="CI-Control-Plane-Approval: ${PR_HEAD_SHA}"
-          if ! grep -Fqx "${approval}" <<< "${PR_BODY}"; then
-            echo "::error::Missing head-SHA-bound maintainer approval marker: ${approval}"
-            {
-              echo
-              echo "Approval required for this exact head SHA:"
-              echo
-              echo "\`${approval}\`"
-            } >> "${GITHUB_STEP_SUMMARY}"
-            exit 1
-          fi
-
-          echo "Head-SHA-bound maintainer approval verified." >> "${GITHUB_STEP_SUMMARY}"
-
-      - name: Attach success status to PR head SHA
-        if: success()
-        shell: bash
-        run: |
-          set -euo pipefail
-          gh api \
-            --method POST \
-            -H "Accept: application/vnd.github+json" \
-            "repos/${GITHUB_REPOSITORY}/statuses/${PR_HEAD_SHA}" \
-            -f state="success" \
-            -f context="CI Control Plane" \
-            -f description="CI Control Plane protection verified"
-
-      - name: Attach failure status to PR head SHA
-        if: failure()
-        shell: bash
-        run: |
-          set -euo pipefail
-          gh api \
-            --method POST \
-            -H "Accept: application/vnd.github+json" \
-            "repos/${GITHUB_REPOSITORY}/statuses/${PR_HEAD_SHA}" \
-            -f state="failure" \
-            -f context="CI Control Plane" \
-            -f description="CI Control Plane validation failed"
+          python scripts/ci/check_control_plane.py

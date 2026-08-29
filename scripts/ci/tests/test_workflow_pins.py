@@ -28,6 +28,70 @@ class WorkflowPinTests(unittest.TestCase):
             )
             self.assertEqual(len(check_workflow_pins.scan_file(path)), 1)
 
+    def test_whitespace_colon_fails(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = pathlib.Path(temp) / "ci.yml"
+            path.write_text(
+                "steps:\n  - uses : actions/checkout@v7\n", encoding="utf-8"
+            )
+            self.assertEqual(len(check_workflow_pins.scan_file(path)), 1)
+
+    def test_quoted_key_fails(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = pathlib.Path(temp) / "ci.yml"
+            path.write_text(
+                'steps:\n  - "uses": actions/checkout@v7\n', encoding="utf-8"
+            )
+            self.assertEqual(len(check_workflow_pins.scan_file(path)), 1)
+
+    def test_inline_mapping_fails(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = pathlib.Path(temp) / "ci.yml"
+            path.write_text(
+                "steps:\n  - { uses: actions/checkout@v7 }\n", encoding="utf-8"
+            )
+            self.assertEqual(len(check_workflow_pins.scan_file(path)), 1)
+
+    def test_reusable_workflow_job_uses_fails(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = pathlib.Path(temp) / "ci.yml"
+            path.write_text(
+                "jobs:\n"
+                "  call-reusable:\n"
+                "    uses: owner/repo/.github/workflows/reuse.yml@main\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(len(check_workflow_pins.scan_file(path)), 1)
+
+    def test_reusable_workflow_job_uses_sha_passes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = pathlib.Path(temp) / "ci.yml"
+            path.write_text(
+                "jobs:\n"
+                "  call-reusable:\n"
+                "    uses: owner/repo/.github/workflows/reuse.yml@3d3c42e5aac5ba805825da76410c181273ba90b1\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(check_workflow_pins.scan_file(path), [])
+
+    def test_docker_mutable_tag_fails(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = pathlib.Path(temp) / "ci.yml"
+            path.write_text(
+                "steps:\n  - uses: docker://alpine:latest\n", encoding="utf-8"
+            )
+            self.assertEqual(len(check_workflow_pins.scan_file(path)), 1)
+
+    def test_docker_sha256_passes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = pathlib.Path(temp) / "ci.yml"
+            sha64 = "a" * 64
+            path.write_text(
+                f"steps:\n  - uses: docker://alpine@sha256:{sha64}\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(check_workflow_pins.scan_file(path), [])
+
     def test_local_action_is_allowed(self):
         with tempfile.TemporaryDirectory() as temp:
             path = pathlib.Path(temp) / "ci.yml"
