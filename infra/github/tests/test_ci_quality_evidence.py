@@ -106,7 +106,7 @@ class ValidEvidenceTests(unittest.TestCase):
         pr = _make_pr_data()
         run = _make_run_data()
         jobs = _make_jobs_data()
-        neg_run = _make_run_data(run_id=99999, conclusion="failure")
+        neg_run = _make_run_data(run_id=99999, head_sha="c1c9aa18", conclusion="failure")
         neg_jobs = _make_jobs_data()
         neg_jobs["jobs"][5]["conclusion"] = "failure"  # Core Quality failed
         runner = _make_runner(

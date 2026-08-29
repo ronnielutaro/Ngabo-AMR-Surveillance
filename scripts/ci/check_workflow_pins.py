@@ -6,13 +6,25 @@ import argparse
 import re
 from pathlib import Path
 
-USES_RE = re.compile(r"^\s*(?:-\s*)?uses:\s*([^@\s]+)@([^\s#]+)")
+USES_RE = re.compile(r"^\s*(?:-\s*)?uses:\s*['\"]?([^@\s'\"]+)@([^\s#'\"]+)")
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+DOCKER_USES_RE = re.compile(r"^\s*(?:-\s*)?uses:\s*['\"]?(docker://[^\s'\"]+)['\"]?")
+DOCKER_SHA_RE = re.compile(r"^docker://.*@sha256:[0-9a-f]{64}$")
 
 
 def scan_file(path: Path) -> list[str]:
     errors: list[str] = []
     for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        docker_match = DOCKER_USES_RE.match(line)
+        if docker_match:
+            docker_ref = docker_match.group(1)
+            if not DOCKER_SHA_RE.fullmatch(docker_ref):
+                errors.append(
+                    f"{path}:{number}: docker action {docker_ref} "
+                    "must be pinned to an immutable @sha256 digest"
+                )
+            continue
+
         match = USES_RE.match(line)
         if not match:
             continue

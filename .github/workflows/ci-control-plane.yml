@@ -20,6 +20,10 @@ permissions:
   issues: read
   statuses: write
 
+concurrency:
+  group: ci-control-plane-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
 jobs:
   control-plane:
     name: CI Control Plane
@@ -33,6 +37,15 @@ jobs:
       PR_BODY: ${{ github.event.pull_request.body }}
       REPOSITORY_OWNER: ${{ github.repository_owner }}
     steps:
+      - name: Mark initial status as pending on PR head SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/statuses/${PR_HEAD_SHA}" \
+            -f state="pending" \
+            -f context="CI Control Plane" \
+            -f description="Evaluating CI Control Plane protection..."
+
       - name: Inspect CI control-plane changes without checking out PR code
         shell: bash
         run: |

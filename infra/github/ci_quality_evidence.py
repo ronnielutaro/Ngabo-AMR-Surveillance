@@ -340,7 +340,11 @@ def build_ci_evidence(
     if direct_import_negative_run:
         if validate_negative_proofs:
             validate_negative_run(
-                repo, direct_import_negative_run, expected_failed_job="Core Quality", runner=runner
+                repo,
+                direct_import_negative_run,
+                expected_failed_job="Core Quality",
+                expected_head_sha="c1c9aa18",
+                runner=runner,
             )
         historical_negative_proofs["direct_import_bypass"] = {
             "run_id": str(direct_import_negative_run),
@@ -353,7 +357,11 @@ def build_ci_evidence(
     if importfrom_bypass_negative_run:
         if validate_negative_proofs:
             validate_negative_run(
-                repo, importfrom_bypass_negative_run, expected_failed_job="Core Quality", runner=runner
+                repo,
+                importfrom_bypass_negative_run,
+                expected_failed_job="Core Quality",
+                expected_head_sha="7afe3882",
+                runner=runner,
             )
         historical_negative_proofs["importfrom_bypass"] = {
             "run_id": str(importfrom_bypass_negative_run),
@@ -366,7 +374,11 @@ def build_ci_evidence(
     if high_severity_negative_run:
         if validate_negative_proofs:
             validate_negative_run(
-                repo, high_severity_negative_run, expected_failed_job="Dependency Security", runner=runner
+                repo,
+                high_severity_negative_run,
+                expected_failed_job="Dependency Security",
+                expected_head_sha="7afe3882",
+                runner=runner,
             )
         proof_obj: dict[str, Any] = {
             "run_id": str(high_severity_negative_run),
