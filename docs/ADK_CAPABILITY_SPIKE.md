@@ -241,3 +241,126 @@ Once spike passes:
 - [ ] eval/observability path recorded;
 - [ ] framework fallback selected if workshop terminology differs;
 - [ ] no unsupported API assumptions remain in implementation plan.
+
+---
+
+## 10. RESULTS (Issue #49 — 2026-08-30)
+
+The spike was executed against the exact pinned runtime in
+`services/core/pyproject.toml` / `uv.lock`.
+
+### Exact versions
+
+- Python: **3.11** (project target `requires-python >=3.11`; verified 3.11.15)
+- `google-adk`: **2.8.0**
+- `google-genai`: **2.20.0** (pinned `<3.0.0` per upstream guidance; exact
+  resolved version recorded)
+- Gemini model (live proof): **`gemini-3.6-flash`** — `gemini-2.5-flash` is no
+  longer available to new users (404 from the API; official guidance points
+  to `gemini-3.6-flash`)
+
+### Supported primitives (verified first-hand against 2.8.0)
+
+- sequential: `Workflow(edges=[("START", a, b, ...)])` — chains are linear;
+  Python `FunctionNode` steps along an edge run in order.
+- parallel: `Workflow(edges=[("START", (node_a, node_b), join)])` — a tuple
+  element flattens into parallel fan-out.
+- join: `JoinNode` — a barrier that waits for all predecessors and passes
+  through the aggregated per-node outputs as `node_input`.
+- function tools: `FunctionNode(func=..., name=...)`; bound pre-existing SQL
+  framework, plus `google.adk.tools.FunctionTool`/`@tool` for tools; a node
+  can be a generator and yield `Event(output=..., route=...)` for routing.
+- structured output: `Agent(output_schema=<Pydantic>)`; Gemini is constrained
+  to produce the structured carrier; deterministic adapter parses it.
+- callbacks: `LlmAgent` exposes `before_model_callback`, `after_model_callback`,
+  `before_agent_callback`, `after_agent_callback`, `before_tool_callback`,
+  `after_tool_callback`, `on_model_error_callback`.
+- sessions: `InMemorySessionService` (and `DatabaseSessionService` /
+  `VertexAiSessionService`); `Session`/`State` available.
+- eval: `google.adk.evaluation` module present; trajectory/tool evaluation
+  package exists (full Ngabo eval suite is a later issue).
+- tracing/observability: ADK is wired to OpenTelemetry (pulls
+  `opentelemetry-*`); `InvocationContext` carries `invocation_id`/`session_id`.
+- resumability: `Runner.run_async(..., invocation_id=...)`; documented decision
+  below (application/Firestore owns canonical proof state).
+
+### Selected runtime path / fallback level
+
+**Preferred-level ADK graph** for orchestration plus **Fallback B** reasoning
+boundary:
+
+```text
+START → prepare → (branch_a ∥ branch_b) → JoinNode → synthesize (ADK Agent,
+  output_schema=ClaimSynthesis) → verify (deterministic FunctionNode)
+  → {ACCEPT | REPAIR | BLOCK} → (repair ⇄ verify, bounded)
+```
+
+`Runner.run_async(...)` is invoked programmatically (non-interactive — no
+`adk web`, no chat). The graph owns deterministic parallel/join and the
+single bounded repair loop. The deterministic verifier (application-owned)
+owns accept/reject; Gemini never self-verifies.
+
+### Proof-Carrying Autonomy compatibility: **PASS**
+
+`ClaimSynthesis` -> `SpikeProofClaim` (domain DTO) -> `SpikeProofVerifier`
+(deterministic). Live `gemini-3.6-flash` produced a schema-valid
+`DERIVED_FINDING` carrier; the verifier accepted it (`valid: true`).
+
+### Deterministic verifier boundary: **PASS**
+
+Verifier checks required-branch completeness, DTO structural validity, and
+the proof-reference family required by the claim type (so a proof-free claim
+cannot be accepted), and record/finding/source/contradicting-claim reference
+existence. Error codes:
+`UNKNOWN_RECORD_REFERENCE`, `UNKNOWN_FINDING_REFERENCE`,
+`UNKNOWN_SOURCE_REFERENCE`, `UNKNOWN_CLAIM_REFERENCE`,
+`MISSING_REQUIRED_REFERENCE`, `MALFORMED_PROOF`, `REQUIRED_BRANCH_FAILED`.
+No model self-"is my evidence valid?" answer is used for routing.
+
+### Bounded repair: **PASS**
+
+`max_repair` default = 1. A fabricated-reference failure is fed back to a
+repair Agent as structured verifier errors; if still invalid after the bound,
+the workflow routes to `BLOCK`. The bound is enforced (no unbounded loop).
+
+### Backend non-chat invocation: **PASS**
+
+`run_spike(...)` calls `Runner.run_async(user_id, session_id, new_message,
+invocation_id)` from plain application/Python code; a synthetic event dict is
+the entry message. No interactive chat required.
+
+### Cloud Run proof: **PENDING (certification evidence below)**
+
+The exact locked deps and the `ngabo-adk-spike` console entry are shipped.
+The disposable reachability proof will be executed after merge; see the
+Issue #49 certification comment for the source SHA / digest / revision /
+invocation result.
+
+### Material unsupported / ambiguous APIs
+
+- **ADK `output_schema` node delivery is unreliable for live Gemini**: for
+  `gemini-3.6-flash` / `gemini-3.5-flash`, the structured carrier is emitted
+  as a model-role content part but the workflow-node `node_input` is `None`
+  (the shipped type-stub `Event` also omits `route`). The spike adapter
+  recovers the proposed carrier from the canonical `ctx.session` events and
+  parses it deterministically. Documented as a decision, not a blocker.
+- `generate_content_config.response_schema` is rejected by ADK 2.8
+  (`Response schema must be set via LlmAgent.output_schema`); use `output_schema`.
+- `thinking_config` (`thinking_budget=0`) alongside `output_schema` returned
+  `400 INVALID_ARGUMENT` for `gemini-3.6-flash`; avoid it.
+
+### Official documentation consulted (date 2026-08-30)
+
+- https://pypi.org/project/google-adk/ (2.8.0)
+- https://pypi.org/project/google-genai/ (2.20.0; pin <3.0.0 guidance)
+- https://adk.dev/get-started/python/
+- https://github.com/google/adk-docs (Workflow agents, graph-routes)
+- https://github.com/google/adk-python (Workflow engine, JoinNode, Runner,
+  `_llm_agent_wrapper.process_llm_agent_output`)
+- https://ai.google.dev/gemini-api/docs/libraries
+
+Primary API verification was performed first-hand against the installed
+`google-adk==2.8.0` / `google-genai==2.20.0` source (imports, model fields,
+edge parsing, `FunctionNode` parameter binding, `Runner.run_async`) and by
+running an executable `Workflow` probe with a `JoinNode` and an `Agent` with a
+controllable `BaseLlm` fake.

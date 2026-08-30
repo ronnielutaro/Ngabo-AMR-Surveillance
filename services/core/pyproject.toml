@@ -7,6 +7,11 @@ requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115,<1",
     "uvicorn>=0.34,<1",
+    # Issue #49: exact pinned ADK/Gemini runtime for the capability spike.
+    # google-genai is pinned <3.0.0 per upstream guidance (an upcoming AFC
+    # behavior change); we pin to the exact resolved version we certified.
+    "google-adk==2.8.0",
+    "google-genai==2.20.0",
 ]
 
 [project.scripts]
@@ -14,6 +19,8 @@ ngabo-health = "ngabo.bootstrap.health:main"
 ngabo-certify-hero = "ngabo.bootstrap.certify_hero:main"
 # Issue #90: FastAPI HTTP adapter for Cloud Run (typed health/ready/version).
 ngabo-http = "ngabo.interfaces.http:main"
+# Issue #49: one-off, governed ADK/Gemini capability spike (not a public endpoint).
+ngabo-adk-spike = "ngabo.infrastructure.adk.live_capability:main"
 
 [dependency-groups]
 dev = [
