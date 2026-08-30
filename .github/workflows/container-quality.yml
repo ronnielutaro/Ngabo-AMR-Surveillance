@@ -91,9 +91,19 @@ jobs:
           user="$(docker inspect --format '{{.Config.User}}' "$image")"
           echo "runtime user: ${user}"
           [[ "${user}" == "ngabo" ]]
+          # Issue #90: the core now serves the minimal stdlib HTTP adapter
+          # (typed /health /ready /version) on $PORT (8080) for Cloud Run.
           ports="$(docker inspect --format '{{json .Config.ExposedPorts}}' "$image")"
           echo "exposed ports: ${ports}"
-          [[ "${ports}" == "null" || "${ports}" == "{}" ]]
+          grep -q '"8080/tcp"' <<<"${ports}"
+          cid="$(docker run -d --rm -p 127.0.0.1:18081:8080 "$image")"
+          trap 'docker stop "${cid}" >/dev/null 2>&1 || true' EXIT
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18081/health >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:18081/health | grep -q '"status": "ok"'
+          docker stop "${cid}" >/dev/null
 
       - name: Verify web image (HTTP smoke + non-root + metadata)
         shell: bash

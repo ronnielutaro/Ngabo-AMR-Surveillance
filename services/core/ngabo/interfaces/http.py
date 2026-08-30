@@ -26,7 +26,7 @@ from collections.abc import Mapping
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Final
 
-from ngabo.bootstrap.health import health
+from ngabo.interfaces.health import health
 
 SERVICE_NAME: Final[str] = "ngabo-core"
 DEFAULT_PORT: Final[int] = 8080
