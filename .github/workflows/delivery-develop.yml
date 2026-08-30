@@ -285,11 +285,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "DELIVERY_ENVIRONMENT=dev" >> "$GITHUB_ENV"
-          echo "DELIVERY_TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
-          echo "DELIVERY_SMOKE_RESULT=pass" >> "$GITHUB_ENV"
-          echo "CORE_REVISION=$(gcloud run services describe ngabo-core --region us-central1 --format='value(status.latestReadyRevisionName)' 2>/dev/null || true)" >> "$GITHUB_ENV"
-          echo "WEB_REVISION=$(gcloud run services describe ngabo-web --region us-central1 --format='value(status.latestReadyRevisionName)' 2>/dev/null || true)" >> "$GITHUB_ENV"
+          export DELIVERY_ENVIRONMENT=dev
+          export DELIVERY_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          export DELIVERY_SMOKE_RESULT=pass
+          export CORE_REVISION="$(gcloud run services describe ngabo-core --region us-central1 --format='value(status.latestReadyRevisionName)' 2>/dev/null || true)"
+          export WEB_REVISION="$(gcloud run services describe ngabo-web --region us-central1 --format='value(status.latestReadyRevisionName)' 2>/dev/null || true)"
           python3 infra/github/delivery.py evidence-env --output delivery-evidence.json
           cat delivery-evidence.json
 

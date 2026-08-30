@@ -130,12 +130,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "DELIVERY_ENVIRONMENT=dev" >> "$GITHUB_ENV"
-          echo "DELIVERY_REASON=${{ inputs.reason }}" >> "$GITHUB_ENV"
-          echo "DELIVERY_TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
-          echo "DELIVERY_SMOKE_RESULT=pass" >> "$GITHUB_ENV"
-          echo "CORE_REVISION=$(gcloud run services describe ngabo-core --region us-central1 --format='value(status.latestReadyRevisionName)')" >> "$GITHUB_ENV"
-          echo "WEB_REVISION=$(gcloud run services describe ngabo-web --region us-central1 --format='value(status.latestReadyRevisionName)')" >> "$GITHUB_ENV"
+          export DELIVERY_ENVIRONMENT=dev
+          export DELIVERY_REASON="${{ inputs.reason }}"
+          export DELIVERY_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          export DELIVERY_SMOKE_RESULT=pass
+          export CORE_REVISION="$(gcloud run services describe ngabo-core --region us-central1 --format='value(status.latestReadyRevisionName)')"
+          export WEB_REVISION="$(gcloud run services describe ngabo-web --region us-central1 --format='value(status.latestReadyRevisionName)')"
           python3 infra/github/delivery.py evidence-env --output rollback-evidence.json
           cat rollback-evidence.json
 

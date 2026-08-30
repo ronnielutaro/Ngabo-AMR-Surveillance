@@ -162,13 +162,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "DELIVERY_ENVIRONMENT=${{ inputs.target_environment }}" >> "$GITHUB_ENV"
-          echo "DELIVERY_COMMIT=${commit_sha}" >> "$GITHUB_ENV"
-          echo "DELIVERY_TARGET=${{ inputs.target_environment }}" >> "$GITHUB_ENV"
-          echo "DELIVERY_TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
-          echo "DELIVERY_SMOKE_RESULT=pass" >> "$GITHUB_ENV"
-          echo "CORE_REVISION=$(gcloud run services describe ngabo-core --region us-central1 --format='value(status.latestReadyRevisionName)')" >> "$GITHUB_ENV"
-          echo "WEB_REVISION=$(gcloud run services describe ngabo-web --region us-central1 --format='value(status.latestReadyRevisionName)')" >> "$GITHUB_ENV"
+          export DELIVERY_ENVIRONMENT="${{ inputs.target_environment }}"
+          export DELIVERY_COMMIT="${commit_sha}"
+          export DELIVERY_TARGET="${{ inputs.target_environment }}"
+          export DELIVERY_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          export DELIVERY_SMOKE_RESULT=pass
+          export CORE_REVISION="$(gcloud run services describe ngabo-core --region us-central1 --format='value(status.latestReadyRevisionName)')"
+          export WEB_REVISION="$(gcloud run services describe ngabo-web --region us-central1 --format='value(status.latestReadyRevisionName)')"
           python3 infra/github/delivery.py evidence-env --output release-evidence.json
           cat release-evidence.json
 
