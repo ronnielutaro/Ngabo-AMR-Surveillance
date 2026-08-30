@@ -36,6 +36,7 @@ jobs:
   rollback:
     name: Rollback to Previous Known-Good
     runs-on: ubuntu-24.04
+    environment: dev
     timeout-minutes: 25
     if: >-
       github.event_name == 'workflow_dispatch' &&

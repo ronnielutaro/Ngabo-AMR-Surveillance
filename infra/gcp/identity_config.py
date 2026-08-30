@@ -76,7 +76,12 @@ WIF_ATTRIBUTE_CONDITION = (
     f'assertion.repository_id == "{GITHUB_REPO_ID}" && '
     f'assertion.repository_owner_id == "{GITHUB_OWNER_ID}" && '
     f'assertion.ref == "{GITHUB_ALLOWED_REF}" && '
-    f'assertion.environment == "{GITHUB_ALLOWED_ENV}"'
+    # Issue #91: the guarded delivery/promotion/rollback lanes run on the
+    # maintainer-gated dev/release/judge environments. Keep the keyless,
+    # repository-scoped and develop-ref restrictions; only widen the
+    # environment dimension so the owner-approved promotion/rollback can still
+    # impersonate ngabo-deployer without a key.
+    f'assertion.environment in ["dev", "release", "judge"]'
 )
 
 # ---------------------------------------------------------------------------
