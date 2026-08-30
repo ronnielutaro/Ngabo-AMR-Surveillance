@@ -108,9 +108,9 @@ def create_converged_manager() -> GcpIdentityManager:
     mgr.inspector.wif_provider_exists = MagicMock(return_value=True)  # type: ignore[method-assign]
     mgr.inspector.get_wif_provider_details = MagicMock(return_value=VALID_SAMPLE_PROVIDER_DETAILS)  # type: ignore[method-assign]
     mgr.inspector.get_project_iam_bindings = MagicMock(return_value=list(VALID_PROJECT_BINDINGS))  # type: ignore[method-assign]
-    mgr.inspector.get_artifact_registry_iam_bindings = MagicMock(
+    mgr.inspector.get_artifact_registry_iam_bindings = MagicMock(  # type: ignore[method-assign]  # noqa: E501
         return_value=list(VALID_AR_BINDINGS)
-    )  # type: ignore[method-assign]
+    )
     mgr.inspector.get_all_project_service_accounts = MagicMock(  # type: ignore[method-assign]
         return_value=[{"email": mgr.config.service_account_email(sa)} for sa in SERVICE_ACCOUNTS]
     )

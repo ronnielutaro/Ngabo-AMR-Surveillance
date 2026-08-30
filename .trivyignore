@@ -22,6 +22,13 @@ CVE-2026-11822   # libsqlite3-0: arbitrary code execution via FTS5 (no fix)
 CVE-2026-11824   # libsqlite3-0: arbitrary code execution (no fix)
 CVE-2025-69720   # libncursesw6/libtinfo6: buffer overflow (no fix)
 
+# --- ngabo-web: Debian bookworm base packages with NO published fix ---
+# node:24-slim base (current 24 line); apt security upgrades are applied at
+# image build time; these remain unfixed upstream.
+CVE-2026-53613   # util-linux/bsdutils/util-linux-extra: TOCTOU in mount (no fix)
+CVE-2026-53615   # util-linux/bsdutils/util-linux-extra: integer overflow (no fix)
+CVE-2023-45853   # zlib1g: integer overflow in zipOpenNewFileInZip4_6 (will_not_fix in bookworm)
+
 # --- ngabo-web: packages bundled within the Next.js 16.3.1 server closure ---
 # These are not part of the workspace dependency graph (absent from
 # pnpm-lock.yaml); their versions are pinned by the upstream next release.
