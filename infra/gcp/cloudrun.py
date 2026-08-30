@@ -237,7 +237,6 @@ def _deploy_service(service: ServiceDesiredState) -> None:
     result = run_gcloud(
         [
             "run",
-            "services",
             "deploy",
             service.name,
             *service.to_gcloud_args(),
