@@ -95,7 +95,7 @@ jobs:
             echo "::error::No successful Delivery Develop evidence; refusing to roll back to unverified digests."
             exit 1
           fi
-          gh run download "${run_id}" --repo "${GITHUB_REPOSITORY}" --name "delivery-evidence-${run_id}" --dir delivery-evidence --force
+          gh run download "${run_id}" --repo "${GITHUB_REPOSITORY}" --name "delivery-evidence-${run_id}" --dir delivery-evidence
           python3 infra/github/delivery.py rollback-check --record delivery-evidence/delivery-evidence.json --core-digest "${core_digest}" --web-digest "${web_digest}"
 
       - name: Deploy exact previous-known-good digest(s) — NO rebuild
