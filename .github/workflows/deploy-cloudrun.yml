@@ -1,0 +1,136 @@
+name: Deploy Cloud Run Skeleton
+
+# Issue #90 trusted deployment workflow.
+#
+# Trust boundary: runs ONLY from the develop ref, in the `dev` GitHub
+# environment, authenticating keylessly via Workload Identity Federation
+# as ngabo-deployer (which holds roles/run.developer for Cloud Run
+# deploys). It never runs from arbitrary PR branches and never uses
+# stored credentials or JSON service-account keys.
+#
+# Deployment identity contract: inputs accept ONLY immutable digests
+# (sha256:<64 hex>); mutable tags, "latest", or bare repository
+# references are rejected before any gcloud call. The deployed artifact
+# is the tested artifact from the Issue #89 publish workflow.
+#
+# The web service is the public entry point (--allow-unauthenticated);
+# core stays private (--no-allow-unauthenticated) and is reached by the
+# web runtime identity through Cloud Run's service-to-service boundary.
+# Bounds come from CLOUD_RUN_CAPS_CONTRACT in infra/gcp/config.py:
+# min 0, max 2, cpu 1, memory 512Mi, timeout 60s, scale-to-zero.
+
+on:
+  workflow_dispatch:
+    inputs:
+      core_digest:
+        description: "ngabo-core immutable digest (sha256:<64 hex>)"
+        required: true
+        type: string
+      web_digest:
+        description: "ngabo-web immutable digest (sha256:<64 hex>)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-cloudrun-develop
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy Immutable Cloud Run Skeleton
+    runs-on: ubuntu-24.04
+    environment: dev
+    timeout-minutes: 20
+    if: github.ref == 'refs/heads/develop'
+    env:
+      PROJECT_ID: ngabo-amr-2026
+      REGION: us-central1
+      REPO: ngabo-artifacts
+    steps:
+      - name: Checkout the exact dispatch commit
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Validate immutable digest inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          for digest in "${{ inputs.core_digest }}" "${{ inputs.web_digest }}"; do
+            if [[ ! "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "::error::Rejected non-immutable digest: '${digest}'"
+              echo "Deployment accepts ONLY sha256:<64 hex> digests."
+              exit 1
+            fi
+          done
+          echo "core_digest=${{ inputs.core_digest }}" | tee -a "$GITHUB_ENV"
+          echo "web_digest=${{ inputs.web_digest }}" | tee -a "$GITHUB_ENV"
+
+      - name: Authenticate to Google Cloud via WIF
+        # google-github-actions/auth v3.0.0
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        with:
+          workload_identity_provider: projects/907313480935/locations/global/workloadIdentityPools/ngabo-github/providers/ngabo-repo
+          service_account: ngabo-deployer@ngabo-amr-2026.iam.gserviceaccount.com
+          token_format: access_token
+
+      - name: Set up gcloud
+        # google-github-actions/setup-gcloud v3.0.1
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
+        with:
+          project_id: ngabo-amr-2026
+
+      - name: Deploy ngabo-core (private, immutable digest)
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud run services deploy ngabo-core \
+            --image "us-central1-docker.pkg.dev/${PROJECT_ID}/${REPO}/ngabo-core@${core_digest}" \
+            --region "${REGION}" \
+            --service-account ngabo-core-runtime@${PROJECT_ID}.iam.gserviceaccount.com \
+            --min-instances 0 \
+            --max-instances 2 \
+            --cpu 1 \
+            --memory 512Mi \
+            --timeout 60s \
+            --concurrency 80 \
+            --no-allow-unauthenticated \
+            --no-cpu-throttling \
+            --labels app=ngabo,managed-by=terraform,environment=dev \
+            --quiet
+
+      - name: Deploy ngabo-web (public, immutable digest)
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud run services deploy ngabo-web \
+            --image "us-central1-docker.pkg.dev/${PROJECT_ID}/${REPO}/ngabo-web@${web_digest}" \
+            --region "${REGION}" \
+            --service-account ngabo-web-runtime@${PROJECT_ID}.iam.gserviceaccount.com \
+            --min-instances 0 \
+            --max-instances 2 \
+            --cpu 1 \
+            --memory 512Mi \
+            --timeout 60s \
+            --concurrency 80 \
+            --allow-unauthenticated \
+            --no-cpu-throttling \
+            --labels app=ngabo,managed-by=terraform,environment=dev \
+            --set-env-vars "CORE_API_URL=https://ngabo-core-${PROJECT_ID}.${REGION}.run.app" \
+            --quiet
+
+      - name: Record deployed revisions (redacted)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for service in ngabo-core ngabo-web; do
+            echo "== ${service} =="
+            gcloud run services describe "${service}" --region "${REGION}" \
+              --format='value(spec.template.metadata.name, status.latestReadyRevisionName, spec.template.spec.containers[0].image)'
+          done

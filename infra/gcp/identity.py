@@ -458,7 +458,9 @@ class GcpIdentityManager:
                 f"Create Workload Identity Provider '{WIF_PROVIDER_ID}' in pool '{WIF_POOL_ID}'"
             )
 
-        # 4. Project IAM Bindings for ngabo-deployer (Exact Allow-list: DEPLOYER_PROJECT_ROLES = ())
+        # 4. Project IAM Bindings for ngabo-deployer (Exact Allow-list:
+        #    DEPLOYER_PROJECT_ROLES, now including roles/run.developer for
+        #    the Issue #90 trusted Cloud Run deploy workflow).
         project_bindings = self.inspector.get_project_iam_bindings()
         deployer_email = self.config.service_account_email(DEPLOYER_SA_NAME)
         deployer_member = f"serviceAccount:{deployer_email}"
@@ -472,6 +474,14 @@ class GcpIdentityManager:
             if role not in DEPLOYER_PROJECT_ROLES:
                 planned_actions.append(
                     f"Revoke unapproved project role '{role}' from '{deployer_email}'"
+                )
+        # Any allowlisted project role not yet granted must be granted
+        # (Cloud Run IAM is project-scoped, so this is the deployer's only
+        # project-level authority).
+        for role in DEPLOYER_PROJECT_ROLES:
+            if role not in current_deployer_project_roles:
+                planned_actions.append(
+                    f"Grant '{role}' to '{deployer_email}' on project '{self.config.project_id}'"
                 )
 
         # Check for prohibited basic roles across all 3 service accounts
@@ -737,6 +747,30 @@ class GcpIdentityManager:
                     ]
                 )
                 operations.append(f"Revoked project role '{role}' from '{deployer_email}'")
+
+        # Grant any allowlisted project role not yet present (Issue #90:
+        # roles/run.developer enables the trusted Cloud Run deploy workflow).
+        for role in DEPLOYER_PROJECT_ROLES:
+            has_role = any(
+                b.get("role") == role and deployer_member in b.get("members", [])
+                for b in project_bindings
+            )
+            if not has_role:
+                self._log(
+                    f"[apply] Granting '{role}' to '{deployer_email}' on "
+                    f"project '{self.config.project_id}'..."
+                )
+                run_gcloud_command(
+                    [
+                        "projects",
+                        "add-iam-policy-binding",
+                        self.config.project_id,
+                        f"--member={deployer_member}",
+                        f"--role={role}",
+                        "--condition=None",
+                    ]
+                )
+                operations.append(f"Granted '{role}' on project '{self.config.project_id}'")
 
         # 5. Artifact Registry IAM Binding for ngabo-deployer
         ar_bindings = self.inspector.get_artifact_registry_iam_bindings(ARTIFACT_REGISTRY_REPO)
@@ -1448,7 +1482,7 @@ class GcpIdentityManager:
                     "core_runtime_roles": list(CORE_RUNTIME_PROJECT_ROLES),
                     "web_runtime_roles": list(WEB_RUNTIME_PROJECT_ROLES),
                     "prohibited_basic_roles": list(PROHIBITED_BASIC_ROLES),
-                    "cloud_run_developer_authority": "DEFERRED_TO_#90",
+                    "cloud_run_developer_authority": "roles/run.developer (#90)",
                 },
                 "observed": {
                     "deployer_project_roles": actual_deployer_project_roles,

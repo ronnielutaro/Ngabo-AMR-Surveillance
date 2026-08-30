@@ -119,8 +119,11 @@ DEFERRED_SERVICE_ACCOUNTS: dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 # Roles permitted for ngabo-deployer
-# Cloud Run Developer authority is explicitly DEFERRED to #90 (Cloud Run Deployment)
-DEPLOYER_PROJECT_ROLES: tuple[str, ...] = ()
+# Issue #90: Cloud Run Developer authority enables the trusted deploy
+# workflow (gcloud run services deploy) for the two skeleton services.
+# Cloud Run IAM is project-scoped (no repository-level granularity), so
+# this is the single project-level role granted to the deployer.
+DEPLOYER_PROJECT_ROLES: tuple[str, ...] = ("roles/run.developer",)
 # Issue #89: publishing requires repository-scoped write authority on
 # ngabo-artifacts only. Writer subsumes the former #87-era reader authority,
 # so the obsolete reader role is replaced rather than accumulated.

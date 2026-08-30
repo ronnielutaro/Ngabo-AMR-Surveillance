@@ -9,6 +9,8 @@ dependencies = []
 [project.scripts]
 ngabo-health = "ngabo.bootstrap.health:main"
 ngabo-certify-hero = "ngabo.bootstrap.certify_hero:main"
+# Issue #90: minimal stdlib HTTP adapter for Cloud Run (typed health/ready/version).
+ngabo-http = "ngabo.interfaces.http:main"
 
 [dependency-groups]
 dev = [

@@ -50,8 +50,15 @@ VALID_SAMPLE_PROVIDER_DETAILS = {
     "state": "ACTIVE",
 }
 
-# DEPLOYER_PROJECT_ROLES is empty tuple () per #87 least privilege contract
-VALID_PROJECT_BINDINGS: list[dict[str, Any]] = []
+# Issue #90: roles/run.developer is the deployer's single project-level role
+VALID_PROJECT_BINDINGS: list[dict[str, Any]] = [
+    {
+        "role": "roles/run.developer",
+        "members": [
+            f"serviceAccount:{DEPLOYER_SA_NAME}@{SAMPLE_PROJECT_ID}.iam.gserviceaccount.com"
+        ],
+    },
+]
 
 VALID_AR_BINDINGS = [
     {
@@ -289,12 +296,13 @@ def test_validate_fails_if_wif_provider_issuer_mismatched_or_inactive() -> None:
 # ---------------------------------------------------------------------------
 
 def test_validate_fails_on_unapproved_deployer_project_role() -> None:
-    """Test that validation fails if deployer has ANY project role not in DEPLOYER_PROJECT_ROLES."""
+    """Test that validation fails if deployer has ANY project role not in
+    DEPLOYER_PROJECT_ROLES (Issue #90 allow-list: roles/run.developer only)."""
     mgr = create_converged_manager()
-    # DEPLOYER_PROJECT_ROLES is empty; adding any role must trigger failure
+    # roles/run.developer is approved since #90; any OTHER role must fail
     unapproved_bindings = [
         {
-            "role": "roles/run.developer",
+            "role": "roles/storage.objectAdmin",
             "members": [
                 f"serviceAccount:{DEPLOYER_SA_NAME}@{SAMPLE_PROJECT_ID}.iam.gserviceaccount.com"
             ],

@@ -2,10 +2,10 @@
 
 # ngabo-core production container (Issue #89).
 #
-# The core is currently framework-free with NO HTTP adapter (Issue #90 owns
-# the minimal deployment adapter). This image therefore executes the real
-# production diagnostic entrypoint `ngabo-health` as its default process and
-# exposes no network port. `ngabo-certify-hero` remains invocable explicitly.
+# The core runs the minimal stdlib HTTP adapter (Issue #90) serving the
+# typed /health, /ready, /version endpoints for Cloud Run. `ngabo-health`
+# (one-shot diagnostic) and `ngabo-certify-hero` remain invocable
+# explicitly; the default process is the HTTP server on $PORT (8080).
 #
 # Base image pinned by immutable digest (python:3.11.16-slim, linux/amd64
 # manifest-list digest). No mutable tags.
@@ -105,6 +105,10 @@ RUN find /opt -exec touch -c -h -d "@${SOURCE_DATE_EPOCH}" {} +
 USER ngabo
 WORKDIR /home/ngabo
 
-# No EXPOSE: the core exposes no network service in Issue #89.
-# Default process: production health diagnostic (one-shot, exits 0 on success).
-CMD ["ngabo-health"]
+# Cloud Run port convention (Issue #90): the minimal stdlib HTTP adapter
+# listens on $PORT (default 8080). EXPOSE is informational only — Cloud Run
+# always routes to $PORT.
+EXPOSE 8080
+
+# Default process: minimal stdlib HTTP adapter (typed health/ready/version).
+CMD ["ngabo-http"]
