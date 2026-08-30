@@ -90,7 +90,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          run_id="$(gh run list --workflow delivery-develop.yml --json databaseId,conclusion --jq '[.[] | select(.conclusion == "success") | .databaseId][0]')"
+          run_id="$(gh run list --workflow delivery-develop.yml --json databaseId,conclusion --jq '[.[] | select(.conclusion == "success")] | sort_by(.databaseId) | reverse | .[0].databaseId')"
           if [[ -z "${run_id}" ]]; then
             echo "::error::No successful Delivery Develop evidence; refusing to roll back to unverified digests."
             exit 1
