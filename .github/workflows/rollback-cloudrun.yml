@@ -1,0 +1,140 @@
+name: Rollback Cloud Run Skeleton
+
+# Issue #91 guarded rollback.
+#
+# Trust boundary: MANUAL workflow_dispatch, from `develop`, repository owner
+# only. It takes the PREVIOUS known-good immutable digest(s) and redeploys the
+# exact prior artifacts with NO rebuild. A failed rollback fails loudly and
+# never rewrites evidence to claim success.
+
+on:
+  workflow_dispatch:
+    inputs:
+      core_digest:
+        description: "previous known-good ngabo-core digest (sha256:<64 hex>)"
+        required: true
+        type: string
+      web_digest:
+        description: "previous known-good ngabo-web digest (sha256:<64 hex>)"
+        required: true
+        type: string
+      reason:
+        description: "rollback reason (recorded in evidence)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+
+concurrency:
+  group: rollback-cloudrun
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    name: Rollback to Previous Known-Good
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/develop' &&
+      github.actor == 'ronnielutaro'
+    env:
+      IMAGE_PREFIX: us-central1-docker.pkg.dev/ngabo-amr-2026/ngabo-artifacts
+    steps:
+      - name: Checkout exact commit (no source build)
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Authenticate to Google Cloud via WIF
+        # google-github-actions/auth v3.0.0
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        with:
+          workload_identity_provider: projects/907313480935/locations/global/workloadIdentityPools/ngabo-github/providers/ngabo-repo
+          service_account: ngabo-deployer@ngabo-amr-2026.iam.gserviceaccount.com
+          token_format: access_token
+
+      - name: Set up gcloud
+        # google-github-actions/setup-gcloud v3.0.1
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
+        with:
+          project_id: ngabo-amr-2026
+
+      - name: Set up uv
+        # astral-sh/setup-uv v10.0.1
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          version: 0.11.16
+
+      - name: Validate rollback inputs (immutable digests, no rebuild)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for digest in "${{ inputs.core_digest }}" "${{ inputs.web_digest }}"; do
+            if [[ ! "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "::error::Rejected non-immutable digest '${digest}'."
+              exit 1
+            fi
+          done
+          echo "core_digest=${{ inputs.core_digest }}" | tee -a "$GITHUB_ENV"
+          echo "web_digest=${{ inputs.web_digest }}" | tee -a "$GITHUB_ENV"
+
+      - name: Verify rollback inputs against known-good delivery evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_id="$(gh run list --workflow delivery-develop.yml --json databaseId,conclusion --jq '[.[] | select(.conclusion == "success") | .databaseId][0]')"
+          if [[ -z "${run_id}" ]]; then
+            echo "::error::No successful Delivery Develop evidence; refusing to roll back to unverified digests."
+            exit 1
+          fi
+          gh run download "${run_id}" --repo "${GITHUB_REPOSITORY}" --name "delivery-evidence-${run_id}" --dir delivery-evidence --force
+          python3 infra/github/delivery.py evidence-check --record delivery-evidence/delivery-evidence.json --core-digest "${core_digest}" --web-digest "${web_digest}"
+
+      - name: Deploy exact previous-known-good digest(s) — NO rebuild
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd services/core
+          uv sync --frozen
+          uv run python ../../infra/gcp/cloudrun.py apply \
+            --core-digest "${core_digest}" \
+            --web-digest "${web_digest}"
+
+      - name: Smoke test rolled-back release
+        shell: bash
+        run: |
+          set -euo pipefail
+          core_ready="$(gcloud run services describe ngabo-core --region us-central1 --format='value(status.conditions[?(@.type==\"Ready\")].status)')"
+          [[ "${core_ready}" == "True" ]]
+          web_url="$(gcloud run services describe ngabo-web --region us-central1 --format='value(status.url)')"
+          curl -fsS "${web_url}/" | grep -qi "IN DEVELOPMENT"
+          curl -fsS "${web_url}/" | grep -q "${core_digest}"
+          echo "rollback smoke PASS"
+
+      - name: Record rollback evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "DELIVERY_ENVIRONMENT=dev" >> "$GITHUB_ENV"
+          echo "DELIVERY_REASON=${{ inputs.reason }}" >> "$GITHUB_ENV"
+          echo "DELIVERY_TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+          echo "DELIVERY_SMOKE_RESULT=pass" >> "$GITHUB_ENV"
+          echo "CORE_REVISION=$(gcloud run services describe ngabo-core --region us-central1 --format='value(status.latestReadyRevisionName)')" >> "$GITHUB_ENV"
+          echo "WEB_REVISION=$(gcloud run services describe ngabo-web --region us-central1 --format='value(status.latestReadyRevisionName)')" >> "$GITHUB_ENV"
+          python3 infra/github/delivery.py evidence-env --output rollback-evidence.json
+          cat rollback-evidence.json
+
+      - name: Upload rollback evidence
+        # actions/upload-artifact v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rollback-evidence-${{ github.run_id }}
+          path: rollback-evidence.json
+          if-no-files-found: error
+          retention-days: 30

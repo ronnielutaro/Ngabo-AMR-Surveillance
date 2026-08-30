@@ -1,0 +1,173 @@
+name: Promote Cloud Run Skeleton
+
+# Issue #91 protected manual promotion.
+#
+# Trust boundary: MANUAL workflow_dispatch only, from `develop`, invoked by the
+# repository owner, into a protected GitHub environment that requires
+# maintainer approval. Promotion accepts ONLY immutable digests that were
+# already tested in dev; it NEVER rebuilds and never reads source to build.
+# Mutable tags, "latest" and bare references are rejected, and every digest is
+# re-verified to exist in Artifact Registry bound to the same source commit.
+
+on:
+  workflow_dispatch:
+    inputs:
+      core_digest:
+        description: "ngabo-core immutable digest (sha256:<64 hex>) already tested in dev"
+        required: true
+        type: string
+      web_digest:
+        description: "ngabo-web immutable digest (sha256:<64 hex>) already tested in dev"
+        required: true
+        type: string
+      commit_sha:
+        description: "source commit the digests were published from (40 hex)"
+        required: true
+        type: string
+      target_environment:
+        description: "protected release target (release|judge)"
+        required: true
+        type: string
+        default: release
+
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+
+concurrency:
+  group: promote-${{ inputs.target_environment }}
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    name: Promote Immutable Digest
+    runs-on: ubuntu-24.04
+    environment: ${{ inputs.target_environment }}
+    timeout-minutes: 25
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/develop' &&
+      github.actor == 'ronnielutaro'
+    env:
+      IMAGE_PREFIX: us-central1-docker.pkg.dev/ngabo-amr-2026/ngabo-artifacts
+    steps:
+      - name: Checkout exact commit (read-only; no source build)
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Authenticate to Google Cloud via WIF
+        # google-github-actions/auth v3.0.0
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        with:
+          workload_identity_provider: projects/907313480935/locations/global/workloadIdentityPools/ngabo-github/providers/ngabo-repo
+          service_account: ngabo-deployer@ngabo-amr-2026.iam.gserviceaccount.com
+          token_format: access_token
+
+      - name: Set up gcloud
+        # google-github-actions/setup-gcloud v3.0.1
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
+        with:
+          project_id: ngabo-amr-2026
+
+      - name: Set up uv
+        # astral-sh/setup-uv v10.0.1
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          version: 0.11.16
+
+      - name: Validate promotion inputs (immutable, source-bound, no rebuild)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for digest in "${{ inputs.core_digest }}" "${{ inputs.web_digest }}"; do
+            if [[ ! "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "::error::Rejected non-immutable digest '${digest}'."
+              exit 1
+            fi
+          done
+          if [[ ! "${{ inputs.commit_sha }}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::commit_sha must be a 40-hex commit."
+            exit 1
+          fi
+          if [[ "${{ inputs.target_environment }}" != "release" && "${{ inputs.target_environment }}" != "judge" ]]; then
+            echo "::error::target_environment must be release or judge."
+            exit 1
+          fi
+          echo "core_digest=${{ inputs.core_digest }}" | tee -a "$GITHUB_ENV"
+          echo "web_digest=${{ inputs.web_digest }}" | tee -a "$GITHUB_ENV"
+          echo "commit_sha=${{ inputs.commit_sha }}" | tee -a "$GITHUB_ENV"
+
+      - name: Verify exact digest == tested digest for this source commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          for svc in core web; do
+            var="$(echo ${svc}_digest)"
+            digest="${!var}"
+            registry_digest="$(gcloud artifacts docker images describe "${IMAGE_PREFIX}/ngabo-${svc}:sha-${{ inputs.commit_sha }}" --format='value(image_summary.digest)')"
+            if [[ "${registry_digest}" != "${digest}" ]]; then
+              echo "::error::ngabo-${svc}: supplied digest ${digest} != tested digest ${registry_digest} for commit ${{ inputs.commit_sha }}."
+              exit 1
+            fi
+            echo "ngabo-${svc}: supplied ${digest} == tested ${registry_digest}"
+          done
+
+      - name: Verify supplied digest was successfully delivered and smoke-passed
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_id="$(gh run list --workflow delivery-develop.yml --commit "${commit_sha}" --json databaseId,conclusion --jq '[.[] | select(.conclusion == "success") | .databaseId][0]')"
+          if [[ -z "${run_id}" ]]; then
+            echo "::error::No successful Delivery Develop run for commit ${commit_sha}; refusing to promote untested digests."
+            exit 1
+          fi
+          gh run download "${run_id}" --repo "${GITHUB_REPOSITORY}" --name "delivery-evidence-${run_id}" --dir delivery-evidence --force
+          python3 infra/github/delivery.py evidence-check --record delivery-evidence/delivery-evidence.json --core-digest "${core_digest}" --web-digest "${web_digest}"
+
+      - name: Deploy exact tested digest(s) — NO rebuild
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd services/core
+          uv sync --frozen
+          uv run python ../../infra/gcp/cloudrun.py apply \
+            --core-digest "${core_digest}" \
+            --web-digest "${web_digest}"
+
+      - name: Smoke test promoted release
+        shell: bash
+        run: |
+          set -euo pipefail
+          core_ready="$(gcloud run services describe ngabo-core --region us-central1 --format='value(status.conditions[?(@.type==\"Ready\")].status)')"
+          [[ "${core_ready}" == "True" ]]
+          web_url="$(gcloud run services describe ngabo-web --region us-central1 --format='value(status.url)')"
+          curl -fsS "${web_url}/" | grep -qi "IN DEVELOPMENT"
+          curl -fsS "${web_url}/" | grep -q "${core_digest}"
+          echo "promote smoke PASS"
+
+      - name: Record release evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "DELIVERY_ENVIRONMENT=${{ inputs.target_environment }}" >> "$GITHUB_ENV"
+          echo "DELIVERY_COMMIT=${commit_sha}" >> "$GITHUB_ENV"
+          echo "DELIVERY_TARGET=${{ inputs.target_environment }}" >> "$GITHUB_ENV"
+          echo "DELIVERY_TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+          echo "DELIVERY_SMOKE_RESULT=pass" >> "$GITHUB_ENV"
+          echo "CORE_REVISION=$(gcloud run services describe ngabo-core --region us-central1 --format='value(status.latestReadyRevisionName)')" >> "$GITHUB_ENV"
+          echo "WEB_REVISION=$(gcloud run services describe ngabo-web --region us-central1 --format='value(status.latestReadyRevisionName)')" >> "$GITHUB_ENV"
+          python3 infra/github/delivery.py evidence-env --output release-evidence.json
+          cat release-evidence.json
+
+      - name: Upload release evidence
+        # actions/upload-artifact v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: release-evidence-${{ github.run_id }}
+          path: release-evidence.json
+          if-no-files-found: error
+          retention-days: 30

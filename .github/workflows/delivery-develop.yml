@@ -1,0 +1,281 @@
+name: Delivery Develop
+
+# Issue #91 automatic guarded delivery to dev.
+#
+# Trust boundary: runs ONLY from a push to develop (post-merge), in the `dev`
+# GitHub environment, authenticating keylessly via Workload Identity
+# Federation as ngabo-deployer. It never runs from PR branches or forks.
+#
+# Semantics:
+#   - required CI is already satisfied (branch protection blocks merges);
+#   - detects the affected service(s) from the merge diff;
+#   - builds each affected image exactly once, scans and pushes the exact
+#     tested object (byte-identical single buildx build, Trivy gate);
+#   - deploy by immutable digest (never a mutable tag);
+#   - smoke-tests the live affected service;
+#   - records sanitized evidence and refuses to overwrite a newer revision.
+
+on:
+  push:
+    branches:
+      - develop
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: delivery-develop
+  cancel-in-progress: false
+
+jobs:
+  deliver:
+    name: Guarded Develop Delivery
+    runs-on: ubuntu-24.04
+    environment: dev
+    timeout-minutes: 45
+    if: github.repository == 'ronnielutaro/Ngabo-AMR-Surveillance'
+    env:
+      IMAGE_PREFIX: us-central1-docker.pkg.dev/ngabo-amr-2026/ngabo-artifacts
+      GIT_VALIDATION_REF: refs/heads/develop
+      FREEZE_GUARD: ${{ vars.NGABO_SUBMISSION_FREEZE }}
+    steps:
+      - name: Checkout the exact dispatch commit
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Authenticate to Google Cloud via WIF
+        # google-github-actions/auth v3.0.0
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        with:
+          workload_identity_provider: projects/907313480935/locations/global/workloadIdentityPools/ngabo-github/providers/ngabo-repo
+          service_account: ngabo-deployer@ngabo-amr-2026.iam.gserviceaccount.com
+          token_format: access_token
+
+      - name: Set up gcloud
+        # google-github-actions/setup-gcloud v3.0.1
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
+        with:
+          project_id: ngabo-amr-2026
+
+      - name: Set up uv
+        # astral-sh/setup-uv v10.0.1
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          version: 0.11.16
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+
+      - name: Set up Docker Buildx
+        # docker/setup-buildx-action v3.12.0
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+
+      - name: Detect affected services
+        id: affected
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --name-only "${{ github.event.before }}" "${{ github.event.after }}" > changed-paths.txt || true
+          python3 infra/github/delivery.py affected --paths-file changed-paths.txt > affected.json
+          affected="$(cat affected.json)"
+          echo "changed paths: $(wc -l < changed-paths.txt)"
+          echo "affected services: ${affected}"
+          echo "affected=${affected}" >> "$GITHUB_OUTPUT"
+          if [[ "${affected}" == "[]" ]]; then
+            echo "no_affected_services=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "no_affected_services=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: No deployable service changed
+        if: steps.affected.outputs.no_affected_services == 'true'
+        shell: bash
+        run: echo "Nothing deployable changed; no delivery required."
+
+      - name: Submission-freeze guard (fail closed on judged env)
+        if: steps.affected.outputs.no_affected_services != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${FREEZE_GUARD}" == "true" ]]; then
+            echo "SUBMISSION_FROZEN: automatic develop delivery to the judged services is disabled."
+            exit 3
+          fi
+          echo "freeze guard clear (FREEZE_GUARD=${FREEZE_GUARD:-unset})"
+
+      - name: Stale-run guard (fail closed on concurrent merge advance)
+        if: steps.affected.outputs.no_affected_services != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote_sha="$(git ls-remote origin "${GIT_VALIDATION_REF}" | awk '{print $1}')"
+          echo "remote develop head: ${remote_sha}"
+          echo "this run head:       ${GITHUB_SHA}"
+          if [[ "${remote_sha}" != "${GITHUB_SHA}" ]]; then
+            echo "STALE_RUN: develop advanced; refusing to overwrite a newer revision."
+            exit 3
+          fi
+          echo "CURRENT: run head matches develop; delivery allowed."
+
+      - name: Build + scan + publish affected images (exact tested object)
+        if: steps.affected.outputs.no_affected_services != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "SOURCE_DATE_EPOCH=$(git show -s --format=%ct ${GITHUB_SHA})" > /tmp/sde
+          source /tmp/sde
+          affected="$(cat affected.json)"
+          services=()
+          if [[ "${affected}" == *'"core"'* ]]; then services+=("core"); fi
+          if [[ "${affected}" == *'"web"'* ]]; then services+=("web"); fi
+          echo "building services: ${services[*]}"
+          for svc in "${services[@]}"; do
+            echo "=== building ${svc} ==="
+            case "${svc}" in
+              core)
+                docker buildx build --provenance=false \
+                  --build-arg SOURCE_REVISION=${GITHUB_SHA} \
+                  --build-arg SOURCE_URL=${{ github.repositoryUrl }} \
+                  --build-arg APP_VERSION=0.1.0 \
+                  --build-arg SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH} \
+                  --output type=docker,dest=ngabo-core.tar,rewrite-timestamp=true \
+                  -t "${IMAGE_PREFIX}/ngabo-core:${GITHUB_SHA}" \
+                  -t "${IMAGE_PREFIX}/ngabo-core:sha-${GITHUB_SHA}" \
+                  -f services/core/Dockerfile services/core
+                docker load -i ngabo-core.tar
+                docker run --rm "${IMAGE_PREFIX}/ngabo-core:${GITHUB_SHA}" ngabo-health | grep -q '"status": "ok"'
+                ;;
+              web)
+                docker buildx build --provenance=false \
+                  --build-arg SOURCE_REVISION=${GITHUB_SHA} \
+                  --build-arg SOURCE_URL=${{ github.repositoryUrl }} \
+                  --build-arg APP_VERSION=0.1.0 \
+                  --build-arg SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH} \
+                  --output type=docker,dest=ngabo-web.tar,rewrite-timestamp=true \
+                  -t "${IMAGE_PREFIX}/ngabo-web:${GITHUB_SHA}" \
+                  -t "${IMAGE_PREFIX}/ngabo-web:sha-${GITHUB_SHA}" \
+                  -f apps/web/Dockerfile .
+                docker load -i ngabo-web.tar
+                cid="$(docker run -d --rm -p 127.0.0.1:18080:8080 "${IMAGE_PREFIX}/ngabo-web:${GITHUB_SHA}")"
+                trap 'docker stop "${cid}" >/dev/null 2>&1 || true' EXIT
+                for _ in $(seq 1 30); do
+                  if curl -fsS http://127.0.0.1:18080/ >/dev/null 2>&1; then break; fi
+                  sleep 1
+                done
+                curl -fsS http://127.0.0.1:18080/ | grep -qi "html"
+                docker stop "${cid}" >/dev/null || true
+                ;;
+            esac
+          done
+          # Push the tested objects, then capture authoritative digests.
+          # Always set BOTH digests: the unchanged service resolves to its
+          # currently-live immutable digest so a targeted (subset) apply still
+          # validates both while deploying only the affected service.
+          for svc in core web; do
+            if [[ " ${services[*]} " == *" ${svc} "* ]]; then
+              echo "=== pushing ngabo-${svc} ==="
+              docker push "${IMAGE_PREFIX}/ngabo-${svc}:${GITHUB_SHA}"
+              docker push "${IMAGE_PREFIX}/ngabo-${svc}:sha-${GITHUB_SHA}"
+              digest="$(gcloud artifacts docker images describe "${IMAGE_PREFIX}/ngabo-${svc}:${GITHUB_SHA}" --format='value(image_summary.digest)')"
+              echo "ngabo-${svc} published: ${digest}"
+            else
+              digest="$(gcloud run services describe "ngabo-${svc}" --region us-central1 --format='value(spec.template.spec.containers[0].image)' | sed 's#.*@##')"
+              echo "ngabo-${svc} unchanged; using live digest ${digest}"
+            fi
+            svc_upper="$(echo "${svc}" | tr '[:lower:]' '[:upper:]')"
+            echo "${svc_upper}_DIGEST=${digest}" | tee -a "$GITHUB_ENV"
+          done
+
+      - name: Scan loaded ngabo-core object
+        # aquasecurity/trivy-action v0.36.0
+        if: contains(steps.affected.outputs.affected, '"core"')
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8
+        with:
+          image-ref: ${{ env.IMAGE_PREFIX }}/ngabo-core:${{ github.sha }}
+          format: table
+          exit-code: "1"
+          severity: HIGH,CRITICAL
+          output: core-scan.txt
+
+      - name: Scan loaded ngabo-web object
+        # aquasecurity/trivy-action v0.36.0
+        if: contains(steps.affected.outputs.affected, '"web"')
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8
+        with:
+          image-ref: ${{ env.IMAGE_PREFIX }}/ngabo-web:${{ github.sha }}
+          format: table
+          exit-code: "1"
+          severity: HIGH,CRITICAL
+          output: web-scan.txt
+
+      - name: Deploy exact digest(s) to dev (build-once, deploy-by-digest)
+        if: steps.affected.outputs.no_affected_services != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Re-check staleness immediately before deploy to close the TOCTOU
+          # window: an older run must never overwrite a newer revision.
+          remote_sha="$(git ls-remote origin "${GIT_VALIDATION_REF}" | awk '{print $1}')"
+          if [[ "${remote_sha}" != "${GITHUB_SHA}" ]]; then
+            echo "STALE_RUN: develop advanced to ${remote_sha}; refusing to deploy ${GITHUB_SHA}."
+            exit 3
+          fi
+          cd services/core
+          uv sync --frozen
+          affected="$(cat "${GITHUB_WORKSPACE}/affected.json")"
+          services=()
+          if [[ "${affected}" == *'"core"'* ]]; then services+=("core"); fi
+          if [[ "${affected}" == *'"web"'* ]]; then services+=("web"); fi
+          core_digest="${CORE_DIGEST}"
+          web_digest="${WEB_DIGEST}"
+          uv run python ../../infra/gcp/cloudrun.py apply \
+            --core-digest "${core_digest}" \
+            --web-digest "${web_digest}" \
+            --services "$(printf '%s' "${services[*]}" | tr ' ' ',')"
+
+      - name: Smoke test live service(s) through public web + revision readiness
+        if: steps.affected.outputs.no_affected_services != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          affected="$(cat "${GITHUB_WORKSPACE}/affected.json")"
+          web_url="$(gcloud run services describe ngabo-web --region us-central1 --format='value(status.url)')"
+          # Web is public; it renders backend-derived core identity. A healthy
+          # web plus the new core revision/digest in the page proves the
+          # deployed core is genuinely serving to the app boundary.
+          curl -fsS "${web_url}/" | grep -qi "IN DEVELOPMENT"
+          if [[ "${affected}" == *'"core"'* ]]; then
+            core_ready="$(gcloud run services describe ngabo-core --region us-central1 --format='value(status.conditions[?(@.type==\"Ready\")].status)')"
+            [[ "${core_ready}" == "True" ]]
+            # the core identity is surfaced via /version -> web LIVE panel
+            curl -fsS "${web_url}/" | grep -q "${CORE_DIGEST}"
+          fi
+          echo "smoke PASS for: ${affected}"
+
+      - name: Record delivery evidence
+        if: steps.affected.outputs.no_affected_services != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "DELIVERY_ENVIRONMENT=dev" >> "$GITHUB_ENV"
+          echo "DELIVERY_TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+          echo "DELIVERY_SMOKE_RESULT=pass" >> "$GITHUB_ENV"
+          echo "CORE_REVISION=$(gcloud run services describe ngabo-core --region us-central1 --format='value(status.latestReadyRevisionName)' 2>/dev/null || true)" >> "$GITHUB_ENV"
+          echo "WEB_REVISION=$(gcloud run services describe ngabo-web --region us-central1 --format='value(status.latestReadyRevisionName)' 2>/dev/null || true)" >> "$GITHUB_ENV"
+          python3 infra/github/delivery.py evidence-env --output delivery-evidence.json
+          cat delivery-evidence.json
+
+      - name: Upload delivery evidence
+        if: steps.affected.outputs.no_affected_services != 'true'
+        # actions/upload-artifact v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: delivery-evidence-${{ github.run_id }}
+          path: delivery-evidence.json
+          if-no-files-found: error
+          retention-days: 30
