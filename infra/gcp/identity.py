@@ -679,7 +679,8 @@ class GcpIdentityManager:
                 )
                 if set(actual_permissions) != set(plan_perms):
                     planned_actions.append(
-                        f"Update custom role '{full_role}' permissions to exactly {role_spec['permissions']}"
+                        f"Update custom role '{full_role}' permissions to exactly "
+                        f"{role_spec['permissions']}"
                     )
 
             expected_members = {
@@ -869,7 +870,8 @@ class GcpIdentityManager:
             )
             if not has_role:
                 self._log(
-                    f"[apply] Granting '{role}' to '{deployer_email}' on project '{self.config.project_id}'..."
+                    f"[apply] Granting '{role}' to '{deployer_email}' on "
+                    f"project '{self.config.project_id}'..."
                 )
                 run_gcloud_command(
                     [
@@ -920,7 +922,8 @@ class GcpIdentityManager:
                 and deployer_member in binding.get("members", [])
             ):
                 self._log(
-                    f"[apply] Revoking '{role}' from '{deployer_email}' on repository '{ARTIFACT_REGISTRY_REPO}'..."
+                    f"[apply] Revoking '{role}' from '{deployer_email}' on "
+                    f"repository '{ARTIFACT_REGISTRY_REPO}'..."
                 )
                 run_gcloud_command(
                     [
@@ -966,7 +969,8 @@ class GcpIdentityManager:
                 )
                 if set(actual_permissions) != set(apply_perms):
                     self._log(
-                        f"[apply] Updating custom role '{full_role}' permissions to exactly {apply_perms}..."
+                        f"[apply] Updating custom role '{full_role}' permissions "
+                        f"to exactly {apply_perms}..."
                     )
                     run_gcloud_command(
                         [
@@ -1003,7 +1007,8 @@ class GcpIdentityManager:
 
             for member in sorted(actual_members - expected_members):
                 self._log(
-                    f"[apply] Revoking unexpected custom role member '{member}' from '{full_role}'..."
+                    f"[apply] Revoking unexpected custom role member '{member}' "
+                    f"from '{full_role}'..."
                 )
                 run_gcloud_command(
                     [
@@ -1380,7 +1385,8 @@ class GcpIdentityManager:
             )
             if set(actual_permissions) != set(validate_perms):
                 failures.append(
-                    f"Custom role '{full_role}' permissions {sorted(actual_permissions)} != {sorted(validate_perms)}."
+                    f"Custom role '{full_role}' permissions "
+                    f"{sorted(actual_permissions)} != {sorted(validate_perms)}."
                 )
                 custom_roles_valid = False
 
