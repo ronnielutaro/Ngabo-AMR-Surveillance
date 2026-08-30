@@ -527,7 +527,8 @@ class GcpIdentityManager:
                 and deployer_member in binding.get("members", [])
             ):
                 planned_actions.append(
-                    f"Revoke '{role}' from '{deployer_email}' on repository '{ARTIFACT_REGISTRY_REPO}'"
+                    f"Revoke '{role}' from '{deployer_email}' on "
+                    f"repository '{ARTIFACT_REGISTRY_REPO}'"
                 )
 
         # 6. Service Account User (actAs) Bindings
@@ -785,7 +786,8 @@ class GcpIdentityManager:
                 and deployer_member in binding.get("members", [])
             ):
                 self._log(
-                    f"[apply] Revoking '{role}' from '{deployer_email}' on repository '{ARTIFACT_REGISTRY_REPO}'..."
+                    f"[apply] Revoking '{role}' from '{deployer_email}' on "
+                    f"repository '{ARTIFACT_REGISTRY_REPO}'..."
                 )
                 run_gcloud_command(
                     [

@@ -4,23 +4,36 @@
 # Keep every context free of secrets, caches, and unrelated content while
 # retaining the locked build inputs (workspace manifests, lockfiles, source).
 
-# Dependencies / build output
+# Dependencies / build output (any depth — Docker matches these patterns
+# relative to the context root, so nested dirs need the **/ form)
+**/node_modules/
 node_modules/
+**/.next/
 .next/
+**/out/
 out/
+**/dist/
 dist/
+**/coverage/
 coverage/
+**/artifacts/
 artifacts/
 *.tsbuildinfo
 
 # Python
+**/__pycache__/
 __pycache__/
 *.py[cod]
+**/.venv/
 .venv/
+**/.pytest_cache/
 .pytest_cache/
+**/.mypy_cache/
 .mypy_cache/
+**/.ruff_cache/
 .ruff_cache/
 *.egg-info/
+**/htmlcov/
 htmlcov/
 
 # Environment / secrets / credentials

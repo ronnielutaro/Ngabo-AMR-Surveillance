@@ -126,11 +126,13 @@ def build_evidence(
         raise EvidenceValidationError(f"EVIDENCE_COMMIT is not a full 40-hex SHA: {commit!r}")
     if not DIGEST_RE.fullmatch(immutable_digest):
         raise EvidenceValidationError(
-            f"immutable digest for {service_name} is not a sha256:64-hex digest: {immutable_digest!r}"
+            f"immutable digest for {service_name} is not a "
+            f"sha256:64-hex digest: {immutable_digest!r}"
         )
     if not DIGEST_RE.fullmatch(base_image_digest):
         raise EvidenceValidationError(
-            f"base image digest for {service_name} is not a sha256:64-hex digest: {base_image_digest!r}"
+            f"base image digest for {service_name} is not a "
+            f"sha256:64-hex digest: {base_image_digest!r}"
         )
 
     return ArtifactEvidence(
@@ -159,7 +161,9 @@ def main(argv: list[str] | None = None) -> int:
 
     core = build_evidence(
         service_name="ngabo-core",
-        navigation_tag=os.environ.get("EVIDENCE_CORE_TAG", "sha-" + os.environ.get("EVIDENCE_COMMIT", "")),
+        navigation_tag=os.environ.get(
+            "EVIDENCE_CORE_TAG", "sha-" + os.environ.get("EVIDENCE_COMMIT", "")
+        ),
         immutable_digest=_require_env("EVIDENCE_CORE_DIGEST"),
         runtime_user="ngabo",
         image_size_bytes=None,
@@ -176,11 +180,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     web = build_evidence(
         service_name="ngabo-web",
-        navigation_tag=os.environ.get("EVIDENCE_WEB_TAG", "sha-" + os.environ.get("EVIDENCE_COMMIT", "")),
+        navigation_tag=os.environ.get(
+            "EVIDENCE_WEB_TAG", "sha-" + os.environ.get("EVIDENCE_COMMIT", "")
+        ),
         immutable_digest=_require_env("EVIDENCE_WEB_DIGEST"),
         runtime_user="ngabo",
         image_size_bytes=None,
-        base_image_digest="sha256:a9f5f7c91a432850b2a8a7797adf5eadb6c733ceed61167806cee7ea7fbc29df",
+        base_image_digest="sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e",
         oci_labels={
             "org.opencontainers.image.source": os.environ.get("EVIDENCE_REPOSITORY", ""),
             "org.opencontainers.image.revision": os.environ.get("EVIDENCE_COMMIT", ""),

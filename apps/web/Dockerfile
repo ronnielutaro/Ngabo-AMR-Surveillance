@@ -11,9 +11,10 @@
 # manifest-list digest). No mutable tags.
 
 # ---------------------------------------------------------------------------
-# Build stage: frozen pnpm install + production Next.js build (standalone).
+# Build stage: frozen pnpm install (hoisted layout per pnpm-workspace.yaml)
+# + production Next.js build with self-contained standalone output.
 # ---------------------------------------------------------------------------
-FROM node:24.19.0-slim@sha256:a9f5f7c91a432850b2a8a7797adf5eadb6c733ceed61167806cee7ea7fbc29df AS builder
+FROM node:24-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e AS builder
 
 ARG SOURCE_REVISION=unknown
 ARG SOURCE_URL=https://github.com/ronnielutaro/Ngabo-AMR-Surveillance
@@ -21,7 +22,8 @@ ARG APP_VERSION=0.1.0
 
 WORKDIR /app
 
-# Workspace manifests and frozen lockfile first for layer caching.
+# Workspace manifests, linker config, and frozen lockfile first for layer
+# caching.
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/web/package.json apps/web/
 RUN npm install --global pnpm@11.22.0 \
@@ -33,7 +35,7 @@ RUN pnpm --filter ngabo-web build
 # ---------------------------------------------------------------------------
 # Runtime stage: standalone Next.js server, non-root, minimal files.
 # ---------------------------------------------------------------------------
-FROM node:24.19.0-slim@sha256:a9f5f7c91a432850b2a8a7797adf5eadb6c733ceed61167806cee7ea7fbc29df
+FROM node:24-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e
 
 ARG SOURCE_REVISION=unknown
 ARG SOURCE_URL=https://github.com/ronnielutaro/Ngabo-AMR-Surveillance
@@ -58,7 +60,8 @@ RUN useradd --system --uid 10001 --create-home --shell /usr/sbin/nologin ngabo
 WORKDIR /app
 COPY --from=builder --chown=ngabo:ngabo /app/apps/web/.next/standalone ./
 COPY --from=builder --chown=ngabo:ngabo /app/apps/web/.next/static ./apps/web/.next/static
-COPY --from=builder --chown=ngabo:ngabo /app/apps/web/public ./apps/web/public
+# The app currently ships no static `public/` directory; add
+# `COPY --from=builder /app/apps/web/public ./apps/web/public` when one exists.
 
 USER ngabo
 EXPOSE 8080

@@ -29,8 +29,13 @@ COPY ngabo ./ngabo
 RUN uv build --wheel --out-dir /dist
 
 # Deterministic runtime virtualenv containing only the production wheel.
+# The venv inherits ensurepip's pip-bundled packages; upgrade the two with
+# published security fixes and drop setuptools (which vendors an outdated
+# wheel) so the scan gate is clean for actionable findings.
 RUN python -m venv /opt/venv \
-    && /opt/venv/bin/pip install --no-cache-dir /dist/ngabo_core-*.whl
+    && /opt/venv/bin/pip install --no-cache-dir /dist/ngabo_core-*.whl \
+    && /opt/venv/bin/pip install --no-cache-dir --upgrade "wheel==0.46.2" "jaraco.context==6.1.0" \
+    && /opt/venv/bin/pip uninstall -y setuptools
 
 # ---------------------------------------------------------------------------
 # Runtime stage: minimal non-root image with only the installed package.
@@ -54,6 +59,16 @@ ENV PATH="/opt/venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
     NGABO_SERVICE_VERSION="${APP_VERSION}" \
     NGABO_SOURCE_REVISION="${SOURCE_REVISION}"
+
+# Apply available Debian security patches (e.g. openssl) before freezing the
+# runtime; findings without published fixes are recorded as residual evidence.
+# The base image's system pip also bundles wheel/jaraco.context with published
+# fixes; upgrade them so the scan gate is clean for actionable findings.
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && rm -rf /var/lib/apt/lists/* \
+    && python -m pip install --no-cache-dir --upgrade "wheel==0.46.2" "jaraco.context==6.1.0" \
+    && python -m pip uninstall -y setuptools
 
 # Non-root runtime identity (fixed uid for reproducibility).
 RUN useradd --system --uid 10001 --create-home --shell /usr/sbin/nologin ngabo

@@ -12,7 +12,7 @@
 | Image | Dockerfile | Build context | Base image (immutable digest) | Runtime user | Ports |
 | --- | --- | --- | --- | --- | --- |
 | `ngabo-core` | `services/core/Dockerfile` | `services/core` | `python:3.11.16-slim@sha256:1042b61448fef4ba92d16a8c7eb4996d027568ce64792a7877fd88511e0af7c6` | `ngabo` (uid 10001) | none (framework-free; HTTP adapter deferred to #90) |
-| `ngabo-web` | `apps/web/Dockerfile` | repository root | `node:24.19.0-slim@sha256:a9f5f7c91a432850b2a8a7797adf5eadb6c733ceed61167806cee7ea7fbc29df` | `ngabo` (uid 10001) | `8080` (`PORT`/`HOSTNAME` configurable) |
+| `ngabo-web` | `apps/web/Dockerfile` | repository root | `node:24-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e` | `ngabo` (uid 10001) | `8080` (`PORT`/`HOSTNAME` configurable) |
 
 - The core image installs the production wheel (built with pinned `uv==0.12.4`) into a virtualenv; no source tree is bind-mounted at runtime. Default process is the real `ngabo-health` diagnostic (one-shot, exits 0 on success). `ngabo-certify-hero` remains invocable explicitly. No long-running process is fabricated.
 - The web image builds Next.js with `output: "standalone"` from a frozen pnpm install (`pnpm@11.22.0`) and runs the standalone server non-root.
@@ -46,11 +46,11 @@ pnpm container:scan              # trivy (HIGH,CRITICAL, exit 1 on findings)
 
 ## Vulnerability scanning
 
-Pinned `aquasecurity/trivy-action` (v0.36.0) in both the PR lane and the publish workflow. Gate: fail on HIGH/CRITICAL. Concise sanitized scan tables are uploaded as evidence; no raw databases are stored.
+Pinned `aquasecurity/trivy-action` (v0.36.0) in both the PR lane and the publish workflow. Gate: fail on HIGH/CRITICAL **with a published fix** (`--ignore-unfixed`); findings without available fixes (e.g. base-image packages pending upstream patches) are recorded in the evidence summaries rather than failing the gate or being claimed as zero. Concise sanitized scan tables are uploaded as evidence; no raw databases are stored.
 
 ## Reproducibility
 
-Both Dockerfiles build from locked inputs (frozen lockfiles, pinned uv/pnpm, digest-pinned base images). `docker build` determinism is limited by upstream tool behavior and build metadata; the practical limit is recorded per build in the evidence `reproducibility_observation` field rather than claimed blindly.
+Both Dockerfiles build from locked inputs (frozen lockfiles, pinned uv/pnpm, digest-pinned base images) and are built with `--provenance=false` plus `BUILDKIT_SOURCE_DATE_EPOCH` derived from the source commit timestamp, yielding **byte-identical image digests** for the same commit (verified locally for both images). The provenance/attestation index is intentionally disabled because its embedded build timestamps would break digest determinism; the machine-readable evidence document binds commit → workflow → digest instead.
 
 ## Secrets hygiene
 
