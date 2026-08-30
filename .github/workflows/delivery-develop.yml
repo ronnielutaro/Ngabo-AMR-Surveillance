@@ -198,6 +198,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Re-check staleness immediately before deploy to close the TOCTOU
+          # window: an older run must never overwrite a newer revision.
+          remote_sha="$(git ls-remote origin "${GIT_VALIDATION_REF}" | awk '{print $1}')"
+          if [[ "${remote_sha}" != "${GITHUB_SHA}" ]]; then
+            echo "STALE_RUN: develop advanced to ${remote_sha}; refusing to deploy ${GITHUB_SHA}."
+            exit 3
+          fi
           cd services/core
           uv sync --frozen
           affected="$(cat ../affected.json)"
