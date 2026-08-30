@@ -233,6 +233,10 @@ jobs:
           if [[ "${affected}" == *'"web"'* ]]; then services+=("web"); fi
           core_digest="${CORE_DIGEST}"
           web_digest="${WEB_DIGEST}"
+          prev_core="$(gcloud run services describe ngabo-core --region us-central1 --format='value(spec.template.spec.containers[0].image)' | sed 's#.*@##')"
+          prev_web="$(gcloud run services describe ngabo-web --region us-central1 --format='value(spec.template.spec.containers[0].image)' | sed 's#.*@##')"
+          echo "PREV_CORE_DIGEST=${prev_core}" >> "$GITHUB_ENV"
+          echo "PREV_WEB_DIGEST=${prev_web}" >> "$GITHUB_ENV"
           uv run python ../../infra/gcp/cloudrun.py apply \
             --core-digest "${core_digest}" \
             --web-digest "${web_digest}" \
@@ -245,15 +249,40 @@ jobs:
           set -euo pipefail
           affected="$(cat "${GITHUB_WORKSPACE}/affected.json")"
           web_url="$(gcloud run services describe ngabo-web --region us-central1 --format='value(status.url)')"
-          # Web is public; it renders backend-derived core identity. A healthy
-          # web plus the new core revision/digest in the page proves the
-          # deployed core is genuinely serving to the app boundary.
-          curl -fsS "${web_url}/" | grep -qi "IN DEVELOPMENT"
+          # Web is public and renders backend-derived core identity. Wait for
+          # the fresh revision to become ready (cold start) and for the new
+          # core digest to propagate to the UI before declaring the delivery
+          # healthy. On failure we restore the previous known-good digests.
+          ready=""
+          for _ in $(seq 1 30); do
+            page="$(curl -fsS "${web_url}/" 2>/dev/null || true)"
+            if echo "${page}" | grep -qi "IN DEVELOPMENT"; then
+              if [[ "${affected}" != *'"core"'* ]] || echo "${page}" | grep -q "${CORE_DIGEST}"; then
+                ready=1; break
+              fi
+            fi
+            sleep 2
+          done
+          if [[ -z "${ready}" ]]; then
+            echo "SMOKE_FAILED: web did not reach ready/e2e identity; restoring previous known-good."
+            cd services/core
+            uv run python ../../infra/gcp/cloudrun.py apply --core-digest "${PREV_CORE_DIGEST}" --web-digest "${PREV_WEB_DIGEST}" --services core,web
+            exit 1
+          fi
           if [[ "${affected}" == *'"core"'* ]]; then
-            core_ready="$(gcloud run services describe ngabo-core --region us-central1 --format='value(status.conditions[?(@.type==\"Ready\")].status)')"
-            [[ "${core_ready}" == "True" ]]
-            # the core identity is surfaced via /version -> web LIVE panel
-            curl -fsS "${web_url}/" | grep -q "${CORE_DIGEST}"
+            core_ok=""
+            for _ in $(seq 1 15); do
+              if [[ "$(gcloud run services describe ngabo-core --region us-central1 --format='value(status.conditions[?(@.type==\"Ready\")].status)')" == "True" ]]; then
+                core_ok=1; break
+              fi
+              sleep 2
+            done
+            if [[ -z "${core_ok}" ]]; then
+              echo "SMOKE_FAILED: core not ready; restoring previous known-good."
+              cd services/core
+              uv run python ../../infra/gcp/cloudrun.py apply --core-digest "${PREV_CORE_DIGEST}" --web-digest "${PREV_WEB_DIGEST}" --services core,web
+              exit 1
+            fi
           fi
           echo "smoke PASS for: ${affected}"
 

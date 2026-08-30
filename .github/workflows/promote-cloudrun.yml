@@ -142,9 +142,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          core_ready="$(gcloud run services describe ngabo-core --region us-central1 --format='value(status.conditions[?(@.type==\"Ready\")].status)')"
-          [[ "${core_ready}" == "True" ]]
           web_url="$(gcloud run services describe ngabo-web --region us-central1 --format='value(status.url)')"
+          ready=""
+          for _ in $(seq 1 30); do
+            page="$(curl -fsS "${web_url}/" 2>/dev/null || true)"
+            if echo "${page}" | grep -qi "IN DEVELOPMENT" && echo "${page}" | grep -q "${core_digest}"; then
+              ready=1; break
+            fi
+            sleep 2
+          done
+          [[ -n "${ready}" ]]
+          for _ in $(seq 1 15); do
+            if [[ "$(gcloud run services describe ngabo-core --region us-central1 --format='value(status.conditions[?(@.type==\"Ready\")].status)')" == "True" ]]; then break; fi
+            sleep 2
+          done
           curl -fsS "${web_url}/" | grep -qi "IN DEVELOPMENT"
           curl -fsS "${web_url}/" | grep -q "${core_digest}"
           echo "promote smoke PASS"
