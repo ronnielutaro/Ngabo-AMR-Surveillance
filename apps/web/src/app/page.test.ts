@@ -13,7 +13,9 @@ function okJson(body: unknown) {
   });
 }
 
-function readyBody(overrides: Record<string, unknown> = {}) {
+function readyBody(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
   return {
     status: "ok",
     service: "ngabo-core",
@@ -24,7 +26,9 @@ function readyBody(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function versionBody(overrides: Record<string, unknown> = {}) {
+function versionBody(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
   return {
     service: "ngabo-core",
     version: "0.1.0",
