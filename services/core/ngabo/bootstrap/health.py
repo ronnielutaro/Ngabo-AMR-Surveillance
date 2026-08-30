@@ -12,7 +12,9 @@ from __future__ import annotations
 
 import json
 
-from ngabo.interfaces.health import health  # noqa: F401  (re-exported contract)
+from ngabo.interfaces.health import health
+
+__all__ = ["health"]
 
 
 def main() -> None:
