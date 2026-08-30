@@ -10,17 +10,50 @@ Credential handling: it reads ``GEMINI_API_KEY`` (a build/secret-provided
 value) and exposes it to ADK's ``google.genai`` client via ``GOOGLE_API_KEY``
 without ever printing either. In Cloud Run, prefer WIF; this module never
 persists or logs secret material.
+
+Keyless Vertex mode: when ``GOOGLE_GENAI_USE_VERTEXAI=true``, the module
+relies on Application Default Credentials (ADC) over WIF and does NOT require
+an API key. In that mode the caller supplies ``GOOGLE_CLOUD_PROJECT`` and
+``GOOGLE_CLOUD_LOCATION``, and the runtime identity must hold the Vertex/Gemini
+caller permission.
 """
 
 from __future__ import annotations
 
 import json
 import os
+from collections.abc import Mapping
 
 from ngabo.application.services.spike_proof_verifier import VerificationContext
 from ngabo.infrastructure.adk.spike_adapter import SpikeRunResult, run_spike
 
 DEFAULT_MODEL: str = "gemini-3.6-flash"
+
+
+def _vertex_mode_from(env: Mapping[str, str]) -> bool:
+    """True when the google-genai client should use the keyless Vertex path."""
+    value = env.get("GOOGLE_GENAI_USE_VERTEXAI", "")
+    return value.strip().lower() in ("1", "true", "yes")
+
+
+def _is_vertex_mode() -> bool:
+    """Convenience wrapper reading the process environment."""
+    return _vertex_mode_from(os.environ)
+
+
+def _normalized_vertex_env(env: Mapping[str, str]) -> dict[str, str]:
+    """Return ``env`` with the Vertex flag normalized to the SDK spelling.
+
+    ``_vertex_mode_from`` accepts ``true`` / ``1`` / ``yes`` as intent, but the
+    pinned ``google-genai`` client enables Vertex mode only when
+    ``GOOGLE_GENAI_USE_VERTEXAI`` equals ``true`` (case-insensitive). This
+    normalizes the intent to the exact spelling so the client and this helper
+    agree on the keyless Vertex path.
+    """
+    normalized = dict(env)
+    if _vertex_mode_from(env):
+        normalized["GOOGLE_GENAI_USE_VERTEXAI"] = "true"
+    return normalized
 
 
 def _redacted_result(result: SpikeRunResult) -> dict[str, object]:
@@ -63,11 +96,22 @@ def _redacted_result(result: SpikeRunResult) -> dict[str, object]:
 
 def main() -> None:
     """Run the live capability spike and print a redacted JSON result."""
+    vertex_mode = _is_vertex_mode()
     api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        raise SystemExit("GEMINI_API_KEY is required for the live ADK capability proof")
-    # google.genai's default client reads GOOGLE_API_KEY; ADK's GoogleLlm uses it.
-    os.environ.setdefault("GOOGLE_API_KEY", api_key)
+    if vertex_mode:
+        # Keyless Vertex path: rely on ADC/WIF. No API key is required.
+        # Normalize the flag to the exact spelling the pinned google-genai
+        # client recognizes (true/1/yes intent -> "true").
+        os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "true"
+    else:
+        # Developer-API path: google.genai's default client reads
+        # GOOGLE_API_KEY; ADK's GoogleLlm uses it.
+        if not api_key:
+            raise SystemExit(
+                "GEMINI_API_KEY is required for the live ADK capability proof "
+                "(or set GOOGLE_GENAI_USE_VERTEXAI=true for the keyless Vertex path)"
+            )
+        os.environ.setdefault("GOOGLE_API_KEY", api_key)
 
     model = os.environ.get("NGABO_ADK_MODEL", DEFAULT_MODEL)
     context = VerificationContext(

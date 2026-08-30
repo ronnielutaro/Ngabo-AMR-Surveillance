@@ -332,9 +332,11 @@ the entry message. No interactive chat required.
 ### Cloud Run proof: **PENDING (certification evidence below)**
 
 The exact locked deps and the `ngabo-adk-spike` console entry are shipped.
-The disposable reachability proof will be executed after merge; see the
-Issue #49 certification comment for the source SHA / digest / revision /
-invocation result.
+`live_capability.py` supports both an API-key developer path
+(`GEMINI_API_KEY`) and the **keyless Vertex path** (`GOOGLE_GENAI_USE_VERTEXAI=true`
+with ADC/WIF and a Vertex/Gemini caller grant). The disposable reachability
+proof will be executed after merge; see the Issue #49 certification comment
+for the source SHA / digest / revision / invocation result.
 
 ### Material unsupported / ambiguous APIs
 
