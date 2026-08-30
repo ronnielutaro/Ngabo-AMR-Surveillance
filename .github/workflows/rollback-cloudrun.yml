@@ -44,6 +44,7 @@ jobs:
       github.actor == 'ronnielutaro'
     env:
       IMAGE_PREFIX: us-central1-docker.pkg.dev/ngabo-amr-2026/ngabo-artifacts
+      GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout exact commit (no source build)
         # actions/checkout v7.0.1
