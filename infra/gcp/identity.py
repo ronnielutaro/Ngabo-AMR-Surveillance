@@ -685,7 +685,7 @@ class GcpIdentityManager:
 
             expected_members = {
                 f"serviceAccount:{self.config.service_account_email(str(member))}"
-                for member in tuple(role_spec["grant_to"])  # type: ignore[arg-type]
+                for member in tuple[str, ...](role_spec["grant_to"])  # type: ignore[arg-type]
             }
             actual_members = binding_members(project_bindings, full_role)
             for member in sorted(expected_members - actual_members):
@@ -987,7 +987,7 @@ class GcpIdentityManager:
             current_project_bindings = self.inspector.get_project_iam_bindings()
             expected_members = {
                 f"serviceAccount:{self.config.service_account_email(str(member))}"
-                for member in tuple(role_spec["grant_to"])  # type: ignore[arg-type]
+                for member in tuple[str, ...](role_spec["grant_to"])  # type: ignore[arg-type]
             }
             actual_members = binding_members(current_project_bindings, full_role)
 
@@ -1392,7 +1392,7 @@ class GcpIdentityManager:
 
             expected_members = {
                 f"serviceAccount:{self.config.service_account_email(str(member))}"
-                for member in tuple(role_spec["grant_to"])  # type: ignore[arg-type]
+                for member in tuple[str, ...](role_spec["grant_to"])  # type: ignore[arg-type]
             }
             actual_members = binding_members(project_bindings_val, full_role)
             missing_members = sorted(expected_members - actual_members)
