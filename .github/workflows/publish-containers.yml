@@ -38,11 +38,14 @@ jobs:
     env:
       IMAGE_PREFIX: us-central1-docker.pkg.dev/ngabo-amr-2026/ngabo-artifacts
     steps:
-      - name: Checkout develop
+      - name: Checkout the exact dispatch commit
         # actions/checkout v7.0.1
+        # Check out the dispatch-time commit SHA (not the mutable branch ref)
+        # so the built bytes, tags, OCI labels, and evidence cannot diverge if
+        # develop advances between dispatch and checkout.
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: refs/heads/develop
+          ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Authenticate to Google Cloud via WIF
@@ -70,14 +73,14 @@ jobs:
         # docker/setup-buildx-action v3.12.0
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
 
-      - name: Build and push ngabo-core (same digest loaded for scan)
-        id: core-push
+      - name: Build ngabo-core (load only; push after gates pass)
+        id: core-build
         # docker/build-push-action v7.3.0
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
         with:
           context: services/core
           file: services/core/Dockerfile
-          push: true
+          push: false
           load: true
           provenance: false
           tags: |
@@ -89,14 +92,14 @@ jobs:
             APP_VERSION=0.1.0
             BUILDKIT_SOURCE_DATE_EPOCH=${{ env.SOURCE_DATE_EPOCH }}
 
-      - name: Build and push ngabo-web (same digest loaded for scan)
-        id: web-push
+      - name: Build ngabo-web (load only; push after gates pass)
+        id: web-build
         # docker/build-push-action v7.3.0
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
         with:
           context: .
           file: apps/web/Dockerfile
-          push: true
+          push: false
           load: true
           provenance: false
           tags: |
@@ -153,6 +156,23 @@ jobs:
           severity: HIGH,CRITICAL
           output: web-scan.txt
 
+      # All gates (runtime verification + scans) have passed; now push the
+      # exact already-tested local image objects (the pushed digest equals the
+      # loaded/scanned digest).
+      - name: Push tested ngabo-core digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker push "${{ env.IMAGE_PREFIX }}/ngabo-core:${{ github.sha }}"
+          docker push "${{ env.IMAGE_PREFIX }}/ngabo-core:sha-${{ github.sha }}"
+
+      - name: Push tested ngabo-web digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker push "${{ env.IMAGE_PREFIX }}/ngabo-web:${{ github.sha }}"
+          docker push "${{ env.IMAGE_PREFIX }}/ngabo-web:sha-${{ github.sha }}"
+
       - name: Generate machine-readable publish evidence
         shell: bash
         env:
@@ -162,8 +182,8 @@ jobs:
           EVIDENCE_WORKFLOW: ${{ github.workflow }}
           EVIDENCE_RUN_ID: ${{ github.run_id }}
           EVIDENCE_BASE_URL: ${{ env.IMAGE_PREFIX }}
-          EVIDENCE_CORE_DIGEST: ${{ steps.core-push.outputs.digest }}
-          EVIDENCE_WEB_DIGEST: ${{ steps.web-push.outputs.digest }}
+          EVIDENCE_CORE_DIGEST: ${{ steps.core-build.outputs.digest }}
+          EVIDENCE_WEB_DIGEST: ${{ steps.web-build.outputs.digest }}
           EVIDENCE_CORE_SCAN: core-scan.txt
           EVIDENCE_WEB_SCAN: web-scan.txt
         run: |

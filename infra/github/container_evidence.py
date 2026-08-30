@@ -54,23 +54,29 @@ class EvidenceValidationError(Exception):
 def _scan_summary(path: str | None) -> dict[str, Any]:
     """Summarize a Trivy table output file into severity counts.
 
-    Returns a sanitized summary; missing files yield an explicit unknown
-    rather than a fabricated zero.
+    Trivy's table format emits one ``Total: N (UNKNOWN: a, LOW: b, MEDIUM: c,
+    HIGH: d, CRITICAL: e)`` line per target; per-target totals are summed.
+    Missing files yield an explicit unknown rather than a fabricated zero.
     """
     if not path or not Path(path).is_file():
         return {"source": path, "severity_counts": {}, "note": "scan file missing"}
+    totals = re.findall(
+        r"Total:\s*(\d+)\s*\((?:UNKNOWN:\s*(\d+))?(?:,?\s*LOW:\s*(\d+))?"
+        r"(?:,?\s*MEDIUM:\s*(\d+))?(?:,?\s*HIGH:\s*(\d+))?(?:,?\s*CRITICAL:\s*(\d+))?\)",
+        Path(path).read_text(encoding="utf-8", errors="replace"),
+    )
     counts: dict[str, int] = {}
     total = 0
-    for line in Path(path).read_text(encoding="utf-8", errors="replace").splitlines():
-        stripped = line.strip()
-        if not stripped.startswith(("CRITICAL:", "HIGH:", "MEDIUM:", "LOW:", "UNKNOWN:")):
-            continue
-        name, _, value = stripped.partition(":")
-        try:
-            counts[name] = int(value.strip())
-        except ValueError:
-            continue
-        total += counts.get(name, 0)
+    for row in totals:
+        overall = int(row[0])
+        total += overall
+        for name, value in zip(
+            ("UNKNOWN", "LOW", "MEDIUM", "HIGH", "CRITICAL"), row[1:], strict=False
+        ):
+            if value:
+                counts[name] = counts.get(name, 0) + int(value)
+    if not totals:
+        return {"source": path, "severity_counts": {}, "note": "no Total lines parsed"}
     return {"source": path, "severity_counts": counts, "total_findings": total}
 
 

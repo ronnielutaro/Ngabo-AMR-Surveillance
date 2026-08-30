@@ -54,14 +54,12 @@ ENV NODE_ENV=production \
     PORT=8080 \
     HOSTNAME=0.0.0.0
 
-# Apply available Debian security patches (e.g. util-linux, openssl) and drop
-# the base image's bundled npm CLI (unused at runtime; its bundled
-# brace-expansion carried a published advisory). Remaining CVEs without
-# upstream fixes are recorded in .trivyignore with justification.
-RUN apt-get update \
-    && apt-get upgrade -y \
-    && rm -rf /var/lib/apt/lists/* \
-    && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
+# Drop the base image's bundled npm CLI (unused at runtime; its bundled
+# brace-expansion carried a published advisory). NO apt-get update/upgrade:
+# resolving the current Debian repositories at build time would make the
+# image irreproducible; OS-package findings are recorded as explicit
+# .trivyignore exceptions against the digest-pinned base image.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 
 # Non-root runtime identity (fixed uid for reproducibility).
 RUN useradd --system --uid 10001 --create-home --shell /usr/sbin/nologin ngabo

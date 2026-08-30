@@ -87,14 +87,30 @@ class EvidenceContractTests(unittest.TestCase):
                 oci_labels={},
             )
 
-    def test_scan_summary_counts_severities(self) -> None:
+    def test_scan_summary_counts_severities_from_trivy_total_lines(self) -> None:
+        # Trivy table format emits per-target "Total: N (… HIGH: n, …)" lines;
+        # the parser must sum them (multiple targets per image).
         with open("scan-sample.txt", "w", encoding="utf-8") as handle:
-            handle.write("CRITICAL: 2\nHIGH: 3\nMEDIUM: 0\nLOW: 5\n")
+            handle.write(
+                "Total: 17 (UNKNOWN: 0, LOW: 5, MEDIUM: 10, HIGH: 2, CRITICAL: 0)\n"
+                "Total: 2 (UNKNOWN: 0, LOW: 0, MEDIUM: 0, HIGH: 2, CRITICAL: 0)\n"
+            )
         try:
             summary = container_evidence._scan_summary("scan-sample.txt")
-            self.assertEqual(summary["severity_counts"]["CRITICAL"], 2)
-            self.assertEqual(summary["severity_counts"]["HIGH"], 3)
-            self.assertEqual(summary["total_findings"], 10)
+            self.assertEqual(summary["severity_counts"]["CRITICAL"], 0)
+            self.assertEqual(summary["severity_counts"]["HIGH"], 4)
+            self.assertEqual(summary["severity_counts"]["LOW"], 5)
+            self.assertEqual(summary["total_findings"], 19)
+        finally:
+            os.remove("scan-sample.txt")
+
+    def test_scan_summary_unparsable_file_is_unknown_not_zero(self) -> None:
+        with open("scan-sample.txt", "w", encoding="utf-8") as handle:
+            handle.write("CRITICAL: 2\nHIGH: 3\n")
+        try:
+            summary = container_evidence._scan_summary("scan-sample.txt")
+            self.assertIn("note", summary)
+            self.assertEqual(summary["severity_counts"], {})
         finally:
             os.remove("scan-sample.txt")
 

@@ -21,6 +21,9 @@ CVE-2026-54369   # libacl1: symlink traversal (no fix)
 CVE-2026-11822   # libsqlite3-0: arbitrary code execution via FTS5 (no fix)
 CVE-2026-11824   # libsqlite3-0: arbitrary code execution (no fix)
 CVE-2025-69720   # libncursesw6/libtinfo6: buffer overflow (no fix)
+CVE-2026-14456   # libssl3t64/openssl: DoS (fix available but NOT applied — apt
+                 # upgrades are intentionally omitted to keep image builds
+                 # byte-identical; tracked for the next base-image pin bump)
 
 # --- ngabo-web: Debian bookworm base packages with NO published fix ---
 # node:24-slim base (current 24 line); apt security upgrades are applied at
