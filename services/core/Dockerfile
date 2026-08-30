@@ -34,7 +34,8 @@ RUN uv build --wheel --out-dir /dist
 # wheel) so the scan gate is clean for actionable findings.
 RUN python -m venv /opt/venv \
     && /opt/venv/bin/pip install --no-cache-dir /dist/ngabo_core-*.whl \
-    && /opt/venv/bin/pip install --no-cache-dir --upgrade "wheel==0.46.2" "jaraco.context==6.1.0" \
+    && /opt/venv/bin/pip install --no-cache-dir --upgrade \
+        "wheel==0.46.2" "jaraco.context==6.1.0" "backports.tarfile==1.2.0" \
     && /opt/venv/bin/pip uninstall -y setuptools
 
 # ---------------------------------------------------------------------------
@@ -67,7 +68,8 @@ ENV PATH="/opt/venv/bin:${PATH}" \
 # The base image's system pip bundles wheel/jaraco.context with published
 # fixes; upgrade them with exact pins so the scan gate is clean for
 # actionable findings.
-RUN python -m pip install --no-cache-dir --upgrade "wheel==0.46.2" "jaraco.context==6.1.0" \
+RUN python -m pip install --no-cache-dir --upgrade \
+        "wheel==0.46.2" "jaraco.context==6.1.0" "backports.tarfile==1.2.0" \
     && python -m pip uninstall -y setuptools
 
 # Non-root runtime identity (fixed uid for reproducibility).

@@ -59,7 +59,7 @@ jobs:
             SOURCE_REVISION=${{ github.sha }}
             SOURCE_URL=${{ github.repositoryUrl }}
             APP_VERSION=0.1.0
-            BUILDKIT_SOURCE_DATE_EPOCH=${{ env.SOURCE_DATE_EPOCH }}
+            SOURCE_DATE_EPOCH=${{ env.SOURCE_DATE_EPOCH }}
 
       - name: Build ngabo-web image
         id: web-build
@@ -76,7 +76,7 @@ jobs:
             SOURCE_REVISION=${{ github.sha }}
             SOURCE_URL=${{ github.repositoryUrl }}
             APP_VERSION=0.1.0
-            BUILDKIT_SOURCE_DATE_EPOCH=${{ env.SOURCE_DATE_EPOCH }}
+            SOURCE_DATE_EPOCH=${{ env.SOURCE_DATE_EPOCH }}
 
       - name: Verify core image (health + non-root + metadata)
         shell: bash

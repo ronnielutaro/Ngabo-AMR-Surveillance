@@ -17,8 +17,9 @@ name: Publish Containers
 
 on:
   workflow_dispatch:
-    branches:
-      - develop
+  # NOTE: workflow_dispatch supports only `inputs` (no `branches` filter).
+  # Develop-only enforcement is provided by the job-level guard below and by
+  # the WIF attribute condition (assertion.ref == refs/heads/develop).
 
 permissions:
   contents: read
@@ -90,7 +91,7 @@ jobs:
             SOURCE_REVISION=${{ github.sha }}
             SOURCE_URL=${{ github.repositoryUrl }}
             APP_VERSION=0.1.0
-            BUILDKIT_SOURCE_DATE_EPOCH=${{ env.SOURCE_DATE_EPOCH }}
+            SOURCE_DATE_EPOCH=${{ env.SOURCE_DATE_EPOCH }}
 
       - name: Build ngabo-web (load only; push after gates pass)
         id: web-build
@@ -109,7 +110,7 @@ jobs:
             SOURCE_REVISION=${{ github.sha }}
             SOURCE_URL=${{ github.repositoryUrl }}
             APP_VERSION=0.1.0
-            BUILDKIT_SOURCE_DATE_EPOCH=${{ env.SOURCE_DATE_EPOCH }}
+            SOURCE_DATE_EPOCH=${{ env.SOURCE_DATE_EPOCH }}
 
       - name: Verify core runtime behavior
         shell: bash

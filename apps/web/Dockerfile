@@ -20,6 +20,8 @@ ARG SOURCE_REVISION=unknown
 ARG SOURCE_URL=https://github.com/ronnielutaro/Ngabo-AMR-Surveillance
 ARG APP_VERSION=0.1.0
 
+ENV NGABO_SOURCE_REVISION=${SOURCE_REVISION}
+
 WORKDIR /app
 
 # Workspace manifests, linker config, and frozen lockfile first for layer
