@@ -50,10 +50,18 @@ VALID_SAMPLE_PROVIDER_DETAILS = {
     "state": "ACTIVE",
 }
 
-# Issue #90: roles/run.developer is the deployer's single project-level role
+# Issue #90: roles/run.developer is the deployer's single project-level role,
+# plus the ngaboRunServiceIam custom role (run.services.setIamPolicy) for
+# making the web service publicly reachable.
 VALID_PROJECT_BINDINGS: list[dict[str, Any]] = [
     {
         "role": "roles/run.developer",
+        "members": [
+            f"serviceAccount:{DEPLOYER_SA_NAME}@{SAMPLE_PROJECT_ID}.iam.gserviceaccount.com"
+        ],
+    },
+    {
+        "role": "roles/ngaboRunServiceIam",
         "members": [
             f"serviceAccount:{DEPLOYER_SA_NAME}@{SAMPLE_PROJECT_ID}.iam.gserviceaccount.com"
         ],
@@ -120,6 +128,11 @@ def create_converged_manager() -> GcpIdentityManager:
     )
     mgr.inspector.get_all_project_service_accounts = MagicMock(  # type: ignore[method-assign]
         return_value=[{"email": mgr.config.service_account_email(sa)} for sa in SERVICE_ACCOUNTS]
+    )
+    # Issue #90 custom role (ngaboRunServiceIam) exists with exact permissions
+    mgr.inspector.custom_role_exists = MagicMock(return_value=True)  # type: ignore[method-assign]
+    mgr.inspector.get_custom_role_permissions = MagicMock(  # type: ignore[method-assign]
+        return_value=["run.services.setIamPolicy"]
     )
 
     def sa_bindings_side_effect(sa_email: str) -> list[dict[str, Any]]:

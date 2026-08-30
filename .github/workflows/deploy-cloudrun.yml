@@ -105,6 +105,32 @@ jobs:
             --labels app=ngabo,managed-by=terraform,environment=dev \
             --quiet
 
+      - name: Grant web runtime invoker on core service
+        # Issue #90 service-to-service boundary: ngabo-core is private; the
+        # web runtime identity needs run.invoker on the core service so the
+        # console's server-side /health fetch succeeds. The deployer holds
+        # run.services.setIamPolicy through the custom ngaboRunServiceIam role.
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud run services add-iam-policy-binding ngabo-core \
+            --region "${REGION}" \
+            --member "serviceAccount:ngabo-web-runtime@${PROJECT_ID}.iam.gserviceaccount.com" \
+            --role roles/run.invoker \
+            --quiet
+
+      - name: Resolve deployed core service URL
+        # Cloud Run's deterministic hostname is derived from the project
+        # NUMBER, not the project ID (older services may carry a hashed URL);
+        # read the actual status.url so CORE_API_URL is exact.
+        id: core-url
+        shell: bash
+        run: |
+          set -euo pipefail
+          core_url="$(gcloud run services describe ngabo-core --region "${REGION}" \
+            --format='value(status.url)')"
+          echo "core_url=${core_url}" >> "$GITHUB_OUTPUT"
+
       - name: Deploy ngabo-web (public, immutable digest)
         shell: bash
         run: |
@@ -122,7 +148,7 @@ jobs:
             --allow-unauthenticated \
             --no-cpu-throttling \
             --labels app=ngabo,managed-by=terraform,environment=dev \
-            --set-env-vars "CORE_API_URL=https://ngabo-core-${PROJECT_ID}.${REGION}.run.app" \
+            --set-env-vars "CORE_API_URL=${{ steps.core-url.outputs.core_url }}" \
             --quiet
 
       - name: Record deployed revisions (redacted)

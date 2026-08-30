@@ -6,6 +6,31 @@ import Home from "./page";
 // CORE_API_URL and the global fetch response.
 const ORIGINAL_CORE_API_URL = process.env.CORE_API_URL;
 
+function okJson(body: unknown) {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function liveCore() {
+  return {
+    ready: okJson({
+      status: "ok",
+      service: "ngabo-core",
+      version: "0.1.0",
+      revision: "abc123".repeat(7),
+      ready: true,
+    }),
+    version: okJson({
+      service: "ngabo-core",
+      version: "0.1.0",
+      revision: "abc123".repeat(7),
+      environment: "test",
+    }),
+  };
+}
+
 beforeEach(() => {
   process.env.CORE_API_URL = "https://core.example.invalid";
 });
@@ -21,41 +46,17 @@ afterEach(() => {
 
 describe("Home", () => {
   it("renders the Ngabo identity heading", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(
-          JSON.stringify({
-            status: "ok",
-            service: "ngabo-core",
-            version: "0.1.0",
-            revision: "a".repeat(40),
-            environment: "test",
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        ),
-      ),
-    );
+    vi.stubGlobal("fetch", vi.fn().mockImplementation((url: string) =>
+      url.endsWith("/ready") ? Promise.resolve(liveCore().ready) : Promise.resolve(liveCore().version),
+    ));
     const html = renderToStaticMarkup(await Home());
     expect(html).toContain("Ngabo");
   });
 
   it("states synthetic/in-development boundary without claiming product behavior", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(
-          JSON.stringify({
-            status: "ok",
-            service: "ngabo-core",
-            version: "0.1.0",
-            revision: "a".repeat(40),
-            environment: "test",
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        ),
-      ),
-    );
+    vi.stubGlobal("fetch", vi.fn().mockImplementation((url: string) =>
+      url.endsWith("/ready") ? Promise.resolve(liveCore().ready) : Promise.resolve(liveCore().version),
+    ));
     const html = renderToStaticMarkup(await Home());
     expect(html).toContain("IN DEVELOPMENT — SYNTHETIC");
     expect(html).not.toContain("detected");
@@ -63,27 +64,16 @@ describe("Home", () => {
   });
 
   it("shows live backend-derived values when core is reachable", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(
-          JSON.stringify({
-            status: "ok",
-            service: "ngabo-core",
-            version: "0.1.0",
-            revision: "abc123".repeat(7),
-            environment: "test",
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        ),
-      ),
-    );
+    vi.stubGlobal("fetch", vi.fn().mockImplementation((url: string) =>
+      url.endsWith("/ready") ? Promise.resolve(liveCore().ready) : Promise.resolve(liveCore().version),
+    ));
     const html = renderToStaticMarkup(await Home());
     expect(html).toContain("LIVE");
     expect(html).toContain("ngabo-core");
     expect(html).toContain("0.1.0");
     expect(html).toContain("abc123".repeat(7));
     expect(html).toContain("test");
+    expect(html).toContain("true");
   });
 
   it("renders an honest missing-config state when CORE_API_URL is absent", async () => {
@@ -116,14 +106,11 @@ describe("Home", () => {
   });
 
   it("renders schema mismatch when the payload shape is unexpected", async () => {
+    // Both /ready and /version return an unexpected shape; each fetch gets
+    // its own Response (a body can only be read once).
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(
-          JSON.stringify({ message: "hello" }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        ),
-      ),
+      vi.fn().mockImplementation(() => Promise.resolve(okJson({ message: "hello" }))),
     );
     const html = renderToStaticMarkup(await Home());
     expect(html).toContain("SCHEMA MISMATCH");

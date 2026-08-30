@@ -53,13 +53,8 @@ from infra.gcp.config import (  # noqa: E402
 
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 
-CORE_RUNTIME_SA = "ngabo-core-runtime"
-WEB_RUNTIME_SA = "ngabo-web-runtime"
-
-# Immutable digests from the certified Issue #89 publication (develop
-# 01ea2cd; publish run 33297338281). Deployment pins these exact digests.
-CERTIFIED_CORE_DIGEST = "sha256:d7248904f543c9c60b70638f6940eab792e062bec36c4c3020d4206e988c825a"
-CERTIFIED_WEB_DIGEST = "sha256:6497266e2027d82d00c0238e536ee2ed520ebfc3726716f930d517ad2f81f7cb"
+CORE_RUNTIME_SA = f"ngabo-core-runtime@{DEFAULT_PROJECT_ID}.iam.gserviceaccount.com"
+WEB_RUNTIME_SA = f"ngabo-web-runtime@{DEFAULT_PROJECT_ID}.iam.gserviceaccount.com"
 
 
 def artifact_uri(service: str, digest: str) -> str:
@@ -246,13 +241,13 @@ def main(argv: list[str] | None = None) -> int:
     def add_digest_args(p: argparse.ArgumentParser) -> None:
         p.add_argument(
             "--core-digest",
-            default=os.environ.get("NGABO_CORE_DIGEST", CERTIFIED_CORE_DIGEST),
-            help="ngabo-core immutable digest (sha256:<64 hex>)",
+            default=os.environ.get("NGABO_CORE_DIGEST"),
+            help="ngabo-core immutable digest (sha256:<64 hex); REQUIRED",
         )
         p.add_argument(
             "--web-digest",
-            default=os.environ.get("NGABO_WEB_DIGEST", CERTIFIED_WEB_DIGEST),
-            help="ngabo-web immutable digest (sha256:<64 hex>)",
+            default=os.environ.get("NGABO_WEB_DIGEST"),
+            help="ngabo-web immutable digest (sha256:<64 hex); REQUIRED",
         )
 
     for name in ("plan", "apply", "validate"):

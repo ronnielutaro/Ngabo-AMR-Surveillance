@@ -43,22 +43,105 @@ type CoreStatus =
       ready: boolean;
     };
 
-interface CorePayload {
+interface ReadyPayload {
   status: string;
   service: string;
   version?: string;
   revision?: string;
-  environment?: string;
   ready?: boolean;
 }
 
-function isCorePayload(value: unknown): value is CorePayload {
+interface VersionPayload {
+  service: string;
+  version: string;
+  revision: string;
+  environment: string;
+}
+
+function isReadyPayload(value: unknown): value is ReadyPayload {
   if (typeof value !== "object" || value === null) return false;
   const record = value as Record<string, unknown>;
   return (
-    typeof record.status === "string" &&
-    typeof record.service === "string"
+    typeof record.status === "string" && typeof record.service === "string"
   );
+}
+
+function isVersionPayload(value: unknown): value is VersionPayload {
+  if (typeof value !== "object" || value === null) return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.service === "string" &&
+    typeof record.version === "string" &&
+    typeof record.revision === "string" &&
+    typeof record.environment === "string"
+  );
+}
+
+// Google ID token acquisition for the authenticated web→core boundary.
+// ngabo-core is private on Cloud Run; the web runtime identity (which holds
+// run.invoker on the core service) must present an audience-matched Google
+// ID token. On Cloud Run this is available from the metadata server; when it
+// is absent (local dev), requests proceed unauthenticated and any 403
+// degrades honestly to DEGRADED.
+const GOOGLE_METADATA_BASE = "http://metadata.google.internal";
+const METADATA_FLAVOR_HEADER = "Metadata-Flavor";
+const METADATA_FLAVOR_VALUE = "Google";
+const ID_TOKEN_PATH =
+  "/computeMetadata/v1/instance/service-accounts/default/identity";
+
+async function acquireGoogleIdToken(audience: string): Promise<string | null> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    try {
+      const response = await fetch(
+        `${GOOGLE_METADATA_BASE}${ID_TOKEN_PATH}?audience=${encodeURIComponent(
+          audience,
+        )}`,
+        {
+          signal: controller.signal,
+          headers: {
+            [METADATA_FLAVOR_HEADER]: METADATA_FLAVOR_VALUE,
+          },
+        },
+      );
+      if (!response.ok) return null;
+      const token = await response.text();
+      return token.trim().length > 0 ? token.trim() : null;
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch {
+    // Not running on Google Cloud (local dev); callers fall back to
+    // unauthenticated requests.
+    return null;
+  }
+}
+
+async function fetchJson(
+  coreApiUrl: string,
+  path: string,
+): Promise<unknown> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const token = await acquireGoogleIdToken(coreApiUrl);
+    const headers: Record<string, string> = { Accept: "application/json" };
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+    const response = await fetch(`${coreApiUrl}${path}`, {
+      signal: controller.signal,
+      cache: "no-store",
+      headers,
+    });
+    if (!response.ok) {
+      throw new Error(`${path} returned HTTP ${response.status}`);
+    }
+    return await response.json();
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function fetchCoreStatus(): Promise<CoreStatus> {
@@ -68,36 +151,27 @@ async function fetchCoreStatus(): Promise<CoreStatus> {
     return { kind: "MISSING_CONFIG" };
   }
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-    let response: Response;
-    try {
-      response = await fetch(`${coreApiUrl}/health`, {
-        signal: controller.signal,
-        cache: "no-store",
-        headers: { Accept: "application/json" },
-      });
-    } finally {
-      clearTimeout(timer);
+    // /ready carries status/service/version/revision/ready; /version carries
+    // the environment. Neither endpoint alone provides the full panel, so
+    // both are fetched; a failure on either degrades honestly.
+    const [readyRaw, versionRaw] = await Promise.all([
+      fetchJson(coreApiUrl, "/ready"),
+      fetchJson(coreApiUrl, "/version"),
+    ]);
+    if (!isReadyPayload(readyRaw)) {
+      return { kind: "SCHEMA_MISMATCH", detail: "unexpected /ready payload shape" };
     }
-    if (!response.ok) {
-      return {
-        kind: "DEGRADED",
-        detail: `core /health returned HTTP ${response.status}`,
-      };
-    }
-    const payload: unknown = await response.json();
-    if (!isCorePayload(payload)) {
-      return { kind: "SCHEMA_MISMATCH", detail: "unexpected core payload shape" };
+    if (!isVersionPayload(versionRaw)) {
+      return { kind: "SCHEMA_MISMATCH", detail: "unexpected /version payload shape" };
     }
     return {
       kind: "LIVE",
-      status: payload.status,
-      service: payload.service,
-      version: payload.version ?? "unknown",
-      revision: payload.revision ?? "unknown",
-      environment: payload.environment ?? "unknown",
-      ready: payload.ready ?? false,
+      status: readyRaw.status,
+      service: readyRaw.service,
+      version: readyRaw.version ?? "unknown",
+      revision: readyRaw.revision ?? "unknown",
+      environment: versionRaw.environment,
+      ready: readyRaw.ready ?? false,
     };
   } catch (error) {
     const detail =

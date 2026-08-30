@@ -26,6 +26,7 @@ from infra.gcp.identity_config import (  # noqa: E402
     ACTIONS_CHECKOUT_PIN,
     CORE_RUNTIME_PROJECT_ROLES,
     CORE_RUNTIME_SA_NAME,
+    CUSTOM_ROLES,
     DEFERRED_SERVICE_ACCOUNTS,
     DEPLOYER_ACT_AS_TARGETS,
     DEPLOYER_ARTIFACT_REGISTRY_ROLES,
@@ -239,6 +240,55 @@ class GcpIdentityInspector:
         except json.JSONDecodeError as err:
             raise RuntimeError(
                 f"INSPECTION_FAILED: Malformed JSON for service account '{sa_email}': {err}"
+            ) from err
+
+    def custom_role_exists(self, role_id: str, project_id: str) -> bool:
+        """Check whether a custom IAM role exists in the project."""
+        code, stdout, stderr = run_gcloud_command(
+            [
+                "iam",
+                "roles",
+                "describe",
+                f"projects/{project_id}/roles/{role_id}",
+                "--format=json",
+            ],
+            check=False,
+        )
+        if code == 0:
+            return True
+        if "NOT_FOUND" in stderr or "404" in stderr or "does not exist" in stderr.lower():
+            return False
+        raise RuntimeError(
+            f"INSPECTION_FAILED: Failed to describe custom role '{role_id}': {stderr.strip()}"
+        )
+
+    def get_custom_role_permissions(self, role_id: str, project_id: str) -> list[str]:
+        """Return the exact permission list of an existing custom role."""
+        code, stdout, stderr = run_gcloud_command(
+            [
+                "iam",
+                "roles",
+                "describe",
+                f"projects/{project_id}/roles/{role_id}",
+                "--format=json",
+            ],
+            check=False,
+        )
+        if code != 0:
+            raise RuntimeError(
+                f"INSPECTION_FAILED: Failed to describe custom role '{role_id}': {stderr.strip()}"
+            )
+        try:
+            data = json.loads(stdout)
+            permissions = data.get("includedPermissions", [])
+            if not isinstance(permissions, list):
+                raise RuntimeError(
+                    f"INSPECTION_FAILED: Unexpected permissions payload for role '{role_id}'"
+                )
+            return permissions
+        except json.JSONDecodeError as err:
+            raise RuntimeError(
+                f"INSPECTION_FAILED: Malformed JSON for custom role '{role_id}': {err}"
             ) from err
 
     def get_artifact_registry_iam_bindings(self, repo_name: str) -> list[dict[str, Any]]:
@@ -587,6 +637,43 @@ class GcpIdentityManager:
         for action in github_plan["planned_actions"]:
             planned_actions.append(f"GitHub: {action}")
 
+        # 9. Custom IAM Roles (Issue #90: ngaboRunServiceIam)
+        # Each custom role must exist with exactly its declared permissions,
+        # and the declared grant_to member must hold the role at project level.
+        for role_spec in CUSTOM_ROLES:
+            role_id = str(role_spec["role_id"])
+            full_role = f"roles/{role_id}"
+            PLAN_PERMS: tuple[str, ...] = tuple(role_spec["permissions"])  # type: ignore[arg-type]
+            role_exists = self.inspector.custom_role_exists(
+                role_id, self.config.project_id
+            )
+            if not role_exists:
+                planned_actions.append(
+                    f"Create custom role '{full_role}' with permissions "
+                    f"{PLAN_PERMS}"
+                )
+            else:
+                actual_permissions = self.inspector.get_custom_role_permissions(
+                    role_id, self.config.project_id
+                )
+                if set(actual_permissions) != set(PLAN_PERMS):
+                    planned_actions.append(
+                        f"Update custom role '{full_role}' permissions to "
+                        f"exactly {role_spec['permissions']}"
+                    )
+            plan_grant_to: tuple[str, ...] = tuple(role_spec["grant_to"])  # type: ignore[arg-type]
+            for member in plan_grant_to:
+                member_email = self.config.service_account_email(member)
+                member_str = f"serviceAccount:{member_email}"
+                has_binding = any(
+                    b.get("role") == full_role and member_str in b.get("members", [])
+                    for b in project_bindings
+                )
+                if not has_binding:
+                    planned_actions.append(
+                        f"Grant custom role '{full_role}' to '{member_email}'"
+                    )
+
         is_converged = len(planned_actions) == 0
         return {
             "project_id": self.config.project_id,
@@ -828,6 +915,76 @@ class GcpIdentityManager:
                 )
                 operations.append(f"Revoked '{role}' on '{ARTIFACT_REGISTRY_REPO}'")
 
+        # 5b. Custom IAM Roles (Issue #90: ngaboRunServiceIam)
+        for role_spec in CUSTOM_ROLES:
+            role_id = str(role_spec["role_id"])
+            full_role = f"roles/{role_id}"
+            APPLY_PERMS: tuple[str, ...] = tuple(role_spec["permissions"])  # type: ignore[arg-type]
+            role_exists = self.inspector.custom_role_exists(
+                role_id, self.config.project_id
+            )
+            if not role_exists:
+                self._log(
+                    f"[apply] Creating custom role '{full_role}' with permissions "
+                    f"{APPLY_PERMS}..."
+                )
+                run_gcloud_command(
+                    [
+                        "iam",
+                        "roles",
+                        "create",
+                        role_id,
+                        f"--project={self.config.project_id}",
+                        f"--title={role_spec['title']}",
+                        f"--description={role_spec['description']}",
+                        f"--permissions={','.join(APPLY_PERMS)}",
+                    ]
+                )
+                operations.append(f"Created custom role '{full_role}'")
+            else:
+                actual_permissions = self.inspector.get_custom_role_permissions(
+                    role_id, self.config.project_id
+                )
+                if set(actual_permissions) != set(APPLY_PERMS):
+                    self._log(
+                        f"[apply] Updating custom role '{full_role}' permissions to "
+                        f"exactly {APPLY_PERMS}..."
+                    )
+                    run_gcloud_command(
+                        [
+                            "iam",
+                            "roles",
+                            "update",
+                            role_id,
+                            f"--project={self.config.project_id}",
+                            f"--permissions={','.join(APPLY_PERMS)}",
+                        ]
+                    )
+                    operations.append(f"Updated custom role '{full_role}'")
+            apply_grant_to: tuple[str, ...] = tuple(role_spec["grant_to"])  # type: ignore[arg-type]
+            for member in apply_grant_to:
+                member_email = self.config.service_account_email(member)
+                member_str = f"serviceAccount:{member_email}"
+                has_binding = any(
+                    b.get("role") == full_role and member_str in b.get("members", [])
+                    for b in project_bindings
+                )
+                if not has_binding:
+                    self._log(
+                        f"[apply] Granting custom role '{full_role}' to '{member_email}'..."
+                    )
+                    run_gcloud_command(
+                        [
+                            "projects",
+                            "add-iam-policy-binding",
+                            self.config.project_id,
+                            f"--member={member_str}",
+                            f"--role={full_role}",
+                            "--condition=None",
+                        ]
+                    )
+                    operations.append(f"Granted '{full_role}' to '{member_email}'")
+
         # 6. Service Account User (actAs) Bindings on runtime service accounts
         for target_sa in DEPLOYER_ACT_AS_TARGETS:
             target_email = self.config.service_account_email(target_sa)
@@ -1025,8 +1182,14 @@ class GcpIdentityManager:
         deployer_email = self.config.service_account_email(DEPLOYER_SA_NAME)
         deployer_member = f"serviceAccount:{deployer_email}"
 
+        # Issue #90 custom roles are a separate exact-match allow-list (see
+        # step 8 below); exclude them from the predefined-role comparison.
+        custom_role_ids = {f"roles/{spec['role_id']}" for spec in CUSTOM_ROLES}
         current_deployer_project_roles = [
-            b.get("role", "") for b in project_bindings if deployer_member in b.get("members", [])
+            b.get("role", "")
+            for b in project_bindings
+            if deployer_member in b.get("members", [])
+            and b.get("role", "") not in custom_role_ids
         ]
         deployer_project_roles_valid = set(current_deployer_project_roles) == set(
             DEPLOYER_PROJECT_ROLES
@@ -1172,6 +1335,41 @@ class GcpIdentityManager:
         checks["github_env_valid"] = github_val["passed"]
         if not github_val["passed"]:
             failures.extend(github_val["failures"])
+
+        # 8. Custom IAM Roles (Issue #90: ngaboRunServiceIam)
+        project_bindings_val = self.inspector.get_project_iam_bindings()
+        custom_roles_valid = True
+        for role_spec in CUSTOM_ROLES:
+            role_id = str(role_spec["role_id"])
+            full_role = f"roles/{role_id}"
+            VALIDATE_PERMS: tuple[str, ...] = tuple(role_spec["permissions"])  # type: ignore[arg-type]
+            if not self.inspector.custom_role_exists(role_id, self.config.project_id):
+                failures.append(f"Custom role '{full_role}' does not exist.")
+                custom_roles_valid = False
+                continue
+            actual_permissions = self.inspector.get_custom_role_permissions(
+                role_id, self.config.project_id
+            )
+            if set(actual_permissions) != set(VALIDATE_PERMS):
+                failures.append(
+                    f"Custom role '{full_role}' permissions "
+                    f"{sorted(actual_permissions)} != {sorted(VALIDATE_PERMS)}."
+                )
+                custom_roles_valid = False
+            validate_grant_to: tuple[str, ...] = tuple(role_spec["grant_to"])  # type: ignore[arg-type]
+            for member in validate_grant_to:
+                member_email = self.config.service_account_email(member)
+                member_str = f"serviceAccount:{member_email}"
+                has_binding = any(
+                    b.get("role") == full_role and member_str in b.get("members", [])
+                    for b in project_bindings_val
+                )
+                if not has_binding:
+                    failures.append(
+                        f"Custom role '{full_role}' not granted to '{member_email}'."
+                    )
+                    custom_roles_valid = False
+        checks["custom_roles_valid"] = custom_roles_valid
 
         passed = len(failures) == 0
         return {

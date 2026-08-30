@@ -33,9 +33,11 @@ class DesiredStateTests(unittest.TestCase):
         self.assertTrue(web.allow_unauthenticated)
 
     def test_runtime_service_accounts_are_dedicated(self) -> None:
+        core_email = f"ngabo-core-runtime@{DEFAULT_PROJECT_ID}.iam.gserviceaccount.com"
+        web_email = f"ngabo-web-runtime@{DEFAULT_PROJECT_ID}.iam.gserviceaccount.com"
         core, web = desired_services(CORE_DIGEST, WEB_DIGEST)
-        self.assertEqual(core.runtime_sa, "ngabo-core-runtime")
-        self.assertEqual(web.runtime_sa, "ngabo-web-runtime")
+        self.assertEqual(core.runtime_sa, core_email)
+        self.assertEqual(web.runtime_sa, web_email)
 
     def test_web_gets_core_url_env(self) -> None:
         _, web = desired_services(CORE_DIGEST, WEB_DIGEST)
@@ -72,7 +74,7 @@ class DesiredStateTests(unittest.TestCase):
         self.assertIn("60s", args)
         self.assertIn("--allow-unauthenticated", args)
         self.assertIn("--service-account", args)
-        self.assertIn("ngabo-web-runtime", args)
+        self.assertIn(f"ngabo-web-runtime@{DEFAULT_PROJECT_ID}.iam.gserviceaccount.com", args)
         self.assertIn("--set-env-vars", args)
         self.assertIn("CORE_API_URL=", " ".join(args))
 
@@ -110,13 +112,11 @@ class DesiredStateTests(unittest.TestCase):
     def test_validate_uses_live_describe(self) -> None:
         from infra.gcp import cloudrun
 
+        core_email = f"ngabo-core-runtime@{DEFAULT_PROJECT_ID}.iam.gserviceaccount.com"
+        web_email = f"ngabo-web-runtime@{DEFAULT_PROJECT_ID}.iam.gserviceaccount.com"
         live = {
-            "ngabo-core": self._live_state(
-                "ngabo-core", CORE_DIGEST, "ngabo-core-runtime"
-            ),
-            "ngabo-web": self._live_state(
-                "ngabo-web", WEB_DIGEST, "ngabo-web-runtime"
-            ),
+            "ngabo-core": self._live_state("ngabo-core", CORE_DIGEST, core_email),
+            "ngabo-web": self._live_state("ngabo-web", WEB_DIGEST, web_email),
         }
         with mock.patch.object(
             cloudrun, "describe_service", side_effect=lambda name: live[name]
@@ -128,7 +128,9 @@ class DesiredStateTests(unittest.TestCase):
 
         live = {
             "ngabo-core": self._live_state(
-                "ngabo-core", CORE_DIGEST, "ngabo-core-runtime"
+                "ngabo-core",
+                CORE_DIGEST,
+                f"ngabo-core-runtime@{DEFAULT_PROJECT_ID}.iam.gserviceaccount.com",
             ),
             "ngabo-web": {
                 "spec": {
