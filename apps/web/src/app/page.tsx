@@ -1,6 +1,6 @@
 // Ngabo web console — Issue #90 live-status skeleton.
 //
-// Server component: reads the ngabo-core health/version payload at request
+// Server component: reads the ngabo-core readiness/version payload at request
 // time through the approved API boundary (CORE_API_URL) and renders an
 // honest IN DEVELOPMENT / SYNTHETIC status panel. It must never imply AMR
 // detection, proof verification, autonomous action, or clinical validation
@@ -9,8 +9,8 @@
 // State handling is explicit and honest:
 //   - missing config (no CORE_API_URL)  -> MISSING_CONFIG
 //   - unreachable / error response      -> DEGRADED
-//   - malformed payload / schema drift  -> SCHEMA_MISMATCH
-//   - valid typed payload               -> LIVE
+//   - malformed payload / identity drift -> SCHEMA_MISMATCH
+//   - complete, matching typed identity -> LIVE
 //
 // The component is force-dynamic so the payload is fetched at request time,
 // never baked into the image at build time (which would fabricate a status).
@@ -28,6 +28,9 @@ export const metadata: Metadata = {
 };
 
 const FETCH_TIMEOUT_MS = 5000;
+const EXPECTED_CORE_SERVICE = "ngabo-core";
+const SOURCE_REVISION_RE = /^[0-9a-f]{40}$/;
+const IMAGE_DIGEST_RE = /^sha256:[0-9a-f]{64}$/;
 
 type CoreStatus =
   | { kind: "MISSING_CONFIG" }
@@ -35,21 +38,21 @@ type CoreStatus =
   | { kind: "SCHEMA_MISMATCH"; detail: string }
   | {
       kind: "LIVE";
-      status: string;
+      status: "ok";
       service: string;
       version: string;
       revision: string;
       imageDigest: string;
       environment: string;
-      ready: boolean;
+      ready: true;
     };
 
 interface ReadyPayload {
-  status: string;
+  status: "ok";
   service: string;
-  version?: string;
-  revision?: string;
-  ready?: boolean;
+  version: string;
+  revision: string;
+  ready: true;
 }
 
 interface VersionPayload {
@@ -57,17 +60,23 @@ interface VersionPayload {
   version: string;
   revision: string;
   environment: string;
-  // The immutable core image digest is REQUIRED for LIVE: a deployment
-  // without a valid sha256 digest has incomplete artifact identity and
-  // must render SCHEMA_MISMATCH, not LIVE with an invented value.
   image_digest: string;
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
 }
 
 function isReadyPayload(value: unknown): value is ReadyPayload {
   if (typeof value !== "object" || value === null) return false;
   const record = value as Record<string, unknown>;
   return (
-    typeof record.status === "string" && typeof record.service === "string"
+    record.status === "ok" &&
+    record.service === EXPECTED_CORE_SERVICE &&
+    isNonEmptyString(record.version) &&
+    typeof record.revision === "string" &&
+    SOURCE_REVISION_RE.test(record.revision) &&
+    record.ready === true
   );
 }
 
@@ -75,12 +84,21 @@ function isVersionPayload(value: unknown): value is VersionPayload {
   if (typeof value !== "object" || value === null) return false;
   const record = value as Record<string, unknown>;
   return (
-    typeof record.service === "string" &&
-    typeof record.version === "string" &&
+    record.service === EXPECTED_CORE_SERVICE &&
+    isNonEmptyString(record.version) &&
     typeof record.revision === "string" &&
-    typeof record.environment === "string" &&
+    SOURCE_REVISION_RE.test(record.revision) &&
+    isNonEmptyString(record.environment) &&
     typeof record.image_digest === "string" &&
-    /^sha256:[0-9a-f]{64}$/.test(record.image_digest)
+    IMAGE_DIGEST_RE.test(record.image_digest)
+  );
+}
+
+function identityMatches(ready: ReadyPayload, version: VersionPayload): boolean {
+  return (
+    ready.service === version.service &&
+    ready.version === version.version &&
+    ready.revision === version.revision
   );
 }
 
@@ -119,8 +137,6 @@ async function acquireGoogleIdToken(audience: string): Promise<string | null> {
       clearTimeout(timer);
     }
   } catch {
-    // Not running on Google Cloud (local dev); callers fall back to
-    // unauthenticated requests.
     return null;
   }
 }
@@ -152,34 +168,42 @@ async function fetchJson(
 }
 
 async function fetchCoreStatus(): Promise<CoreStatus> {
-  // Read at call time so tests (and config changes) take effect per render.
   const coreApiUrl = process.env.CORE_API_URL ?? "";
   if (!coreApiUrl) {
     return { kind: "MISSING_CONFIG" };
   }
   try {
-    // /ready carries status/service/version/revision/ready; /version carries
-    // the environment. Neither endpoint alone provides the full panel, so
-    // both are fetched; a failure on either degrades honestly.
     const [readyRaw, versionRaw] = await Promise.all([
       fetchJson(coreApiUrl, "/ready"),
       fetchJson(coreApiUrl, "/version"),
     ]);
     if (!isReadyPayload(readyRaw)) {
-      return { kind: "SCHEMA_MISMATCH", detail: "unexpected /ready payload shape" };
+      return {
+        kind: "SCHEMA_MISMATCH",
+        detail: "incomplete or invalid /ready contract",
+      };
     }
     if (!isVersionPayload(versionRaw)) {
-      return { kind: "SCHEMA_MISMATCH", detail: "unexpected /version payload shape" };
+      return {
+        kind: "SCHEMA_MISMATCH",
+        detail: "incomplete or invalid /version identity",
+      };
+    }
+    if (!identityMatches(readyRaw, versionRaw)) {
+      return {
+        kind: "SCHEMA_MISMATCH",
+        detail: "/ready and /version runtime identity do not match",
+      };
     }
     return {
       kind: "LIVE",
       status: readyRaw.status,
       service: readyRaw.service,
-      version: readyRaw.version ?? "unknown",
-      revision: readyRaw.revision ?? "unknown",
+      version: readyRaw.version,
+      revision: readyRaw.revision,
       imageDigest: versionRaw.image_digest,
       environment: versionRaw.environment,
-      ready: readyRaw.ready ?? false,
+      ready: true,
     };
   } catch (error) {
     const detail =
@@ -243,9 +267,9 @@ function StatusPanel({ status }: { status: CoreStatus }) {
             unexpected core payload
           </p>
           <p className="text-sm leading-6 text-red-800/80 dark:text-red-200/80">
-            The core responded but the payload shape is unexpected (
-            <code>{status.detail}</code>). The console refuses to render
-            guessed values.
+            The core responded but the payload identity is incomplete or
+            inconsistent (<code>{status.detail}</code>). The console refuses
+            to render guessed values.
           </p>
         </section>
       );
@@ -288,7 +312,7 @@ function StatusPanel({ status }: { status: CoreStatus }) {
             </dd>
             <dt className="text-emerald-800/60 dark:text-emerald-200/60">ready</dt>
             <dd className="font-mono text-emerald-900 dark:text-emerald-100">
-              {status.ready ? "true" : "false"}
+              true
             </dd>
           </dl>
         </section>

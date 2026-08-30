@@ -2,9 +2,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Home from "./page";
 
-// Home is a force-dynamic async server component; each test controls
-// CORE_API_URL and the global fetch response.
 const ORIGINAL_CORE_API_URL = process.env.CORE_API_URL;
+const REVISION = "a".repeat(40);
+const DIGEST = "sha256:" + "d".repeat(64);
 
 function okJson(body: unknown) {
   return new Response(JSON.stringify(body), {
@@ -13,23 +13,43 @@ function okJson(body: unknown) {
   });
 }
 
-function liveCore() {
+function readyBody(overrides: Record<string, unknown> = {}) {
   return {
-    ready: okJson({
-      status: "ok",
-      service: "ngabo-core",
-      version: "0.1.0",
-      revision: "abc123".repeat(7),
-      ready: true,
-    }),
-    version: okJson({
-      service: "ngabo-core",
-      version: "0.1.0",
-      revision: "abc123".repeat(7),
-      environment: "test",
-      image_digest: "sha256:" + "d".repeat(64),
-    }),
+    status: "ok",
+    service: "ngabo-core",
+    version: "0.1.0",
+    revision: REVISION,
+    ready: true,
+    ...overrides,
   };
+}
+
+function versionBody(overrides: Record<string, unknown> = {}) {
+  return {
+    service: "ngabo-core",
+    version: "0.1.0",
+    revision: REVISION,
+    environment: "test",
+    image_digest: DIGEST,
+    ...overrides,
+  };
+}
+
+function stubCore(
+  ready: Record<string, unknown> = readyBody(),
+  version: Record<string, unknown> = versionBody(),
+) {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockImplementation((url: string) => {
+      if (url.startsWith("http://metadata.google.internal")) {
+        return Promise.resolve(new Response("test-id-token", { status: 200 }));
+      }
+      if (url.endsWith("/ready")) return Promise.resolve(okJson(ready));
+      if (url.endsWith("/version")) return Promise.resolve(okJson(version));
+      return Promise.resolve(new Response("not found", { status: 404 }));
+    }),
+  );
 }
 
 beforeEach(() => {
@@ -47,33 +67,27 @@ afterEach(() => {
 
 describe("Home", () => {
   it("renders the Ngabo identity heading", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockImplementation((url: string) =>
-      url.endsWith("/ready") ? Promise.resolve(liveCore().ready) : Promise.resolve(liveCore().version),
-    ));
+    stubCore();
     const html = renderToStaticMarkup(await Home());
     expect(html).toContain("Ngabo");
   });
 
   it("states synthetic/in-development boundary without claiming product behavior", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockImplementation((url: string) =>
-      url.endsWith("/ready") ? Promise.resolve(liveCore().ready) : Promise.resolve(liveCore().version),
-    ));
+    stubCore();
     const html = renderToStaticMarkup(await Home());
     expect(html).toContain("IN DEVELOPMENT — SYNTHETIC");
     expect(html).not.toContain("detected");
     expect(html).not.toContain("outbreak");
   });
 
-  it("shows live backend-derived values when core is reachable", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockImplementation((url: string) =>
-      url.endsWith("/ready") ? Promise.resolve(liveCore().ready) : Promise.resolve(liveCore().version),
-    ));
+  it("shows live backend-derived values only for complete matching identity", async () => {
+    stubCore();
     const html = renderToStaticMarkup(await Home());
     expect(html).toContain("LIVE");
     expect(html).toContain("ngabo-core");
     expect(html).toContain("0.1.0");
-    expect(html).toContain("abc123".repeat(7));
-    expect(html).toContain("sha256:" + "d".repeat(64));
+    expect(html).toContain(REVISION);
+    expect(html).toContain(DIGEST);
     expect(html).toContain("test");
     expect(html).toContain("true");
   });
@@ -100,7 +114,12 @@ describe("Home", () => {
   it("renders an honest degraded state on non-2xx response", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(new Response("boom", { status: 503 })),
+      vi.fn().mockImplementation((url: string) => {
+        if (url.startsWith("http://metadata.google.internal")) {
+          return Promise.resolve(new Response("token", { status: 200 }));
+        }
+        return Promise.resolve(new Response("boom", { status: 503 }));
+      }),
     );
     const html = renderToStaticMarkup(await Home());
     expect(html).toContain("DEGRADED");
@@ -108,77 +127,77 @@ describe("Home", () => {
   });
 
   it("renders schema mismatch when the payload shape is unexpected", async () => {
-    // Both /ready and /version return an unexpected shape; each fetch gets
-    // its own Response (a body can only be read once).
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockImplementation(() => Promise.resolve(okJson({ message: "hello" }))),
-    );
+    stubCore({ message: "hello" }, { message: "hello" });
     const html = renderToStaticMarkup(await Home());
     expect(html).toContain("SCHEMA MISMATCH");
   });
 });
 
-describe("Home — immutable digest identity", () => {
-  it("renders SCHEMA_MISMATCH when the core omits image_digest", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockImplementation((url: string) =>
-        url.endsWith("/ready")
-          ? Promise.resolve(liveCore().ready)
-          : Promise.resolve(
-              okJson({
-                service: "ngabo-core",
-                version: "0.1.0",
-                revision: "abc123".repeat(7),
-                environment: "test",
-              }),
-            ),
-      ),
-    );
+describe("Home — fail-closed runtime identity", () => {
+  it("rejects missing image_digest", async () => {
+    const version = versionBody();
+    delete version.image_digest;
+    stubCore(readyBody(), version);
     const html = renderToStaticMarkup(await Home());
     expect(html).toContain("SCHEMA MISMATCH");
     expect(html).not.toContain("LIVE");
   });
 
-  it("renders SCHEMA_MISMATCH when image_digest is malformed", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockImplementation((url: string) =>
-        url.endsWith("/ready")
-          ? Promise.resolve(liveCore().ready)
-          : Promise.resolve(
-              okJson({
-                service: "ngabo-core",
-                version: "0.1.0",
-                revision: "abc123".repeat(7),
-                environment: "test",
-                image_digest: "latest",
-              }),
-            ),
-      ),
-    );
+  it("rejects malformed image_digest", async () => {
+    stubCore(readyBody(), versionBody({ image_digest: "latest" }));
     const html = renderToStaticMarkup(await Home());
     expect(html).toContain("SCHEMA MISMATCH");
     expect(html).not.toContain("LIVE");
   });
 
-  it("renders SCHEMA_MISMATCH when revision is missing", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockImplementation((url: string) =>
-        url.endsWith("/ready")
-          ? Promise.resolve(liveCore().ready)
-          : Promise.resolve(
-              okJson({
-                service: "ngabo-core",
-                version: "0.1.0",
-                environment: "test",
-                image_digest: "sha256:" + "d".repeat(64),
-              }),
-            ),
-      ),
-    );
+  it("rejects missing readiness flag", async () => {
+    const ready = readyBody();
+    delete ready.ready;
+    stubCore(ready, versionBody());
+    const html = renderToStaticMarkup(await Home());
+    expect(html).toContain("SCHEMA MISMATCH");
+    expect(html).not.toContain("LIVE");
+  });
+
+  it("rejects ready=false", async () => {
+    stubCore(readyBody({ ready: false }), versionBody());
+    const html = renderToStaticMarkup(await Home());
+    expect(html).toContain("SCHEMA MISMATCH");
+    expect(html).not.toContain("LIVE");
+  });
+
+  it("rejects missing ready revision", async () => {
+    const ready = readyBody();
+    delete ready.revision;
+    stubCore(ready, versionBody());
+    const html = renderToStaticMarkup(await Home());
+    expect(html).toContain("SCHEMA MISMATCH");
+    expect(html).not.toContain("LIVE");
+  });
+
+  it("rejects a non-SHA source revision", async () => {
+    stubCore(readyBody({ revision: "unknown" }), versionBody({ revision: "unknown" }));
+    const html = renderToStaticMarkup(await Home());
+    expect(html).toContain("SCHEMA MISMATCH");
+    expect(html).not.toContain("LIVE");
+  });
+
+  it("rejects revision mismatch between /ready and /version", async () => {
+    stubCore(readyBody(), versionBody({ revision: "b".repeat(40) }));
+    const html = renderToStaticMarkup(await Home());
+    expect(html).toContain("SCHEMA MISMATCH");
+    expect(html).not.toContain("LIVE");
+  });
+
+  it("rejects version mismatch between /ready and /version", async () => {
+    stubCore(readyBody(), versionBody({ version: "0.2.0" }));
+    const html = renderToStaticMarkup(await Home());
+    expect(html).toContain("SCHEMA MISMATCH");
+    expect(html).not.toContain("LIVE");
+  });
+
+  it("rejects service mismatch", async () => {
+    stubCore(readyBody(), versionBody({ service: "other-core" }));
     const html = renderToStaticMarkup(await Home());
     expect(html).toContain("SCHEMA MISMATCH");
     expect(html).not.toContain("LIVE");

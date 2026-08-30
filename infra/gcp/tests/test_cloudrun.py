@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -18,6 +19,7 @@ WEB_DIGEST = "sha256:" + "b" * 64
 
 CORE_EMAIL = f"ngabo-core-runtime@{DEFAULT_PROJECT_ID}.iam.gserviceaccount.com"
 WEB_EMAIL = f"ngabo-web-runtime@{DEFAULT_PROJECT_ID}.iam.gserviceaccount.com"
+CORE_URL = "https://core.example.run.app"
 
 
 def live_service(
@@ -30,9 +32,11 @@ def live_service(
     memory: str = "512Mi",
     max_scale: str = "2",
     min_scale: str = "0",
-    timeout: str = "60s",
+    timeout_seconds: int = 60,
+    concurrency: int = 80,
     cpu_throttling: str = "false",
 ) -> dict[str, object]:
+    """Representative Cloud Run Admin API V1 Service payload."""
     return {
         "metadata": {"labels": labels or dict(CLOUD_RUN_LABELS)},
         "spec": {
@@ -41,16 +45,22 @@ def live_service(
                     "annotations": {
                         "autoscaling.knative.dev/maxScale": max_scale,
                         "autoscaling.knative.dev/minScale": min_scale,
-                        "run.googleapis.com/timeout": timeout,
                         "run.googleapis.com/cpu-throttling": cpu_throttling,
                     }
                 },
                 "spec": {
                     "serviceAccountName": runtime_sa,
+                    "timeoutSeconds": timeout_seconds,
+                    "containerConcurrency": concurrency,
                     "containers": [
                         {
                             "image": artifact_uri(name, digest),
-                            "resources": {"cpu": cpu, "memory": memory},
+                            "resources": {
+                                "limits": {
+                                    "cpu": cpu,
+                                    "memory": memory,
+                                }
+                            },
                             "env": [
                                 {"name": k, "value": v} for k, v in (env or {}).items()
                             ],
@@ -60,10 +70,6 @@ def live_service(
             }
         },
     }
-
-
-def live_iam(members: list[str] | None = None) -> dict[str, object]:
-    return {"bindings": [{"role": "roles/run.invoker", "members": members or []}]}
 
 
 def converged_live() -> dict[str, dict[str, object]]:
@@ -78,7 +84,7 @@ def converged_live() -> dict[str, dict[str, object]]:
             "ngabo-web",
             WEB_DIGEST,
             WEB_EMAIL,
-            env={"CORE_API_URL": "https://core.example.run.app"},
+            env={"CORE_API_URL": CORE_URL},
         ),
     }
 
@@ -117,6 +123,7 @@ class DesiredStateTests(unittest.TestCase):
             self.assertEqual(service.caps["cpu"], "1")
             self.assertEqual(service.caps["memory"], "512Mi")
             self.assertEqual(service.caps["timeout_seconds"], 60)
+            self.assertEqual(service.caps["concurrency"], 80)
             self.assertTrue(service.caps["scale_to_zero_required"])
 
     def test_rejects_mutable_tags_and_bad_digests(self) -> None:
@@ -138,6 +145,7 @@ class DesiredStateTests(unittest.TestCase):
         args = web.to_gcloud_args()
         self.assertIn("--max-instances", args)
         self.assertIn("--min-instances", args)
+        self.assertIn("--concurrency", args)
         self.assertIn("512Mi", args)
         self.assertIn("60s", args)
         self.assertIn("--allow-unauthenticated", args)
@@ -150,11 +158,8 @@ class DesiredStateTests(unittest.TestCase):
 
         def fake_run(args: list[str], check: bool = True) -> mock.Mock:
             calls.append(args)
-            result = mock.Mock()
-            result.returncode = 0
-            result.stdout = ""
-            result.stderr = ""
-            if args[0] == "run" and args[1] == "services" and args[2] == "describe":
+            result = mock.Mock(returncode=0, stdout="", stderr="")
+            if args[0:3] == ["run", "services", "describe"]:
                 result.stdout = "https://ngabo-core-123456.run.app"
             return result
 
@@ -162,7 +167,7 @@ class DesiredStateTests(unittest.TestCase):
             self.assertEqual(cloudrun.apply(CORE_DIGEST, WEB_DIGEST), 0)
 
         deploy_calls = [
-            c for c in calls if c[0:2] == ["run", "services"] and c[2] == "deploy"
+            c for c in calls if c[0:3] == ["run", "services", "deploy"]
         ]
         self.assertEqual(len(deploy_calls), 2)
         self.assertEqual(deploy_calls[0][3], "ngabo-core")
@@ -171,25 +176,18 @@ class DesiredStateTests(unittest.TestCase):
         iam_calls = [
             c
             for c in calls
-            if c[0:2] == ["run", "services"] and c[2] == "add-iam-policy-binding"
+            if c[0:3] == ["run", "services", "add-iam-policy-binding"]
         ]
         self.assertEqual(len(iam_calls), 1)
         self.assertEqual(iam_calls[0][3], "ngabo-core")
         self.assertIn("roles/run.invoker", iam_calls[0])
-
-        # The web deploy must carry the resolved core URL
-        web_deploy = deploy_calls[1]
-        self.assertIn("CORE_API_URL=https://ngabo-core-123456.run.app", web_deploy)
+        self.assertIn("CORE_API_URL=https://ngabo-core-123456.run.app", deploy_calls[1])
 
     def test_apply_fails_when_core_url_unresolvable(self) -> None:
         from infra.gcp import cloudrun
 
         def fake_run(args: list[str], check: bool = True) -> mock.Mock:
-            result = mock.Mock()
-            result.returncode = 1
-            result.stdout = ""
-            result.stderr = "not found"
-            return result
+            return mock.Mock(returncode=1, stdout="", stderr="not found")
 
         with (
             mock.patch.object(cloudrun, "run_gcloud", side_effect=fake_run),
@@ -214,60 +212,62 @@ class DesiredStateTests(unittest.TestCase):
 
 
 class ValidateTests(unittest.TestCase):
-    def _validate(self, live: dict[str, dict[str, object]]) -> int:
+    def _validate(
+        self,
+        live: dict[str, dict[str, object]],
+        *,
+        core_public: bool = False,
+        web_public: bool = True,
+        web_runtime_invoker: bool = True,
+    ) -> int:
         from infra.gcp import cloudrun
 
         def describe(name: str) -> dict[str, object] | None:
             return live.get(name)
 
-        def iam(name: str) -> list[str]:
-            if name == "ngabo-core":
-                return [f"roles/run.invoker:serviceAccount:{WEB_EMAIL}"]
-            return ["roles/run.invoker:allUsers"]
-
         def fake_run(args: list[str], check: bool = True) -> mock.Mock:
-            result = mock.Mock()
-            result.returncode = 0
-            result.stderr = ""
-            if args[0:2] == ["run", "services"] and args[2] == "get-iam-policy":
-                import json as _json
-
-                result.stdout = _json.dumps(
-                    {
-                        "bindings": [
-                            {
-                                "role": "roles/run.invoker",
-                                "members": [f"serviceAccount:{WEB_EMAIL}"],
-                            }
-                        ]
-                    }
+            result = mock.Mock(returncode=0, stdout="", stderr="")
+            if args[0:3] == ["run", "services", "get-iam-policy"]:
+                service = args[3]
+                members: list[str] = []
+                if service == "ngabo-core":
+                    if web_runtime_invoker:
+                        members.append(f"serviceAccount:{WEB_EMAIL}")
+                    if core_public:
+                        members.append("allUsers")
+                elif service == "ngabo-web" and web_public:
+                    members.append("allUsers")
+                result.stdout = json.dumps(
+                    {"bindings": [{"role": "roles/run.invoker", "members": members}]}
                 )
-            elif args[0:2] == ["run", "services"] and args[2] == "describe":
-                result.stdout = "https://core.example.run.app"
-            else:
-                result.stdout = ""
+            elif args[0:3] == ["run", "services", "describe"]:
+                result.stdout = CORE_URL
             return result
 
         with (
             mock.patch.object(cloudrun, "describe_service", side_effect=describe),
-            mock.patch.object(cloudrun, "_service_iam_members", side_effect=iam),
             mock.patch.object(cloudrun, "run_gcloud", side_effect=fake_run),
         ):
             return cloudrun.validate(CORE_DIGEST, WEB_DIGEST)
 
-    def test_validate_passes_on_converged_state(self) -> None:
+    def test_validate_passes_on_converged_v1_state(self) -> None:
         self.assertEqual(self._validate(converged_live()), 0)
 
     def test_validate_fails_on_wrong_image(self) -> None:
         live = converged_live()
         live["ngabo-core"] = live_service(
-            "ngabo-core", "sha256:" + "c" * 64, CORE_EMAIL
+            "ngabo-core",
+            "sha256:" + "c" * 64,
+            CORE_EMAIL,
+            env={"NGABO_IMAGE_DIGEST": CORE_DIGEST},
         )
         self.assertEqual(self._validate(live), 1)
 
     def test_validate_fails_on_mutable_tag_image(self) -> None:
         live = converged_live()
-        bad = live_service("ngabo-web", WEB_DIGEST, WEB_EMAIL)
+        bad = live_service(
+            "ngabo-web", WEB_DIGEST, WEB_EMAIL, env={"CORE_API_URL": CORE_URL}
+        )
         bad["spec"]["template"]["spec"]["containers"][0]["image"] = "ngabo-web:latest"  # type: ignore[index]
         live["ngabo-web"] = bad
         self.assertEqual(self._validate(live), 1)
@@ -275,24 +275,53 @@ class ValidateTests(unittest.TestCase):
     def test_validate_fails_on_wrong_sa(self) -> None:
         live = converged_live()
         live["ngabo-core"] = live_service(
-            "ngabo-core", CORE_DIGEST, "someone-else@x.iam.gserviceaccount.com"
+            "ngabo-core",
+            CORE_DIGEST,
+            "someone-else@x.iam.gserviceaccount.com",
+            env={"NGABO_IMAGE_DIGEST": CORE_DIGEST},
+        )
+        self.assertEqual(self._validate(live), 1)
+
+    def test_validate_fails_on_min_instances_drift(self) -> None:
+        live = converged_live()
+        live["ngabo-web"] = live_service(
+            "ngabo-web",
+            WEB_DIGEST,
+            WEB_EMAIL,
+            env={"CORE_API_URL": CORE_URL},
+            min_scale="1",
         )
         self.assertEqual(self._validate(live), 1)
 
     def test_validate_fails_on_max_instances_drift(self) -> None:
         live = converged_live()
         live["ngabo-web"] = live_service(
-            "ngabo-web", WEB_DIGEST, WEB_EMAIL,
-            env={"CORE_API_URL": "https://core.example.run.app"},
+            "ngabo-web",
+            WEB_DIGEST,
+            WEB_EMAIL,
+            env={"CORE_API_URL": CORE_URL},
             max_scale="5",
+        )
+        self.assertEqual(self._validate(live), 1)
+
+    def test_validate_fails_on_cpu_limit_drift(self) -> None:
+        live = converged_live()
+        live["ngabo-web"] = live_service(
+            "ngabo-web",
+            WEB_DIGEST,
+            WEB_EMAIL,
+            env={"CORE_API_URL": CORE_URL},
+            cpu="2",
         )
         self.assertEqual(self._validate(live), 1)
 
     def test_validate_fails_on_memory_drift(self) -> None:
         live = converged_live()
         live["ngabo-web"] = live_service(
-            "ngabo-web", WEB_DIGEST, WEB_EMAIL,
-            env={"CORE_API_URL": "https://core.example.run.app"},
+            "ngabo-web",
+            WEB_DIGEST,
+            WEB_EMAIL,
+            env={"CORE_API_URL": CORE_URL},
             memory="1Gi",
         )
         self.assertEqual(self._validate(live), 1)
@@ -300,32 +329,53 @@ class ValidateTests(unittest.TestCase):
     def test_validate_fails_on_timeout_drift(self) -> None:
         live = converged_live()
         live["ngabo-web"] = live_service(
-            "ngabo-web", WEB_DIGEST, WEB_EMAIL,
-            env={"CORE_API_URL": "https://core.example.run.app"},
-            timeout="300s",
+            "ngabo-web",
+            WEB_DIGEST,
+            WEB_EMAIL,
+            env={"CORE_API_URL": CORE_URL},
+            timeout_seconds=300,
+        )
+        self.assertEqual(self._validate(live), 1)
+
+    def test_validate_fails_on_concurrency_drift(self) -> None:
+        live = converged_live()
+        live["ngabo-web"] = live_service(
+            "ngabo-web",
+            WEB_DIGEST,
+            WEB_EMAIL,
+            env={"CORE_API_URL": CORE_URL},
+            concurrency=10,
         )
         self.assertEqual(self._validate(live), 1)
 
     def test_validate_fails_on_cpu_throttling_enabled(self) -> None:
         live = converged_live()
         live["ngabo-web"] = live_service(
-            "ngabo-web", WEB_DIGEST, WEB_EMAIL,
-            env={"CORE_API_URL": "https://core.example.run.app"},
+            "ngabo-web",
+            WEB_DIGEST,
+            WEB_EMAIL,
+            env={"CORE_API_URL": CORE_URL},
             cpu_throttling="true",
         )
         self.assertEqual(self._validate(live), 1)
 
     def test_validate_fails_on_label_drift(self) -> None:
         live = converged_live()
-        drifted = live_service("ngabo-core", CORE_DIGEST, CORE_EMAIL)
-        drifted["metadata"]["labels"] = {**CLOUD_RUN_LABELS, "managed-by": "terraform"}  # type: ignore[index]
-        live["ngabo-core"] = drifted
+        live["ngabo-core"] = live_service(
+            "ngabo-core",
+            CORE_DIGEST,
+            CORE_EMAIL,
+            env={"NGABO_IMAGE_DIGEST": CORE_DIGEST},
+            labels={**CLOUD_RUN_LABELS, "managed-by": "terraform"},
+        )
         self.assertEqual(self._validate(live), 1)
 
     def test_validate_fails_on_wrong_core_url(self) -> None:
         live = converged_live()
         live["ngabo-web"] = live_service(
-            "ngabo-web", WEB_DIGEST, WEB_EMAIL,
+            "ngabo-web",
+            WEB_DIGEST,
+            WEB_EMAIL,
             env={"CORE_API_URL": "https://wrong.example.run.app"},
         )
         self.assertEqual(self._validate(live), 1)
@@ -334,6 +384,18 @@ class ValidateTests(unittest.TestCase):
         live = converged_live()
         live["ngabo-core"] = live_service("ngabo-core", CORE_DIGEST, CORE_EMAIL, env={})
         self.assertEqual(self._validate(live), 1)
+
+    def test_validate_fails_when_core_is_public(self) -> None:
+        self.assertEqual(self._validate(converged_live(), core_public=True), 1)
+
+    def test_validate_fails_when_web_is_not_public(self) -> None:
+        self.assertEqual(self._validate(converged_live(), web_public=False), 1)
+
+    def test_validate_fails_without_web_runtime_invoker(self) -> None:
+        self.assertEqual(
+            self._validate(converged_live(), web_runtime_invoker=False),
+            1,
+        )
 
 
 if __name__ == "__main__":

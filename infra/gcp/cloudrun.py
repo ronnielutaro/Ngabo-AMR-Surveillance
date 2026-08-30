@@ -173,7 +173,10 @@ def describe_service(service: str) -> dict[str, Any] | None:
     )
     if proc.returncode != 0:
         return None
-    parsed = json.loads(proc.stdout)
+    try:
+        parsed = json.loads(proc.stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"malformed Cloud Run service JSON for {service}: {exc}") from exc
     return parsed if isinstance(parsed, dict) else None
 
 
@@ -206,11 +209,7 @@ def resolve_core_url() -> str:
 
 
 def grant_web_invoker_on_core() -> None:
-    """Grant ngabo-web-runtime run.invoker on ngabo-core only.
-
-    The web runtime identity needs to invoke the private core; this is the
-    service-to-service boundary for the skeleton.
-    """
+    """Grant ngabo-web-runtime run.invoker on ngabo-core only."""
     proc = run_gcloud(
         [
             "run",
@@ -255,17 +254,11 @@ def apply(core_digest: str, web_digest: str) -> int:
     """Canonical deployment sequence (single source of deployment truth)."""
     core, _web = desired_services(core_digest, web_digest)
 
-    # 1. Core first (private) so its URL exists before the web deploy.
     _deploy_service(core)
-
-    # 2. Resolve the actual core URL from the deployed service.
     core_url = resolve_core_url()
     print(f"ngabo-core status.url: {core_url}")
-
-    # 3. Service-to-service IAM: web runtime may invoke private core.
     grant_web_invoker_on_core()
 
-    # 4. Web with the real core URL.
     web = ServiceDesiredState(
         name="ngabo-web",
         image=artifact_uri("ngabo-web", web_digest),
@@ -279,11 +272,8 @@ def apply(core_digest: str, web_digest: str) -> int:
     return 0
 
 
-def _service_env(service: str) -> dict[str, str]:
-    """Extract the deployed env vars from a describe payload."""
-    live = describe_service(service)
-    if live is None:
-        return {}
+def _service_env_from_live(live: dict[str, Any]) -> dict[str, str]:
+    """Extract deployed env vars from one Cloud Run V1 Service payload."""
     container = (
         live.get("spec", {})
         .get("template", {})
@@ -295,21 +285,20 @@ def _service_env(service: str) -> dict[str, str]:
         name = item.get("name")
         value = item.get("value")
         if name and value is not None:
-            env[name] = value
+            env[str(name)] = str(value)
     return env
 
 
-def _service_labels(service: str) -> dict[str, str]:
-    """Extract the deployed labels from a describe payload."""
-    live = describe_service(service)
-    if live is None:
-        return {}
+def _service_labels_from_live(live: dict[str, Any]) -> dict[str, str]:
+    """Extract deployed service labels from one Cloud Run V1 Service payload."""
     labels = live.get("metadata", {}).get("labels", {})
-    return dict(labels) if isinstance(labels, dict) else {}
+    if not isinstance(labels, dict):
+        return {}
+    return {str(key): str(value) for key, value in labels.items()}
 
 
-def _service_iam_members(service: str) -> list[str]:
-    """Extract allUsers/allAuthenticatedUsers policy bindings for a service."""
+def _service_iam_policy(service: str) -> dict[str, Any]:
+    """Return a service IAM policy or fail closed if it cannot be observed."""
     proc = run_gcloud(
         [
             "run",
@@ -323,18 +312,38 @@ def _service_iam_members(service: str) -> list[str]:
         check=False,
     )
     if proc.returncode != 0:
-        return []
+        raise RuntimeError(
+            f"failed to read IAM policy for {service}: {proc.stderr.strip()}"
+        )
     try:
         policy = json.loads(proc.stdout)
-    except json.JSONDecodeError:
-        return []
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"malformed IAM policy JSON for {service}: {exc}") from exc
+    if not isinstance(policy, dict):
+        raise RuntimeError(f"unexpected IAM policy payload for {service}")
+    return policy
+
+
+def _public_invoker_members(policy: dict[str, Any]) -> list[str]:
+    """Return public caller members bound to roles/run.invoker."""
     members: list[str] = []
     for binding in policy.get("bindings", []):
-        role = binding.get("role", "")
+        if binding.get("role") != "roles/run.invoker":
+            continue
         for member in binding.get("members", []):
             if member in ("allUsers", "allAuthenticatedUsers"):
-                members.append(f"{role}:{member}")
+                members.append(str(member))
     return members
+
+
+def _has_web_runtime_invoker(policy: dict[str, Any]) -> bool:
+    expected = f"serviceAccount:{WEB_RUNTIME_SA}"
+    for binding in policy.get("bindings", []):
+        if binding.get("role") == "roles/run.invoker" and expected in binding.get(
+            "members", []
+        ):
+            return True
+    return False
 
 
 def _check(condition: bool, message: str, failures: list[str]) -> None:
@@ -345,37 +354,47 @@ def _check(condition: bool, message: str, failures: list[str]) -> None:
 def validate(core_digest: str, web_digest: str) -> int:
     """Fail-closed validation of the full #90 desired-state contract.
 
-    Validates: immutable images, runtime SAs, resource/cost bounds, env
-    values (including the real core URL and injected digest), canonical
-    labels, and access boundaries (core private, web public, web-runtime
-    invoker on core only). Properties that cannot be observed through the
-    gcloud surface are recorded as limitations, not silently passed.
+    The parser intentionally follows Cloud Run Admin API V1 / exported YAML
+    structure: ``resources.limits.{cpu,memory}``, ``timeoutSeconds`` and
+    ``containerConcurrency`` live under ``spec.template.spec``. Tests use
+    representative V1 payloads so they cannot pass against an invented
+    response shape.
     """
-    services = desired_services(core_digest, web_digest)
-    core, web = services
+    core, web = desired_services(core_digest, web_digest)
     failures: list[str] = []
+    live_by_name: dict[str, dict[str, Any]] = {}
 
     for service in (core, web):
         live = describe_service(service.name)
         if live is None:
-            _check(False, f"{service.name}: service does not exist", failures)
+            failures.append(f"{service.name}: service does not exist")
             continue
-        spec = live["spec"]["template"]["spec"]
-        container = spec.get("containers", [{}])[0]
+        live_by_name[service.name] = live
 
-        # Artifact identity
+        template = live.get("spec", {}).get("template", {})
+        spec = template.get("spec", {})
+        containers = spec.get("containers", [])
+        if not isinstance(containers, list) or not containers:
+            failures.append(f"{service.name}: missing container specification")
+            continue
+        container = containers[0]
+        if not isinstance(container, dict):
+            failures.append(f"{service.name}: malformed container specification")
+            continue
+
         live_image = container.get("image", "")
         _check(
             live_image == service.image,
             f"{service.name}: image {live_image} != {service.image}",
             failures,
         )
-        if live_image:
-            _check(
-                "@sha256:" in live_image and not live_image.endswith(":latest"),
-                f"{service.name}: image is not an immutable digest reference",
-                failures,
-            )
+        _check(
+            isinstance(live_image, str)
+            and "@sha256:" in live_image
+            and not live_image.endswith(":latest"),
+            f"{service.name}: image is not an immutable digest reference",
+            failures,
+        )
         _check(
             spec.get("serviceAccountName", "") == service.runtime_sa,
             f"{service.name}: runtime SA {spec.get('serviceAccountName', '')} "
@@ -383,8 +402,7 @@ def validate(core_digest: str, web_digest: str) -> int:
             failures,
         )
 
-        # Resource/cost bounds
-        annotations = live["spec"]["template"]["metadata"].get("annotations", {})
+        annotations = template.get("metadata", {}).get("annotations", {})
         _check(
             annotations.get("autoscaling.knative.dev/maxScale", "")
             == str(service.caps["max_instances"]),
@@ -401,28 +419,32 @@ def validate(core_digest: str, web_digest: str) -> int:
             f"{service.caps['min_instances']}",
             failures,
         )
+
+        resources = container.get("resources", {})
+        limits = resources.get("limits", {}) if isinstance(resources, dict) else {}
         _check(
-            container.get("resources", {}).get("cpu", {}) == service.caps["cpu"]
-            or str(container.get("resources", {}).get("cpu", ""))
-            == str(service.caps["cpu"]),
-            f"{service.name}: cpu {container.get('resources', {}).get('cpu')} "
-            f"!= {service.caps['cpu']}",
+            str(limits.get("cpu", "")) == str(service.caps["cpu"]),
+            f"{service.name}: cpu limit {limits.get('cpu', '')} != {service.caps['cpu']}",
             failures,
         )
         _check(
-            container.get("resources", {}).get("memory", "")
-            == service.caps["memory"],
-            f"{service.name}: memory "
-            f"{container.get('resources', {}).get('memory', '')} != "
-            f"{service.caps['memory']}",
+            str(limits.get("memory", "")) == str(service.caps["memory"]),
+            f"{service.name}: memory limit {limits.get('memory', '')} "
+            f"!= {service.caps['memory']}",
             failures,
         )
         _check(
-            annotations.get("run.googleapis.com/timeout", "")
-            == f"{service.caps['timeout_seconds']}s",
-            f"{service.name}: timeout "
-            f"{annotations.get('run.googleapis.com/timeout', '')} != "
-            f"{service.caps['timeout_seconds']}s",
+            str(spec.get("timeoutSeconds", ""))
+            == str(service.caps["timeout_seconds"]),
+            f"{service.name}: timeoutSeconds {spec.get('timeoutSeconds', '')} "
+            f"!= {service.caps['timeout_seconds']}",
+            failures,
+        )
+        _check(
+            str(spec.get("containerConcurrency", ""))
+            == str(service.caps["concurrency"]),
+            f"{service.name}: containerConcurrency "
+            f"{spec.get('containerConcurrency', '')} != {service.caps['concurrency']}",
             failures,
         )
         _check(
@@ -431,8 +453,7 @@ def validate(core_digest: str, web_digest: str) -> int:
             failures,
         )
 
-        # Canonical labels
-        labels = _service_labels(service.name)
+        labels = _service_labels_from_live(live)
         for key, value in CLOUD_RUN_LABELS.items():
             _check(
                 labels.get(key) == value,
@@ -440,83 +461,43 @@ def validate(core_digest: str, web_digest: str) -> int:
                 failures,
             )
 
-    # Core-specific contract
-    _check(
-        core.allow_unauthenticated is False,
-        "ngabo-core: must be private (no allow-unauthenticated)",
-        failures,
-    )
-    _check(
-        web.allow_unauthenticated is True,
-        "ngabo-web: must be the public entry point (allow-unauthenticated)",
-        failures,
-    )
+    if "ngabo-core" in live_by_name and "ngabo-web" in live_by_name:
+        core_policy = _service_iam_policy("ngabo-core")
+        web_policy = _service_iam_policy("ngabo-web")
+        core_public = _public_invoker_members(core_policy)
+        web_public = _public_invoker_members(web_policy)
+        _check(
+            not core_public,
+            f"ngabo-core: unexpected public invoker members {core_public}",
+            failures,
+        )
+        _check(
+            "allUsers" in web_public,
+            f"ngabo-web: missing public allUsers invoker binding (got {web_public})",
+            failures,
+        )
+        _check(
+            _has_web_runtime_invoker(core_policy),
+            "ngabo-core: ngabo-web-runtime lacks roles/run.invoker binding",
+            failures,
+        )
 
-    # Access boundaries via IAM policy
-    core_iam = _service_iam_members("ngabo-core")
-    web_iam = _service_iam_members("ngabo-web")
-    _check(
-        not any("allUsers" in m or "allAuthenticatedUsers" in m for m in core_iam),
-        f"ngabo-core: unexpected public IAM members {core_iam}",
-        failures,
-    )
-    _check(
-        any("allUsers" in m for m in web_iam),
-        f"ngabo-web: missing public allUsers invoker binding (got {web_iam})",
-        failures,
-    )
-    invoker = run_gcloud(
-        [
-            "run",
-            "services",
-            "get-iam-policy",
-            "ngabo-core",
-            "--region",
-            PRIMARY_REGION,
-            "--format=json",
-        ],
-        check=False,
-    )
-    web_invoker_ok = False
-    if invoker.returncode == 0:
-        try:
-            policy = json.loads(invoker.stdout)
-            for binding in policy.get("bindings", []):
-                if (
-                    binding.get("role") == "roles/run.invoker"
-                    and f"serviceAccount:{WEB_RUNTIME_SA}"
-                    in binding.get("members", [])
-                ):
-                    web_invoker_ok = True
-        except json.JSONDecodeError:
-            web_invoker_ok = False
-    _check(
-        web_invoker_ok,
-        "ngabo-core: ngabo-web-runtime lacks roles/run.invoker binding",
-        failures,
-    )
-
-    # Web CORE_API_URL must equal the real core status.url
-    core_url = resolve_core_url() if describe_service("ngabo-core") is not None else ""
-    web_env = _service_env("ngabo-web")
-    if core_url:
+        core_url = resolve_core_url()
+        web_env = _service_env_from_live(live_by_name["ngabo-web"])
         _check(
             web_env.get(CORE_URL_ENV) == core_url,
             f"ngabo-web: CORE_API_URL {web_env.get(CORE_URL_ENV)} != actual "
             f"core status.url {core_url}",
             failures,
         )
-    else:
-        failures.append("ngabo-core: cannot resolve status.url for URL parity check")
 
-    # Injected runtime digest metadata on core
-    core_env = _service_env("ngabo-core")
-    _check(
-        core_env.get(IMAGE_DIGEST_ENV) == core_digest,
-        f"ngabo-core: {IMAGE_DIGEST_ENV} "
-        f"{core_env.get(IMAGE_DIGEST_ENV)} != {core_digest}",
-        failures,
-    )
+        core_env = _service_env_from_live(live_by_name["ngabo-core"])
+        _check(
+            core_env.get(IMAGE_DIGEST_ENV) == core_digest,
+            f"ngabo-core: {IMAGE_DIGEST_ENV} "
+            f"{core_env.get(IMAGE_DIGEST_ENV)} != {core_digest}",
+            failures,
+        )
 
     for failure in failures:
         print(f"FAIL {failure}")
@@ -567,7 +548,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         desired_services(args.core_digest, args.web_digest)
-    except ValueError as exc:
+    except (TypeError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
