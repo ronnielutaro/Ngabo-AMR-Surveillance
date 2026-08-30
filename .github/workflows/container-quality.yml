@@ -91,7 +91,7 @@ jobs:
           user="$(docker inspect --format '{{.Config.User}}' "$image")"
           echo "runtime user: ${user}"
           [[ "${user}" == "ngabo" ]]
-          # Issue #90: the core now serves the minimal stdlib HTTP adapter
+          # Issue #90: the core now serves the FastAPI HTTP adapter
           # (typed /health /ready /version) on $PORT (8080) for Cloud Run.
           ports="$(docker inspect --format '{{json .Config.ExposedPorts}}' "$image")"
           echo "exposed ports: ${ports}"
@@ -102,7 +102,7 @@ jobs:
             if curl -fsS http://127.0.0.1:18081/health >/dev/null 2>&1; then break; fi
             sleep 1
           done
-          curl -fsS http://127.0.0.1:18081/health | grep -q '"status": "ok"'
+          curl -fsS http://127.0.0.1:18081/health | grep -qE '"status"\s*:\s*"ok"'
           docker stop "${cid}" >/dev/null
 
       - name: Verify web image (HTTP smoke + non-root + metadata)
