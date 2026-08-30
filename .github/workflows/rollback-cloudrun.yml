@@ -25,6 +25,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
   id-token: write
 
 concurrency:
@@ -82,6 +83,18 @@ jobs:
           done
           echo "core_digest=${{ inputs.core_digest }}" | tee -a "$GITHUB_ENV"
           echo "web_digest=${{ inputs.web_digest }}" | tee -a "$GITHUB_ENV"
+
+      - name: Verify rollback inputs against known-good delivery evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_id="$(gh run list --workflow delivery-develop.yml --json databaseId,conclusion --jq '[.[] | select(.conclusion == "success") | .databaseId][0]')"
+          if [[ -z "${run_id}" ]]; then
+            echo "::error::No successful Delivery Develop evidence; refusing to roll back to unverified digests."
+            exit 1
+          fi
+          gh run download "${run_id}" --repo "${GITHUB_REPOSITORY}" --name "delivery-evidence-${run_id}" --dir delivery-evidence --force
+          python3 infra/github/delivery.py evidence-check --record delivery-evidence/delivery-evidence.json --core-digest "${core_digest}" --web-digest "${web_digest}"
 
       - name: Deploy exact previous-known-good digest(s) — NO rebuild
         shell: bash

@@ -32,6 +32,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
   id-token: write
 
 concurrency:
@@ -114,6 +115,18 @@ jobs:
             fi
             echo "ngabo-${svc}: supplied ${digest} == tested ${registry_digest}"
           done
+
+      - name: Verify supplied digest was successfully delivered and smoke-passed
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_id="$(gh run list --workflow delivery-develop.yml --commit "${commit_sha}" --json databaseId,conclusion --jq '[.[] | select(.conclusion == "success") | .databaseId][0]')"
+          if [[ -z "${run_id}" ]]; then
+            echo "::error::No successful Delivery Develop run for commit ${commit_sha}; refusing to promote untested digests."
+            exit 1
+          fi
+          gh run download "${run_id}" --repo "${GITHUB_REPOSITORY}" --name "delivery-evidence-${run_id}" --dir delivery-evidence --force
+          python3 infra/github/delivery.py evidence-check --record delivery-evidence/delivery-evidence.json --core-digest "${core_digest}" --web-digest "${web_digest}"
 
       - name: Deploy exact tested digest(s) — NO rebuild
         shell: bash

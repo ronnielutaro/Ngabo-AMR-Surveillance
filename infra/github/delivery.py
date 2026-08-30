@@ -168,6 +168,24 @@ def previous_known_good(evidence: dict[str, Any], service: str) -> str | None:
     return str(digest) if digest and validate_digest(str(digest)) else None
 
 
+def evidence_check(
+    record: dict[str, Any], core_digest: str, web_digest: str
+) -> None:
+    """Fail closed unless the record is a matching, smoke-passing delivery."""
+    if record.get("smoke_result") != "pass":
+        raise DeliveryError(
+            f"evidence smoke_result is {record.get('smoke_result')!r}, not 'pass'"
+        )
+    if record.get("core_digest") != core_digest:
+        raise DeliveryError(
+            f"evidence core digest {record.get('core_digest')} != {core_digest}"
+        )
+    if record.get("web_digest") != web_digest:
+        raise DeliveryError(
+            f"evidence web digest {record.get('web_digest')} != {web_digest}"
+        )
+
+
 def evidence_from_env() -> dict[str, Any]:
     """Build a delivery record from CI environment variables (no heredocs)."""
     record: dict[str, Any] = {
@@ -209,6 +227,13 @@ def main(argv: list[str] | None = None) -> int:
     evidence_env = sub.add_parser("evidence-env", help="write evidence from CI env")
     evidence_env.add_argument("--output", required=True)
 
+    evidence_check_parser = sub.add_parser(
+        "evidence-check", help="verify a record's digests and smoke result"
+    )
+    evidence_check_parser.add_argument("--record", required=True, help="evidence JSON")
+    evidence_check_parser.add_argument("--core-digest", required=True)
+    evidence_check_parser.add_argument("--web-digest", required=True)
+
     args = parser.parse_args(argv)
     if args.command == "affected":
         paths = [
@@ -233,6 +258,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "evidence-env":
         write_evidence(evidence_from_env(), args.output)
         print(f"WROTE {args.output}")
+        return 0
+    if args.command == "evidence-check":
+        record = load_evidence(args.record)
+        evidence_check(record, args.core_digest, args.web_digest)
+        print("EVIDENCE_OK: digests and smoke result match the successful delivery.")
         return 0
     return 2
 

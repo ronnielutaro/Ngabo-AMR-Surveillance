@@ -112,6 +112,27 @@ class DeliveryHelpersTest(unittest.TestCase):
         self.assertIsNone(delivery.previous_known_good({}, "core"))
         self.assertIsNone(delivery.previous_known_good(evidence, "missing"))
 
+    def test_evidence_check_accepts_matching_successful_record(self) -> None:
+        record = {
+            "environment": "dev",
+            "commit_sha": COMMIT,
+            "workflow_run_id": "7",
+            "actor": "ronnielutaro",
+            "timestamp": "2026-08-30T14:00:00Z",
+            "core_digest": CORE_DIGEST,
+            "web_digest": WEB_DIGEST,
+            "smoke_result": "pass",
+        }
+        out = Path("delivery-test-evidence.json")
+        try:
+            delivery.write_evidence(record, str(out))
+            loaded = delivery.load_evidence(str(out))
+        finally:
+            out.unlink(missing_ok=True)
+        delivery.evidence_check(loaded, CORE_DIGEST, WEB_DIGEST)
+        with self.assertRaises(delivery.DeliveryError):
+            delivery.evidence_check(loaded, "sha256:" + "e" * 64, WEB_DIGEST)
+
 
 if __name__ == "__main__":
     unittest.main()
