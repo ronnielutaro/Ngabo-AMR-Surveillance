@@ -54,30 +54,64 @@ class EvidenceValidationError(Exception):
 def _scan_summary(path: str | None) -> dict[str, Any]:
     """Summarize a Trivy table output file into severity counts.
 
-    Trivy's table format emits one ``Total: N (UNKNOWN: a, LOW: b, MEDIUM: c,
-    HIGH: d, CRITICAL: e)`` line per target; per-target totals are summed.
-    Missing files yield an explicit unknown rather than a fabricated zero.
+    Two Trivy table dialects are supported:
+
+    - Legacy: one ``Total: N (UNKNOWN: a, LOW: b, MEDIUM: c, HIGH: d,
+      CRITICAL: e)`` line per target; per-target totals are summed.
+    - Report Summary (newer Trivy): a table with one row per target whose
+      third cell holds the target's total vulnerability count (the scan gate
+      runs with ``severity: HIGH,CRITICAL`` and ``.trivyignore`` exceptions,
+      so counts reflect findings remaining after both).
+
+    Missing/unparsable files yield an explicit unknown rather than a
+    fabricated zero, and the note names the dialect that was parsed so the
+    numbers cannot be misread.
     """
     if not path or not Path(path).is_file():
         return {"source": path, "severity_counts": {}, "note": "scan file missing"}
+    text = Path(path).read_text(encoding="utf-8", errors="replace")
     totals = re.findall(
         r"Total:\s*(\d+)\s*\((?:UNKNOWN:\s*(\d+))?(?:,?\s*LOW:\s*(\d+))?"
         r"(?:,?\s*MEDIUM:\s*(\d+))?(?:,?\s*HIGH:\s*(\d+))?(?:,?\s*CRITICAL:\s*(\d+))?\)",
-        Path(path).read_text(encoding="utf-8", errors="replace"),
+        text,
     )
-    counts: dict[str, int] = {}
-    total = 0
-    for row in totals:
-        overall = int(row[0])
-        total += overall
-        for name, value in zip(
-            ("UNKNOWN", "LOW", "MEDIUM", "HIGH", "CRITICAL"), row[1:], strict=False
-        ):
-            if value:
-                counts[name] = counts.get(name, 0) + int(value)
-    if not totals:
-        return {"source": path, "severity_counts": {}, "note": "no Total lines parsed"}
-    return {"source": path, "severity_counts": counts, "total_findings": total}
+    if totals:
+        counts: dict[str, int] = {}
+        total = 0
+        for row in totals:
+            overall = int(row[0])
+            total += overall
+            for name, value in zip(
+                ("UNKNOWN", "LOW", "MEDIUM", "HIGH", "CRITICAL"), row[1:], strict=False
+            ):
+                if value:
+                    counts[name] = counts.get(name, 0) + int(value)
+        return {"source": path, "severity_counts": counts, "total_findings": total}
+
+    # Report Summary table: rows are "│ target │ type │ count │ - │". The
+    # header ("Vulnerabilities") and wrapped continuation rows do not parse
+    # as digits and are skipped; target names never contain the box-drawing
+    # separator.
+    report_total = 0
+    report_targets = 0
+    for line in text.splitlines():
+        cells = [cell.strip() for cell in line.split("│")]
+        if len(cells) == 6 and cells[3].isdigit():
+            report_total += int(cells[3])
+            report_targets += 1
+    if report_targets:
+        return {
+            "source": path,
+            "severity_counts": {},
+            "total_findings": report_total,
+            "targets_scanned": report_targets,
+            "note": (
+                "Trivy Report Summary table; counts reflect the HIGH,CRITICAL "
+                "severity gate after .trivyignore exceptions; this format "
+                "carries no per-severity breakdown"
+            ),
+        }
+    return {"source": path, "severity_counts": {}, "note": "no Total lines parsed"}
 
 
 @dataclass(frozen=True)
