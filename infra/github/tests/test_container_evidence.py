@@ -104,6 +104,46 @@ class EvidenceContractTests(unittest.TestCase):
         finally:
             os.remove("scan-sample.txt")
 
+    def test_scan_summary_report_summary_table_sums_target_counts(self) -> None:
+        # Newer Trivy emits a Report Summary table (per-target counts, no
+        # "Total: N (…)" lines); the parser must sum the count cells.
+        with open("scan-sample.txt", "w", encoding="utf-8") as handle:
+            handle.write(
+                "Report Summary\n\n"
+                "┌────────────┐\n"
+                "│      Target      │  Type  │ Vulnerabilities │ Secrets │\n"
+                "│ /usr/bin/coreutils │ debian │        2        │    -    │\n"
+                "│ app/node_modules/foo/package.json │ node-pkg │        1        │    -    │\n"
+                "└────────────┘\n"
+                "Legend:\n"
+                "- '-': Not scanned\n"
+                "- '0': Clean (no security findings detected)\n"
+            )
+        try:
+            summary = container_evidence._scan_summary("scan-sample.txt")
+            self.assertEqual(summary["total_findings"], 3)
+            self.assertEqual(summary["targets_scanned"], 2)
+            self.assertEqual(summary["severity_counts"], {})
+            self.assertIn("Report Summary", summary["note"])
+        finally:
+            os.remove("scan-sample.txt")
+
+    def test_scan_summary_report_summary_table_zero_findings_is_zero(self) -> None:
+        # A clean gate result (all targets 0 after .trivyignore) must report
+        # an honest zero, not "no Total lines parsed".
+        with open("scan-sample.txt", "w", encoding="utf-8") as handle:
+            handle.write(
+                "Report Summary\n\n"
+                "│ /usr/bin/coreutils │ debian │        0        │    -    │\n"
+                "│ app/node_modules/foo/package.json │ node-pkg │        0        │    -    │\n"
+            )
+        try:
+            summary = container_evidence._scan_summary("scan-sample.txt")
+            self.assertEqual(summary["total_findings"], 0)
+            self.assertEqual(summary["targets_scanned"], 2)
+        finally:
+            os.remove("scan-sample.txt")
+
     def test_scan_summary_unparsable_file_is_unknown_not_zero(self) -> None:
         with open("scan-sample.txt", "w", encoding="utf-8") as handle:
             handle.write("CRITICAL: 2\nHIGH: 3\n")
