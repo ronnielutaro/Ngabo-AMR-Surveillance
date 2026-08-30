@@ -50,7 +50,17 @@ Pinned `aquasecurity/trivy-action` (v0.36.0) in both the PR lane and the publish
 
 ## Reproducibility
 
-Both Dockerfiles build from locked inputs (frozen lockfiles, pinned uv/pnpm, digest-pinned base images) and are built with `--provenance=false` plus `BUILDKIT_SOURCE_DATE_EPOCH` derived from the source commit timestamp, yielding **byte-identical image digests** for the same commit (verified locally for both images). The provenance/attestation index is intentionally disabled because its embedded build timestamps would break digest determinism; the machine-readable evidence document binds commit → workflow → digest instead.
+Both Dockerfiles build from locked inputs (frozen lockfiles, pinned uv/pnpm, digest-pinned base images) with `--provenance=false` and `SOURCE_DATE_EPOCH` derived from the source commit timestamp.
+
+Three mechanisms make the published digest deterministic for the same commit:
+
+1. **Declared epoch.** Each Dockerfile declares `ARG SOURCE_DATE_EPOCH` and exports it as `ENV` so BuildKit's frontend consumes it for OCI `created`/`history` metadata and `uv build` honors it for wheel timestamps.
+2. **Layer mtime normalization.** `RUN` steps `touch -d @$SOURCE_DATE_EPOCH` the files and directories written by pip/uv/useradd (excluding the read-only bind mounts `/etc/hosts`, `/etc/resolv.conf`).
+3. **`rewrite-timestamp=true` image export.** The publish workflow builds with the BuildKit ≥ 0.13 `rewrite-timestamp` docker exporter, which rewrites every file/directory timestamp in the exported artifact to the epoch — covering the parent directories that `COPY` stamps with the build time (open [moby/buildkit#6348](https://github.com/moby/buildkit/issues/6348)) — and pushes the exact tested object (`docker push` of the loaded rewrite-normalized image; no second build).
+
+**Verified:** two consecutive CI publish runs of the same develop SHA produced the **identical ngabo-core registry digest** (byte-reproducible). Two independent no-cache local builds of the same commit produce byte-identical artifacts for ngabo-core.
+
+**Recorded nondeterminism (documented practical limit, per Issue #89 acceptance criterion #4):** the ngabo-web image is **not** byte-identical across fresh rebuilds because Next.js 16 embeds per-build random preview keys (`previewModeId`/`previewModeSigningKey`/`previewModeEncryptionKey` in `prerender-manifest.json` and `server-reference-manifest.{js,json}`). Next disables its preview-key cache inside containers (is-docker detection), so every fresh build of the same commit embeds different values; this is framework behavior, not a lockfile or base-image drift, and it does not affect runtime behavior or scan results. Each published web artifact remains immutable and evidence-bound (its digest is recorded in the publish evidence document); only the byte-identity *across rebuilds* is not claimed. Cross-machine byte identity is likewise not claimed where BuildKit versions differ (layer tar serialization of directory entries). The provenance/attestation index is intentionally disabled because its embedded build timestamps would break digest determinism; the machine-readable evidence document binds commit → workflow → digest instead.
 
 ## Secrets hygiene
 
