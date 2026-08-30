@@ -270,15 +270,9 @@ jobs:
             exit 1
           fi
           if [[ "${affected}" == *'"core"'* ]]; then
-            core_ok=""
-            for _ in $(seq 1 15); do
-              if [[ "$(gcloud run services describe ngabo-core --region us-central1 --format='value(status.conditions[?(@.type==\"Ready\")].status)')" == "True" ]]; then
-                core_ok=1; break
-              fi
-              sleep 2
-            done
-            if [[ -z "${core_ok}" ]]; then
-              echo "SMOKE_FAILED: core not ready; restoring previous known-good."
+            live_core_image="$(gcloud run services describe ngabo-core --region us-central1 --format='value(spec.template.spec.containers[0].image)')"
+            if [[ "${live_core_image}" != *"${CORE_DIGEST}"* ]]; then
+              echo "SMOKE_FAILED: core image ${live_core_image} != ${CORE_DIGEST}; restoring previous known-good."
               cd services/core
               uv run python ../../infra/gcp/cloudrun.py apply --core-digest "${PREV_CORE_DIGEST}" --web-digest "${PREV_WEB_DIGEST}" --services core,web
               exit 1

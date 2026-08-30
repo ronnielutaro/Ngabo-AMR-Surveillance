@@ -120,10 +120,8 @@ jobs:
             sleep 2
           done
           [[ -n "${ready}" ]]
-          for _ in $(seq 1 15); do
-            if [[ "$(gcloud run services describe ngabo-core --region us-central1 --format='value(status.conditions[?(@.type==\"Ready\")].status)')" == "True" ]]; then break; fi
-            sleep 2
-          done
+          live_core_image="$(gcloud run services describe ngabo-core --region us-central1 --format='value(spec.template.spec.containers[0].image)')"
+          [[ "${live_core_image}" == *"${core_digest}"* ]]
           curl -fsS "${web_url}/" | grep -qi "IN DEVELOPMENT"
           curl -fsS "${web_url}/" | grep -q "${core_digest}"
           echo "rollback smoke PASS"
