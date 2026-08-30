@@ -1,0 +1,102 @@
+{
+  "certification_schema": "ngabo-foundation-1.0",
+  "certified_at": "2026-08-30T17:00:00Z",
+  "source_commit": "a10545ccdfbec6a5decb5f7cb5717ec6681ca80a",
+  "repository": "ronnielutaro/Ngabo-AMR-Surveillance",
+  "ci": {
+    "required_gates": [
+      "CI Policy",
+      "Core Quality",
+      "Web Quality",
+      "Infrastructure Regression",
+      "Container Build + Test + Scan",
+      "PR Quality Gate",
+      "CI Control Plane",
+      "Dependency Review",
+      "Dependency Security",
+      "GitGuardian Security Checks"
+    ],
+    "governance": "Ruleset 'Ngabo Required PR Quality' requires PR Quality Gate + CI Control Plane with strict up-to-date and non-fast-forward merge.",
+    "negative_evidence": "Branch ruleset blocks PRs that fail required gates; untrusted PR/fork code cannot obtain trusted GCP credentials (WIF develop-ref + environment conditional)."
+  },
+  "infrastructure": {
+    "project": "ngabo-amr-2026",
+    "region": "us-central1",
+    "validation": "PASS (canonical cloudrun.py validate PASS on CI; direct live state matches contract)",
+    "reproducible": true,
+    "converged": true,
+    "teardown_reproducible": true
+  },
+  "identity": {
+    "wif_keyless": true,
+    "least_privilege": true,
+    "repo_restriction": "1333677446",
+    "ref_restriction": "refs/heads/develop",
+    "environment_restriction": ["dev", "release", "judge"],
+    "deployer_roles": ["roles/run.developer"],
+    "custom_role": "projects/ngabo-amr-2026/roles/ngaboRunServiceIam",
+    "custom_role_permissions": ["run.services.setIamPolicy"],
+    "runtime_identities_separated": true,
+    "long_lived_keys_found": false
+  },
+  "artifacts": {
+    "core": {
+      "digest": "sha256:900e724757848475c004f8de4de31abfe9d2a7a17622b5b977019d4734159249",
+      "scan": "PASS",
+      "repository": "us-central1-docker.pkg.dev/ngabo-amr-2026/ngabo-artifacts/ngabo-core"
+    },
+    "web": {
+      "digest": "sha256:fc891bf8846fc718f1dce3adc0485c7340100cf3dd2c01ec0a11d783fae346a4",
+      "scan": "PASS",
+      "repository": "us-central1-docker.pkg.dev/ngabo-amr-2026/ngabo-artifacts/ngabo-web"
+    }
+  },
+  "dev_delivery": {
+    "representative_commit": "67c86aa18df626515d2fc0c6b85140c16a50b88e",
+    "delivery_run": "33320128278",
+    "core_revision": "ngabo-core-00009-9jp",
+    "web_revision": "ngabo-web-00009-zl7",
+    "current_core_revision": "ngabo-core-00014-986",
+    "current_web_revision": "ngabo-web-00014-2gk",
+    "smoke": "PASS",
+    "digest_parity": true
+  },
+  "browser": {
+    "desktop": "PASS",
+    "mobile": "PASS",
+    "synthetic_boundary": "PASS"
+  },
+  "failure_recovery": {
+    "controlled_failure": "PASS",
+    "broken_revision_promoted": false,
+    "rollback_without_rebuild": true
+  },
+  "promotion": {
+    "protected": true,
+    "no_rebuild": true,
+    "digest_parity": true,
+    "evidence_run": "33323268745",
+    "environment": "release"
+  },
+  "cost_bounds": {
+    "min_instances": 0,
+    "max_instances": 2,
+    "cpu": "1",
+    "memory": "512Mi",
+    "timeout_seconds": 60,
+    "concurrency": 80,
+    "budget_linked": true,
+    "budget_thresholds": [0.5, 0.9, 0.9667, 1.0]
+  },
+  "freeze_policy": {
+    "guard": "NGABO_SUBMISSION_FREEZE",
+    "frozen": false,
+    "auto_delivery_blocked_when_frozen": true
+  },
+  "residual_risks": [
+    "Standalone rollback target is the rolling recorded previous_known_good; a clean standalone rollback needs a quiet window from newer deliveries (the provenance gate refuses stale targets).",
+    "Final submission freeze variable NGABO_SUBMISSION_FREEZE is not yet activated; set it true at freeze to block automatic delivery to the judged services.",
+    "This certification reflects the dev/release cloud foundation, not Taskmaster hero completeness; it does NOT certify ADK, Gemini, AMR reasoning, proof-carrying autonomy, autonomous external effects, clinical correctness, or submission readiness.",
+    "On a Windows workstation cloudrun.py cannot spawn gcloud (subprocess shell=False); the canonical Cloud Run validator passes on the Linux CI runner and the live state was verified directly."
+  ]
+}
