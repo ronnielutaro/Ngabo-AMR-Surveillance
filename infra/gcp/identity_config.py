@@ -119,8 +119,38 @@ DEFERRED_SERVICE_ACCOUNTS: dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 # Roles permitted for ngabo-deployer
-# Cloud Run Developer authority is explicitly DEFERRED to #90 (Cloud Run Deployment)
-DEPLOYER_PROJECT_ROLES: tuple[str, ...] = ()
+# Issue #90: Cloud Run Developer authority enables the trusted deploy
+# workflow (gcloud run services deploy) for the two skeleton services.
+# Cloud Run deploy authority is project-scoped: roles/run.developer has no
+# service-level (per-resource) equivalent in the Cloud Run IAM surface
+# (per-service bindings exist only for run.invoker-style caller roles), so
+# this is the deployer's single project-level role. The exposure is bounded
+# by: (1) exact-match allow-list enforcement in identity.py validate (any
+# other project role fails), (2) the WIF pool attribute condition restricting
+# keyless tokens to the develop ref, (3) no runtime SA shares this role, and
+# (4) deployment inputs are restricted to immutable sha256 digests by the
+# deploy workflow.
+DEPLOYER_PROJECT_ROLES: tuple[str, ...] = ("roles/run.developer",)
+
+# Issue #90: --allow-unauthenticated on the web service performs a service
+# IAM policy update, which roles/run.developer lacks (it covers deploy-time
+# updates, not run.services.setIamPolicy). Grant the deployer ONLY that
+# single permission through a scoped custom role rather than escalating to
+# roles/run.admin (which would add service deletion, IAM-at-project, and
+# other broad authorities). Custom role lifecycle (create/update/delete) is
+# managed by the identity tooling alongside the WIF grant.
+CUSTOM_ROLES: tuple[dict[str, object], ...] = (
+    {
+        "role_id": "ngaboRunServiceIam",
+        "title": "Ngabo Cloud Run Service IAM Policy Editor",
+        "description": (
+            "Single permission (run.services.setIamPolicy) needed to make the "
+            "ngabo-web skeleton publicly reachable; least-privilege custom role."
+        ),
+        "permissions": ("run.services.setIamPolicy",),
+        "grant_to": (DEPLOYER_SA_NAME,),
+    },
+)
 # Issue #89: publishing requires repository-scoped write authority on
 # ngabo-artifacts only. Writer subsumes the former #87-era reader authority,
 # so the obsolete reader role is replaced rather than accumulated.

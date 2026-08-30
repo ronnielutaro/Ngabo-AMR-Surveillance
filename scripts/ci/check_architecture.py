@@ -18,6 +18,12 @@ INNER_LAYER_FORBIDDEN: dict[str, tuple[str, ...]] = {
     "interfaces": ("ngabo.infrastructure", "ngabo.bootstrap"),
 }
 
+# Framework/cloud/network SDKs are forbidden in domain and application only.
+# The interfaces layer is the sanctioned outer delivery boundary: the Issue
+# #90 HTTP adapter hosts FastAPI there (docs/SYSTEM_DESIGN.md), so vendor
+# imports are allowed in interfaces.
+VENDOR_FORBIDDEN_LAYERS = ("domain", "application")
+
 VENDOR_PREFIXES = (
     "fastapi", "google", "vertexai", "firebase_admin", "requests", "httpx",
 )
@@ -108,7 +114,7 @@ def check_tree(root: Path) -> list[Violation]:
                             f"{layer} must not depend on an outer Ngabo layer",
                         )
                     )
-            elif imported.startswith(VENDOR_PREFIXES):
+            elif layer in VENDOR_FORBIDDEN_LAYERS and imported.startswith(VENDOR_PREFIXES):
                 key = (str(path), line, "vendor")
                 if key not in seen_violations:
                     seen_violations.add(key)

@@ -163,3 +163,35 @@ def test_nested_module_relative_inward_import_is_allowed() -> None:
     package = _module_package(PACKAGE_ROOT / "application" / "use_cases" / "foo.py")
     imported = _collected_imports("from ...domain.models import Isolate", package)
     assert _forbidden(imported, _APPLICATION_OUTER_LAYERS) == set()
+
+
+def test_fastapi_allowed_in_interfaces_layer() -> None:
+    """Issue #90: the interfaces HTTP adapter is the sanctioned FastAPI
+    boundary. The vendor-SDK prohibition applies to domain and application
+    only (VENDOR_FORBIDDEN_LAYERS), so a FastAPI import under interfaces
+    must not be reported by the architecture checker."""
+    import importlib.util
+    import sys as _sys
+
+    checker_path = Path(__file__).resolve().parents[3] / "scripts" / "ci" / "check_architecture.py"
+    spec = importlib.util.spec_from_file_location("check_architecture", checker_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    _sys.modules["check_architecture"] = module
+    try:
+        spec.loader.exec_module(module)
+        assert "interfaces" not in module.VENDOR_FORBIDDEN_LAYERS
+        assert "domain" in module.VENDOR_FORBIDDEN_LAYERS
+        assert "application" in module.VENDOR_FORBIDDEN_LAYERS
+    finally:
+        _sys.modules.pop("check_architecture", None)
+
+
+def test_fastapi_forbidden_in_domain() -> None:
+    imported = _collected_imports("from fastapi import FastAPI", "ngabo.domain")
+    assert _forbidden(imported, _DOMAIN_OUTER_LAYERS) == {"fastapi"}
+
+
+def test_fastapi_forbidden_in_application() -> None:
+    imported = _collected_imports("from fastapi import FastAPI", "ngabo.application")
+    assert _forbidden(imported, _APPLICATION_OUTER_LAYERS) == {"fastapi"}

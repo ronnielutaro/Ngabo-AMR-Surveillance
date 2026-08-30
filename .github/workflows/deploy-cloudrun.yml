@@ -1,0 +1,115 @@
+name: Deploy Cloud Run Skeleton
+
+# Issue #90 trusted deployment workflow.
+#
+# Trust boundary: runs ONLY from the develop ref, in the `dev` GitHub
+# environment, authenticating keylessly via Workload Identity Federation
+# as ngabo-deployer (which holds roles/run.developer plus the
+# ngaboRunServiceIam custom role for run.services.setIamPolicy). It never
+# runs from arbitrary PR branches and never uses stored credentials or
+# JSON service-account keys.
+#
+# Deployment identity contract: inputs accept ONLY immutable digests
+# (sha256:<64 hex>); mutable tags, "latest", or bare repository references
+# are rejected before any gcloud call.
+#
+# Deployment semantics live in ONE place: infra/gcp/cloudrun.py (canonical
+# apply sequence: deploy core → resolve real status.url → grant web-runtime
+# run.invoker on core → deploy web with the real CORE_API_URL). This
+# workflow owns only the trusted trigger, authentication, input validation,
+# and evidence recording.
+
+on:
+  workflow_dispatch:
+    inputs:
+      core_digest:
+        description: "ngabo-core immutable digest (sha256:<64 hex>)"
+        required: true
+        type: string
+      web_digest:
+        description: "ngabo-web immutable digest (sha256:<64 hex>)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-cloudrun-develop
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy Immutable Cloud Run Skeleton
+    runs-on: ubuntu-24.04
+    environment: dev
+    timeout-minutes: 20
+    if: github.ref == 'refs/heads/develop'
+    steps:
+      - name: Checkout the exact dispatch commit
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Validate immutable digest inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          for digest in "${{ inputs.core_digest }}" "${{ inputs.web_digest }}"; do
+            if [[ ! "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "::error::Rejected non-immutable digest: '${digest}'"
+              echo "Deployment accepts ONLY sha256:<64 hex> digests."
+              exit 1
+            fi
+          done
+          echo "core_digest=${{ inputs.core_digest }}" | tee -a "$GITHUB_ENV"
+          echo "web_digest=${{ inputs.web_digest }}" | tee -a "$GITHUB_ENV"
+
+      - name: Authenticate to Google Cloud via WIF
+        # google-github-actions/auth v3.0.0
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        with:
+          workload_identity_provider: projects/907313480935/locations/global/workloadIdentityPools/ngabo-github/providers/ngabo-repo
+          service_account: ngabo-deployer@ngabo-amr-2026.iam.gserviceaccount.com
+          token_format: access_token
+
+      - name: Set up gcloud
+        # google-github-actions/setup-gcloud v3.0.1
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
+        with:
+          project_id: ngabo-amr-2026
+
+      - name: Canonical Cloud Run deployment (infra/gcp/cloudrun.py)
+        # Single source of deployment truth: core deploy → status.url
+        # resolution → web-runtime invoker grant → web deploy with the real
+        # core URL. The workflow does not duplicate any gcloud run flags.
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd services/core
+          uv sync --frozen
+          uv run python ../../infra/gcp/cloudrun.py apply \
+            --core-digest "${core_digest}" \
+            --web-digest "${web_digest}"
+
+      - name: Validate deployed state against #90 contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd services/core
+          uv run python ../../infra/gcp/cloudrun.py validate \
+            --core-digest "${core_digest}" \
+            --web-digest "${web_digest}"
+
+      - name: Record deployed revisions (redacted)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for service in ngabo-core ngabo-web; do
+            echo "== ${service} =="
+            gcloud run services describe "${service}" --region us-central1 \
+              --format='value(spec.template.metadata.name, status.latestReadyRevisionName, spec.template.spec.containers[0].image)'
+          done

@@ -26,6 +26,7 @@ from infra.gcp.identity_config import (  # noqa: E402
     ACTIONS_CHECKOUT_PIN,
     CORE_RUNTIME_PROJECT_ROLES,
     CORE_RUNTIME_SA_NAME,
+    CUSTOM_ROLES,
     DEFERRED_SERVICE_ACCOUNTS,
     DEPLOYER_ACT_AS_TARGETS,
     DEPLOYER_ARTIFACT_REGISTRY_ROLES,
@@ -53,6 +54,37 @@ from infra.gcp.identity_config import (  # noqa: E402
     WIF_PROVIDER_ID,
     GcpIdentityConfig,
 )
+
+
+def custom_role_binding_name(project_id: str, role_id: str) -> str:
+    """Canonical IAM resource name for a project-level custom role.
+
+    Official GCP IAM semantics (custom role resource names): a project-level
+    custom role used in an IAM policy binding is identified by its full
+    resource name ``projects/{PROJECT_ID}/roles/{ROLE_ID}``, whereas
+    predefined roles use the short ``roles/{ROLE}`` form.
+    """
+    return f"projects/{project_id}/roles/{role_id}"
+
+
+def declared_custom_role_names(project_id: str) -> set[str]:
+    """Return the governed set of project-level custom-role resource names."""
+    return {
+        custom_role_binding_name(project_id, str(spec["role_id"]))
+        for spec in CUSTOM_ROLES
+    }
+
+
+def binding_members(bindings: list[dict[str, Any]], role: str) -> set[str]:
+    """Flatten all string members bound to ``role`` across project IAM bindings."""
+    members: set[str] = set()
+    for binding in bindings:
+        if binding.get("role") != role:
+            continue
+        raw_members = binding.get("members", [])
+        if isinstance(raw_members, list):
+            members.update(member for member in raw_members if isinstance(member, str))
+    return members
 
 
 class GcpIdentityInspector:
@@ -239,6 +271,55 @@ class GcpIdentityInspector:
         except json.JSONDecodeError as err:
             raise RuntimeError(
                 f"INSPECTION_FAILED: Malformed JSON for service account '{sa_email}': {err}"
+            ) from err
+
+    def custom_role_exists(self, role_id: str, project_id: str) -> bool:
+        """Check whether a custom IAM role exists in the project."""
+        code, _, stderr = run_gcloud_command(
+            [
+                "iam",
+                "roles",
+                "describe",
+                f"projects/{project_id}/roles/{role_id}",
+                "--format=json",
+            ],
+            check=False,
+        )
+        if code == 0:
+            return True
+        if "NOT_FOUND" in stderr or "404" in stderr or "does not exist" in stderr.lower():
+            return False
+        raise RuntimeError(
+            f"INSPECTION_FAILED: Failed to describe custom role '{role_id}': {stderr.strip()}"
+        )
+
+    def get_custom_role_permissions(self, role_id: str, project_id: str) -> list[str]:
+        """Return the exact permission list of an existing custom role."""
+        code, stdout, stderr = run_gcloud_command(
+            [
+                "iam",
+                "roles",
+                "describe",
+                f"projects/{project_id}/roles/{role_id}",
+                "--format=json",
+            ],
+            check=False,
+        )
+        if code != 0:
+            raise RuntimeError(
+                f"INSPECTION_FAILED: Failed to describe custom role '{role_id}': {stderr.strip()}"
+            )
+        try:
+            data = json.loads(stdout)
+            permissions = data.get("includedPermissions", [])
+            if not isinstance(permissions, list):
+                raise RuntimeError(
+                    f"INSPECTION_FAILED: Unexpected permissions payload for role '{role_id}'"
+                )
+            return permissions
+        except json.JSONDecodeError as err:
+            raise RuntimeError(
+                f"INSPECTION_FAILED: Malformed JSON for custom role '{role_id}': {err}"
             ) from err
 
     def get_artifact_registry_iam_bindings(self, repo_name: str) -> list[dict[str, Any]]:
@@ -458,20 +539,29 @@ class GcpIdentityManager:
                 f"Create Workload Identity Provider '{WIF_PROVIDER_ID}' in pool '{WIF_POOL_ID}'"
             )
 
-        # 4. Project IAM Bindings for ngabo-deployer (Exact Allow-list: DEPLOYER_PROJECT_ROLES = ())
+        # 4. Project IAM Bindings for ngabo-deployer. Predefined project roles
+        # and declared custom roles are governed separately so a legitimate
+        # custom role is never misclassified as stale project-role drift.
         project_bindings = self.inspector.get_project_iam_bindings()
         deployer_email = self.config.service_account_email(DEPLOYER_SA_NAME)
         deployer_member = f"serviceAccount:{deployer_email}"
+        custom_role_names = declared_custom_role_names(self.config.project_id)
 
-        # Current project roles assigned to deployer
         current_deployer_project_roles = [
-            b.get("role", "") for b in project_bindings if deployer_member in b.get("members", [])
+            b.get("role", "")
+            for b in project_bindings
+            if deployer_member in b.get("members", [])
+            and b.get("role", "") not in custom_role_names
         ]
-        # Any role not in allowlist must be revoked
         for role in current_deployer_project_roles:
             if role not in DEPLOYER_PROJECT_ROLES:
                 planned_actions.append(
                     f"Revoke unapproved project role '{role}' from '{deployer_email}'"
+                )
+        for role in DEPLOYER_PROJECT_ROLES:
+            if role not in current_deployer_project_roles:
+                planned_actions.append(
+                    f"Grant '{role}' to '{deployer_email}' on project '{self.config.project_id}'"
                 )
 
         # Check for prohibited basic roles across all 3 service accounts
@@ -509,9 +599,6 @@ class GcpIdentityManager:
                     f"Grant '{role}' to '{deployer_email}' on repository '{ARTIFACT_REGISTRY_REPO}'"
                 )
 
-        # Revoke obsolete repository-scoped Artifact Registry roles no longer in
-        # the allow-list (e.g. the #87-era reader replaced by writer in #89), so
-        # the deployer's effective AR authority exactly matches the contract.
         for binding in ar_bindings:
             role = binding.get("role")
             if (
@@ -525,7 +612,6 @@ class GcpIdentityManager:
                 )
 
         # 6. Service Account User (actAs) Bindings
-        # Deployer must have NO project-level serviceAccountUser
         has_proj_actas = any(
             b.get("role") == "roles/iam.serviceAccountUser"
             and deployer_member in b.get("members", [])
@@ -536,7 +622,6 @@ class GcpIdentityManager:
                 f"CRITICAL: Revoke project-level 'roles/iam.serviceAccountUser' from '{deployer_email}'"  # noqa: E501
             )
 
-        # Deployer must be serviceAccountUser ONLY on approved targets
         for target_sa in DEPLOYER_ACT_AS_TARGETS:
             target_email = self.config.service_account_email(target_sa)
             sa_bindings = self.inspector.get_service_account_iam_bindings(target_email)
@@ -576,6 +661,41 @@ class GcpIdentityManager:
         github_plan = self.github_manager.plan()
         for action in github_plan["planned_actions"]:
             planned_actions.append(f"GitHub: {action}")
+
+        # 9. Custom IAM Roles. The role permission set and the complete project
+        # binding member set are both exact contracts.
+        for role_spec in CUSTOM_ROLES:
+            role_id = str(role_spec["role_id"])
+            full_role = custom_role_binding_name(self.config.project_id, role_id)
+            plan_perms: tuple[str, ...] = tuple(role_spec["permissions"])  # type: ignore[arg-type]
+            role_exists = self.inspector.custom_role_exists(role_id, self.config.project_id)
+            if not role_exists:
+                planned_actions.append(
+                    f"Create custom role '{full_role}' with permissions {plan_perms}"
+                )
+            else:
+                actual_permissions = self.inspector.get_custom_role_permissions(
+                    role_id, self.config.project_id
+                )
+                if set(actual_permissions) != set(plan_perms):
+                    planned_actions.append(
+                        f"Update custom role '{full_role}' permissions to exactly "
+                        f"{role_spec['permissions']}"
+                    )
+
+            expected_members = {
+                f"serviceAccount:{self.config.service_account_email(str(member))}"
+                for member in tuple[str, ...](role_spec["grant_to"])  # type: ignore[arg-type]
+            }
+            actual_members = binding_members(project_bindings, full_role)
+            for member in sorted(expected_members - actual_members):
+                planned_actions.append(
+                    f"Grant custom role '{full_role}' to '{member}'"
+                )
+            for member in sorted(actual_members - expected_members):
+                planned_actions.append(
+                    f"Revoke unexpected custom role member '{member}' from '{full_role}'"
+                )
 
         is_converged = len(planned_actions) == 0
         return {
@@ -669,7 +789,6 @@ class GcpIdentityManager:
             )
             operations.append(f"Created Workload Identity Provider '{WIF_PROVIDER_ID}'")
         else:
-            # Check for mapping, condition, or issuer drift and update in-place
             provider_details = self.inspector.get_wif_provider_details(WIF_POOL_ID, WIF_PROVIDER_ID)
             needs_update = False
             if provider_details:
@@ -714,15 +833,21 @@ class GcpIdentityManager:
                     f"[apply] Workload Identity Provider '{WIF_PROVIDER_ID}' configuration matches contract (idempotent no-op)."  # noqa: E501
                 )
 
-        # 4. Project-level IAM Bindings for ngabo-deployer (Reconcile to exact allow-list)
+        # 4. Project-level IAM Bindings for ngabo-deployer. Preserve declared
+        # custom roles here; their exact permissions/members are reconciled in
+        # step 5b rather than by the predefined-role cleanup.
         deployer_email = self.config.service_account_email(DEPLOYER_SA_NAME)
         deployer_member = f"serviceAccount:{deployer_email}"
         project_bindings = self.inspector.get_project_iam_bindings()
+        custom_role_names = declared_custom_role_names(self.config.project_id)
 
-        # Revoke any project role assigned to deployer that is NOT in DEPLOYER_PROJECT_ROLES
         for b in project_bindings:
             role = b.get("role", "")
-            if deployer_member in b.get("members", []) and role not in DEPLOYER_PROJECT_ROLES:
+            if (
+                deployer_member in b.get("members", [])
+                and role not in DEPLOYER_PROJECT_ROLES
+                and role not in custom_role_names
+            ):
                 self._log(
                     f"[apply] Revoking unapproved project role '{role}' from '{deployer_email}'..."
                 )
@@ -737,6 +862,28 @@ class GcpIdentityManager:
                     ]
                 )
                 operations.append(f"Revoked project role '{role}' from '{deployer_email}'")
+
+        for role in DEPLOYER_PROJECT_ROLES:
+            has_role = any(
+                b.get("role") == role and deployer_member in b.get("members", [])
+                for b in project_bindings
+            )
+            if not has_role:
+                self._log(
+                    f"[apply] Granting '{role}' to '{deployer_email}' on "
+                    f"project '{self.config.project_id}'..."
+                )
+                run_gcloud_command(
+                    [
+                        "projects",
+                        "add-iam-policy-binding",
+                        self.config.project_id,
+                        f"--member={deployer_member}",
+                        f"--role={role}",
+                        "--condition=None",
+                    ]
+                )
+                operations.append(f"Granted '{role}' on project '{self.config.project_id}'")
 
         # 5. Artifact Registry IAM Binding for ngabo-deployer
         ar_bindings = self.inspector.get_artifact_registry_iam_bindings(ARTIFACT_REGISTRY_REPO)
@@ -767,8 +914,6 @@ class GcpIdentityManager:
                     f"[apply] Artifact Registry role '{role}' already granted (idempotent no-op)."
                 )
 
-        # Revoke obsolete repository-scoped Artifact Registry roles no longer in
-        # the allow-list, keeping the deployer's effective authority exact.
         for binding in ar_bindings:
             role = binding.get("role")
             if (
@@ -793,6 +938,91 @@ class GcpIdentityManager:
                     ]
                 )
                 operations.append(f"Revoked '{role}' on '{ARTIFACT_REGISTRY_REPO}'")
+
+        # 5b. Custom IAM Roles. Re-read project IAM after the predefined-role
+        # cleanup so reconciliation never relies on a stale pre-mutation view.
+        for role_spec in CUSTOM_ROLES:
+            role_id = str(role_spec["role_id"])
+            full_role = custom_role_binding_name(self.config.project_id, role_id)
+            apply_perms: tuple[str, ...] = tuple(role_spec["permissions"])  # type: ignore[arg-type]
+            role_exists = self.inspector.custom_role_exists(role_id, self.config.project_id)
+            if not role_exists:
+                self._log(
+                    f"[apply] Creating custom role '{full_role}' with permissions {apply_perms}..."
+                )
+                run_gcloud_command(
+                    [
+                        "iam",
+                        "roles",
+                        "create",
+                        role_id,
+                        f"--project={self.config.project_id}",
+                        f"--title={role_spec['title']}",
+                        f"--description={role_spec['description']}",
+                        f"--permissions={','.join(apply_perms)}",
+                    ]
+                )
+                operations.append(f"Created custom role '{full_role}'")
+            else:
+                actual_permissions = self.inspector.get_custom_role_permissions(
+                    role_id, self.config.project_id
+                )
+                if set(actual_permissions) != set(apply_perms):
+                    self._log(
+                        f"[apply] Updating custom role '{full_role}' permissions "
+                        f"to exactly {apply_perms}..."
+                    )
+                    run_gcloud_command(
+                        [
+                            "iam",
+                            "roles",
+                            "update",
+                            role_id,
+                            f"--project={self.config.project_id}",
+                            f"--permissions={','.join(apply_perms)}",
+                        ]
+                    )
+                    operations.append(f"Updated custom role '{full_role}'")
+
+            current_project_bindings = self.inspector.get_project_iam_bindings()
+            expected_members = {
+                f"serviceAccount:{self.config.service_account_email(str(member))}"
+                for member in tuple[str, ...](role_spec["grant_to"])  # type: ignore[arg-type]
+            }
+            actual_members = binding_members(current_project_bindings, full_role)
+
+            for member in sorted(expected_members - actual_members):
+                self._log(f"[apply] Granting custom role '{full_role}' to '{member}'...")
+                run_gcloud_command(
+                    [
+                        "projects",
+                        "add-iam-policy-binding",
+                        self.config.project_id,
+                        f"--member={member}",
+                        f"--role={full_role}",
+                        "--condition=None",
+                    ]
+                )
+                operations.append(f"Granted '{full_role}' to '{member}'")
+
+            for member in sorted(actual_members - expected_members):
+                self._log(
+                    f"[apply] Revoking unexpected custom role member '{member}' "
+                    f"from '{full_role}'..."
+                )
+                run_gcloud_command(
+                    [
+                        "projects",
+                        "remove-iam-policy-binding",
+                        self.config.project_id,
+                        f"--member={member}",
+                        f"--role={full_role}",
+                        "--all",
+                    ]
+                )
+                operations.append(
+                    f"Revoked unexpected custom role member '{member}' from '{full_role}'"
+                )
 
         # 6. Service Account User (actAs) Bindings on runtime service accounts
         for target_sa in DEPLOYER_ACT_AS_TARGETS:
@@ -859,7 +1089,6 @@ class GcpIdentityManager:
                 f"[apply] WIF impersonation binding on '{deployer_email}' valid (idempotent no-op)."
             )
 
-        # Revoke any unauthorized WIF impersonators
         for m in wif_members:
             if m not in expected_principals:
                 self._log(
@@ -911,6 +1140,7 @@ class GcpIdentityManager:
             "deployer_act_as_valid": False,
             "wif_impersonation_exact": False,
             "github_env_valid": False,
+            "custom_roles_valid": False,
         }
 
         # 1. Service accounts & user-managed keys
@@ -939,7 +1169,7 @@ class GcpIdentityManager:
             failures.append(f"Workload Identity Pool '{WIF_POOL_ID}' does not exist.")
         checks["wif_pool_valid"] = wif_pool_exists
 
-        # 3. WIF Provider (validate state ACTIVE, issuer, mapping, condition with environment=dev)
+        # 3. WIF Provider
         wif_provider_exists = (
             self.inspector.wif_provider_exists(WIF_POOL_ID, WIF_PROVIDER_ID)
             if wif_pool_exists
@@ -986,13 +1216,16 @@ class GcpIdentityManager:
             )
         checks["wif_provider_valid"] = provider_valid
 
-        # 4. Project-level IAM bindings: Deployer exact allow-list
+        # 4. Project-level IAM bindings: predefined deployer role exact allow-list
         project_bindings = self.inspector.get_project_iam_bindings()
         deployer_email = self.config.service_account_email(DEPLOYER_SA_NAME)
         deployer_member = f"serviceAccount:{deployer_email}"
-
+        custom_role_names = declared_custom_role_names(self.config.project_id)
         current_deployer_project_roles = [
-            b.get("role", "") for b in project_bindings if deployer_member in b.get("members", [])
+            b.get("role", "")
+            for b in project_bindings
+            if deployer_member in b.get("members", [])
+            and b.get("role", "") not in custom_role_names
         ]
         deployer_project_roles_valid = set(current_deployer_project_roles) == set(
             DEPLOYER_PROJECT_ROLES
@@ -1061,7 +1294,6 @@ class GcpIdentityManager:
 
         # 5. Deployer actAs exact scope
         act_as_valid = True
-        # Check no project-level serviceAccountUser
         has_proj_actas = any(
             b.get("role") == "roles/iam.serviceAccountUser"
             and deployer_member in b.get("members", [])
@@ -1073,7 +1305,6 @@ class GcpIdentityManager:
                 "Deployer possesses prohibited project-level 'roles/iam.serviceAccountUser'."
             )
 
-        # Check approved targets
         for target_sa in DEPLOYER_ACT_AS_TARGETS:
             target_email = self.config.service_account_email(target_sa)
             sa_bindings = self.inspector.get_service_account_iam_bindings(target_email)
@@ -1088,7 +1319,6 @@ class GcpIdentityManager:
                     f"Deployer missing approved 'roles/iam.serviceAccountUser' on '{target_email}'."
                 )
 
-        # Check that NO other service account has deployer as serviceAccountUser
         all_project_sas = self.inspector.get_all_project_service_accounts()
         approved_target_emails = {
             self.config.service_account_email(name) for name in DEPLOYER_ACT_AS_TARGETS
@@ -1139,6 +1369,46 @@ class GcpIdentityManager:
         if not github_val["passed"]:
             failures.extend(github_val["failures"])
 
+        # 8. Custom IAM Roles: permissions and grantees are exact.
+        project_bindings_val = self.inspector.get_project_iam_bindings()
+        custom_roles_valid = True
+        for role_spec in CUSTOM_ROLES:
+            role_id = str(role_spec["role_id"])
+            full_role = custom_role_binding_name(self.config.project_id, role_id)
+            validate_perms: tuple[str, ...] = tuple(role_spec["permissions"])  # type: ignore[arg-type]
+            if not self.inspector.custom_role_exists(role_id, self.config.project_id):
+                failures.append(f"Custom role '{full_role}' does not exist.")
+                custom_roles_valid = False
+                continue
+            actual_permissions = self.inspector.get_custom_role_permissions(
+                role_id, self.config.project_id
+            )
+            if set(actual_permissions) != set(validate_perms):
+                failures.append(
+                    f"Custom role '{full_role}' permissions "
+                    f"{sorted(actual_permissions)} != {sorted(validate_perms)}."
+                )
+                custom_roles_valid = False
+
+            expected_members = {
+                f"serviceAccount:{self.config.service_account_email(str(member))}"
+                for member in tuple[str, ...](role_spec["grant_to"])  # type: ignore[arg-type]
+            }
+            actual_members = binding_members(project_bindings_val, full_role)
+            missing_members = sorted(expected_members - actual_members)
+            unexpected_members = sorted(actual_members - expected_members)
+            if missing_members:
+                failures.append(
+                    f"Custom role '{full_role}' missing expected members: {missing_members}."
+                )
+                custom_roles_valid = False
+            if unexpected_members:
+                failures.append(
+                    f"Custom role '{full_role}' has unexpected members: {unexpected_members}."
+                )
+                custom_roles_valid = False
+        checks["custom_roles_valid"] = custom_roles_valid
+
         passed = len(failures) == 0
         return {
             "passed": passed,
@@ -1177,7 +1447,6 @@ class GcpIdentityManager:
         }
 
         try:
-            # 1. Create ephemeral secret
             run_gcloud_command(
                 [
                     "secrets",
@@ -1188,7 +1457,6 @@ class GcpIdentityManager:
                 ]
             )
 
-            # 2. Grant resource-scoped accessor ONLY to core runtime
             run_gcloud_command(
                 [
                     "secrets",
@@ -1200,7 +1468,6 @@ class GcpIdentityManager:
                 ]
             )
 
-            # 3. Read back secret policy
             code, stdout, _ = run_gcloud_command(
                 [
                     "secrets",
@@ -1236,7 +1503,6 @@ class GcpIdentityManager:
                 probe_results["web_runtime_denied"] = not has_web
                 probe_results["deployer_denied"] = not has_deployer
 
-            # 4. Check project-wide accessor is absent
             project_bindings = self.inspector.get_project_iam_bindings()
             sa_members = {
                 f"serviceAccount:{self.config.service_account_email(sa)}" for sa in SERVICE_ACCOUNTS
@@ -1252,7 +1518,6 @@ class GcpIdentityManager:
             probe_results["project_wide_accessor_absent"] = not has_project_accessor
 
         finally:
-            # 5. Clean up ephemeral secret completely
             del_code, _, _ = run_gcloud_command(
                 [
                     "secrets",
@@ -1318,7 +1583,6 @@ class GcpIdentityManager:
         teardown = self.teardown_rehearsal()
         proj_number = self.inspector.get_project_number()
 
-        # Derived live state
         sa_live: dict[str, Any] = {}
         for sa in SERVICE_ACCOUNTS:
             email = self.config.service_account_email(sa)
@@ -1448,7 +1712,7 @@ class GcpIdentityManager:
                     "core_runtime_roles": list(CORE_RUNTIME_PROJECT_ROLES),
                     "web_runtime_roles": list(WEB_RUNTIME_PROJECT_ROLES),
                     "prohibited_basic_roles": list(PROHIBITED_BASIC_ROLES),
-                    "cloud_run_developer_authority": "DEFERRED_TO_#90",
+                    "cloud_run_developer_authority": "roles/run.developer (#90)",
                 },
                 "observed": {
                     "deployer_project_roles": actual_deployer_project_roles,
@@ -1458,7 +1722,8 @@ class GcpIdentityManager:
                 and val["checks"]["deployer_ar_roles_match_allowlist"]
                 and val["checks"]["runtime_roles_match_allowlist"]
                 and val["checks"]["prohibited_basic_roles_absent"]
-                and val["checks"]["deployer_act_as_valid"],
+                and val["checks"]["deployer_act_as_valid"]
+                and val["checks"]["custom_roles_valid"],
             },
             "secret_manager_contracts": [
                 {
@@ -1513,7 +1778,6 @@ def main(argv: list[str] | None = None) -> int:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    # Subcommands
     subparsers.add_parser("plan", help="Evaluate target identity state against live environment")
     subparsers.add_parser("apply", help="Idempotently apply identity and WIF configuration")
     subparsers.add_parser("validate", help="Validate live identity state against contracts")
