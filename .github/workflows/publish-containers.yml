@@ -157,23 +157,9 @@ jobs:
           severity: HIGH,CRITICAL
           output: web-scan.txt
 
-      # All gates (runtime verification + scans) have passed; now push the
-      # exact already-tested local image objects (the pushed digest equals the
-      # loaded/scanned digest).
-      - name: Push tested ngabo-core digest
-        shell: bash
-        run: |
-          set -euo pipefail
-          docker push "${{ env.IMAGE_PREFIX }}/ngabo-core:${{ github.sha }}"
-          docker push "${{ env.IMAGE_PREFIX }}/ngabo-core:sha-${{ github.sha }}"
-
-      - name: Push tested ngabo-web digest
-        shell: bash
-        run: |
-          set -euo pipefail
-          docker push "${{ env.IMAGE_PREFIX }}/ngabo-web:${{ github.sha }}"
-          docker push "${{ env.IMAGE_PREFIX }}/ngabo-web:sha-${{ github.sha }}"
-
+      # All gates (runtime verification + scans) have passed. Generate the
+      # machine-readable evidence BEFORE any push so a publication can never
+      # exist without its evidence document (fail-closed).
       - name: Generate machine-readable publish evidence
         shell: bash
         env:
@@ -189,9 +175,25 @@ jobs:
           EVIDENCE_WEB_SCAN: web-scan.txt
         run: |
           set -euo pipefail
-          cd services/core
-          uv sync --frozen
-          uv run python ../../infra/github/container_evidence.py --output "../../${EVIDENCE_OUT}"
+          # container_evidence.py is Python-stdlib-only; the hosted runner
+          # provides python3 (no uv dependency in this publish lane).
+          python3 infra/github/container_evidence.py --output "${EVIDENCE_OUT}"
+
+      # Now push the exact already-tested local image objects (the pushed
+      # digest equals the loaded/scanned digest).
+      - name: Push tested ngabo-core digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker push "${{ env.IMAGE_PREFIX }}/ngabo-core:${{ github.sha }}"
+          docker push "${{ env.IMAGE_PREFIX }}/ngabo-core:sha-${{ github.sha }}"
+
+      - name: Push tested ngabo-web digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker push "${{ env.IMAGE_PREFIX }}/ngabo-web:${{ github.sha }}"
+          docker push "${{ env.IMAGE_PREFIX }}/ngabo-web:sha-${{ github.sha }}"
 
       - name: Upload publish evidence
         # actions/upload-artifact v7.0.1
