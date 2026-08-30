@@ -74,43 +74,50 @@ jobs:
         # docker/setup-buildx-action v3.12.0
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
 
-      - name: Build ngabo-core (load only; push after gates pass)
+      # Build with the rewrite-timestamp docker exporter: every file and
+      # directory mtime in the artifact is normalized to SOURCE_DATE_EPOCH,
+      # so the artifact is byte-reproducible (rebuilding the same commit
+      # yields the identical digest). The tarball is loaded below; the
+      # runtime verification and Trivy scan run against the exact loaded
+      # object, and that same object is pushed after the gates pass — the
+      # published bytes are the tested bytes.
+      - name: Build ngabo-core (rewrite-timestamp export)
         id: core-build
-        # docker/build-push-action v7.3.0
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
-        with:
-          context: services/core
-          file: services/core/Dockerfile
-          push: false
-          load: true
-          provenance: false
-          tags: |
-            ${{ env.IMAGE_PREFIX }}/ngabo-core:${{ github.sha }}
-            ${{ env.IMAGE_PREFIX }}/ngabo-core:sha-${{ github.sha }}
-          build-args: |
-            SOURCE_REVISION=${{ github.sha }}
-            SOURCE_URL=${{ github.repositoryUrl }}
-            APP_VERSION=0.1.0
-            SOURCE_DATE_EPOCH=${{ env.SOURCE_DATE_EPOCH }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker buildx build --provenance=false \
+            --build-arg SOURCE_REVISION=${{ github.sha }} \
+            --build-arg SOURCE_URL=${{ github.repositoryUrl }} \
+            --build-arg APP_VERSION=0.1.0 \
+            --build-arg SOURCE_DATE_EPOCH=${{ env.SOURCE_DATE_EPOCH }} \
+            --output type=docker,dest=ngabo-core.tar,rewrite-timestamp=true \
+            -t "${{ env.IMAGE_PREFIX }}/ngabo-core:${{ github.sha }}" \
+            -t "${{ env.IMAGE_PREFIX }}/ngabo-core:sha-${{ github.sha }}" \
+            -f services/core/Dockerfile services/core
 
-      - name: Build ngabo-web (load only; push after gates pass)
+      - name: Build ngabo-web (rewrite-timestamp export)
         id: web-build
-        # docker/build-push-action v7.3.0
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
-        with:
-          context: .
-          file: apps/web/Dockerfile
-          push: false
-          load: true
-          provenance: false
-          tags: |
-            ${{ env.IMAGE_PREFIX }}/ngabo-web:${{ github.sha }}
-            ${{ env.IMAGE_PREFIX }}/ngabo-web:sha-${{ github.sha }}
-          build-args: |
-            SOURCE_REVISION=${{ github.sha }}
-            SOURCE_URL=${{ github.repositoryUrl }}
-            APP_VERSION=0.1.0
-            SOURCE_DATE_EPOCH=${{ env.SOURCE_DATE_EPOCH }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker buildx build --provenance=false \
+            --build-arg SOURCE_REVISION=${{ github.sha }} \
+            --build-arg SOURCE_URL=${{ github.repositoryUrl }} \
+            --build-arg APP_VERSION=0.1.0 \
+            --build-arg SOURCE_DATE_EPOCH=${{ env.SOURCE_DATE_EPOCH }} \
+            --output type=docker,dest=ngabo-web.tar,rewrite-timestamp=true \
+            -t "${{ env.IMAGE_PREFIX }}/ngabo-web:${{ github.sha }}" \
+            -t "${{ env.IMAGE_PREFIX }}/ngabo-web:sha-${{ github.sha }}" \
+            -f apps/web/Dockerfile .
+
+      - name: Load ngabo-core into the local daemon
+        shell: bash
+        run: docker load -i ngabo-core.tar
+
+      - name: Load ngabo-web into the local daemon
+        shell: bash
+        run: docker load -i ngabo-web.tar
 
       - name: Verify core runtime behavior
         shell: bash
@@ -135,7 +142,7 @@ jobs:
           curl -fsS http://127.0.0.1:18080/ | grep -qi "html"
           docker stop "${cid}" >/dev/null
 
-      - name: Scan pushed ngabo-core digest
+      - name: Scan loaded ngabo-core object
         # aquasecurity/trivy-action v0.36.0
         # Gate: fails on ALL HIGH/CRITICAL findings except the explicit
         # per-CVE exceptions in .trivyignore.
@@ -147,7 +154,7 @@ jobs:
           severity: HIGH,CRITICAL
           output: core-scan.txt
 
-      - name: Scan pushed ngabo-web digest
+      - name: Scan loaded ngabo-web object
         # aquasecurity/trivy-action v0.36.0
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8
         with:
@@ -157,10 +164,9 @@ jobs:
           severity: HIGH,CRITICAL
           output: web-scan.txt
 
-      # Now push the exact already-tested local image objects (the pushed
-      # object is the same daemon-loaded image that was verified and scanned;
-      # content is identical even though the registry manifest digest differs
-      # from the buildx-side digest by serialization).
+      # All gates (runtime verification + scans) have passed against the
+      # loaded rewrite-timestamp object; push that exact object — the
+      # published bytes are the tested bytes.
       - name: Push tested ngabo-core digest
         shell: bash
         run: |

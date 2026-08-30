@@ -19,6 +19,7 @@ FROM node:24-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d52
 ARG SOURCE_REVISION=unknown
 ARG SOURCE_URL=https://github.com/ronnielutaro/Ngabo-AMR-Surveillance
 ARG APP_VERSION=0.1.0
+ARG SOURCE_DATE_EPOCH=0
 
 ENV NGABO_SOURCE_REVISION=${SOURCE_REVISION}
 
@@ -34,6 +35,10 @@ RUN npm install --global pnpm@11.22.0 \
 COPY apps/web apps/web
 RUN pnpm --filter ngabo-web build
 
+# Normalize file mtimes of the build output (copied into the runtime stage)
+# to SOURCE_DATE_EPOCH for layer determinism.
+RUN find /app/apps/web/.next -exec touch -c -h -d "@${SOURCE_DATE_EPOCH}" {} +
+
 # ---------------------------------------------------------------------------
 # Runtime stage: standalone Next.js server, non-root, minimal files.
 # ---------------------------------------------------------------------------
@@ -42,6 +47,9 @@ FROM node:24-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d52
 ARG SOURCE_REVISION=unknown
 ARG SOURCE_URL=https://github.com/ronnielutaro/Ngabo-AMR-Surveillance
 ARG APP_VERSION=0.1.0
+ARG SOURCE_DATE_EPOCH=0
+
+ENV SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}
 
 # OCI metadata binding the artifact to its source (Issue #89 contract).
 LABEL org.opencontainers.image.source="${SOURCE_URL}" \
@@ -61,14 +69,26 @@ ENV NODE_ENV=production \
 # resolving the current Debian repositories at build time would make the
 # image irreproducible; OS-package findings are recorded as explicit
 # .trivyignore exceptions against the digest-pinned base image.
-RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
+# The removal bumps parent directory mtimes; normalize the whole /usr/local
+# tree (files and directories) to SOURCE_DATE_EPOCH for layer determinism.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
+    && find /usr/local -exec touch -c -h -d "@${SOURCE_DATE_EPOCH}" {} +
 
-# Non-root runtime identity (fixed uid for reproducibility).
-RUN useradd --system --uid 10001 --create-home --shell /usr/sbin/nologin ngabo
+# Non-root runtime identity (fixed uid for reproducibility). useradd bumps
+# the mtimes of the account files AND their parent directories; normalize
+# /etc and /home (files and directories) for layer determinism. The build
+# container's /etc/hosts and /etc/resolv.conf are read-only bind mounts and
+# are excluded.
+RUN useradd --system --uid 10001 --create-home --shell /usr/sbin/nologin ngabo \
+    && find /etc /home \( -path /etc/hosts -o -path /etc/resolv.conf \) -prune -o \
+        -exec touch -c -h -d "@${SOURCE_DATE_EPOCH}" {} +
 
 WORKDIR /app
 COPY --from=builder --chown=ngabo:ngabo /app/apps/web/.next/standalone ./
 COPY --from=builder --chown=ngabo:ngabo /app/apps/web/.next/static ./apps/web/.next/static
+# Normalize the mtimes of the copied runtime files and created directories
+# (/app and below) for layer determinism.
+RUN find /app -exec touch -c -h -d "@${SOURCE_DATE_EPOCH}" {} +
 # The app currently ships no static `public/` directory; add
 # `COPY --from=builder /app/apps/web/public ./apps/web/public` when one exists.
 
