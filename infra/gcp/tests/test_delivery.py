@@ -133,6 +133,30 @@ class DeliveryHelpersTest(unittest.TestCase):
         with self.assertRaises(delivery.DeliveryError):
             delivery.evidence_check(loaded, "sha256:" + "e" * 64, WEB_DIGEST)
 
+    def test_rollback_check_accepts_recorded_previous_good(self) -> None:
+        prev_core = "sha256:" + "c" * 64
+        prev_web = "sha256:" + "d" * 64
+        record = {
+            "environment": "dev",
+            "commit_sha": COMMIT,
+            "workflow_run_id": "8",
+            "actor": "ronnielutaro",
+            "timestamp": "2026-08-30T15:00:00Z",
+            "core_digest": CORE_DIGEST,
+            "web_digest": WEB_DIGEST,
+            "smoke_result": "pass",
+            "previous_known_good": {"core_digest": prev_core, "web_digest": prev_web},
+        }
+        out = Path("delivery-test-evidence.json")
+        try:
+            delivery.write_evidence(record, str(out))
+            loaded = delivery.load_evidence(str(out))
+        finally:
+            out.unlink(missing_ok=True)
+        delivery.rollback_check(loaded, prev_core, prev_web)
+        with self.assertRaises(delivery.DeliveryError):
+            delivery.rollback_check(loaded, CORE_DIGEST, WEB_DIGEST)
+
 
 if __name__ == "__main__":
     unittest.main()

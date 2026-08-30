@@ -186,6 +186,25 @@ def evidence_check(
         )
 
 
+def rollback_check(
+    record: dict[str, Any], core_digest: str, web_digest: str
+) -> None:
+    """Fail closed unless the digests equal the recorded previous known-good."""
+    prev = record.get("previous_known_good")
+    if not isinstance(prev, dict) or not prev.get("core_digest") or not prev.get(
+        "web_digest"
+    ):
+        raise DeliveryError("evidence has no previous_known_good to roll back to")
+    if prev.get("core_digest") != core_digest:
+        raise DeliveryError(
+            f"previous known-good core digest {prev.get('core_digest')} != {core_digest}"
+        )
+    if prev.get("web_digest") != web_digest:
+        raise DeliveryError(
+            f"previous known-good web digest {prev.get('web_digest')} != {web_digest}"
+        )
+
+
 def evidence_from_env() -> dict[str, Any]:
     """Build a delivery record from CI environment variables (no heredocs)."""
     record: dict[str, Any] = {
@@ -234,6 +253,13 @@ def main(argv: list[str] | None = None) -> int:
     evidence_check_parser.add_argument("--core-digest", required=True)
     evidence_check_parser.add_argument("--web-digest", required=True)
 
+    rollback_check_parser = sub.add_parser(
+        "rollback-check", help="verify digests are the recorded previous known-good"
+    )
+    rollback_check_parser.add_argument("--record", required=True)
+    rollback_check_parser.add_argument("--core-digest", required=True)
+    rollback_check_parser.add_argument("--web-digest", required=True)
+
     args = parser.parse_args(argv)
     if args.command == "affected":
         paths = [
@@ -263,6 +289,11 @@ def main(argv: list[str] | None = None) -> int:
         record = load_evidence(args.record)
         evidence_check(record, args.core_digest, args.web_digest)
         print("EVIDENCE_OK: digests and smoke result match the successful delivery.")
+        return 0
+    if args.command == "rollback-check":
+        record = load_evidence(args.record)
+        rollback_check(record, args.core_digest, args.web_digest)
+        print("ROLLBACK_OK: digests are the recorded previous known-good.")
         return 0
     return 2
 
