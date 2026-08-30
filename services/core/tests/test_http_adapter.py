@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+import time
 import unittest
 from http.client import HTTPConnection
 from typing import Any
@@ -51,12 +52,21 @@ class HttpAdapterTests(unittest.TestCase):
 
     @staticmethod
     def _get(port: int, path: str) -> tuple[int, dict[str, Any]]:
-        conn = HTTPConnection(HOST, port, timeout=5)
-        conn.request("GET", path)
-        response = conn.getresponse()
-        body = json.loads(response.read().decode("utf-8"))
-        conn.close()
-        return response.status, body
+        # The serve thread binds asynchronously; retry briefly so a slow
+        # CI scheduler cannot produce a spurious ConnectionRefusedError.
+        last_error: OSError | None = None
+        for _ in range(20):
+            try:
+                conn = HTTPConnection(HOST, port, timeout=5)
+                conn.request("GET", path)
+                response = conn.getresponse()
+                body = json.loads(response.read().decode("utf-8"))
+                conn.close()
+                return response.status, body
+            except OSError as exc:
+                last_error = exc
+                time.sleep(0.05)
+        raise AssertionError(f"server on port {port} did not accept: {last_error}")
 
     def test_health_returns_ok_payload(self) -> None:
         thread, port = self._start_server()
