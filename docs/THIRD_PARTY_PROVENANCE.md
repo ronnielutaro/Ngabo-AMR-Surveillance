@@ -101,6 +101,48 @@ Do not copy an entire third-party guideline into the public repository merely be
 
 EmbeddingGemma indexing does not change copyright/licensing obligations. Only approved, provenance-recorded material may enter the retrieval corpus.
 
+For Issue #51 the chosen storage level is **metadata + official URL + a clearly
+marked Ngabo-authored indexing summary** for every approved source. No full
+third-party guidance text is redistributed.
+
+### Approved corpus register (Issue #51)
+
+The approved-evidence corpus is defined mechanically by
+`data/guidance/manifest.json`, validated against
+`data/schemas/evidence_manifest.schema.json`, and enforced by the deterministic
+local retrieval adapter (`EvidenceSearchPort`). The records below document the
+substantive entries for the v0.1 hero (a synthetic carbapenem-resistant
+*Enterobacterales* cluster).
+
+| Source ID | Publisher | Title | URL | Version/date | Local content | Usage basis/license | Attribution required | Approved |
+|---|---|---|---|---|---|---|---|---|
+| `WHO-AMR-001` | World Health Organization (WHO) | Guidelines for the prevention and control of carbapenem-resistant Enterobacteriaceae, Acinetobacter baumannii and Pseudomonas aeruginosa in health care facilities | https://www.who.int/publications/i/item/9789241550178 | 2017-11-01 (v1) | indexing summary | CC BY-NC-SA 3.0 IGO; Ngabo-authored index only | yes | yes |
+| `CDC-CRE-001` | US Centers for Disease Control and Prevention (CDC) | Facility Guidance for Control of Carbapenem-resistant Enterobacteriaceae (CRE) — November 2015 Update | https://stacks.cdc.gov/view/cdc/79104 | 2015-11-01 (v1, November 2015 update of the 2012 CRE Toolkit) | indexing summary | US Government work — public domain (17 U.S.C. §105); CDC attribution required; use does not imply CDC/HHS/U.S. Government endorsement; Ngabo-authored index only; archived on CDC Stacks (cdc:79104) | yes | yes |
+| `UNKNOWN-PUBLISHER-001` | Unknown publisher (provenance placeholder) | Unverified third-party CRE control claim | https://example.invalid/unverified | unknown (v0) | indexing summary | TBD | no | **no** |
+
+Notes:
+
+- `WHO-AMR-001` and `CDC-CRE-001` are approved for retrieval; their local
+  content is a clearly marked Ngabo-authored indexing summary, not a
+  reproduction of the underlying guideline text.
+- `CDC-CRE-001` is the November 2015 **Facility Guidance** record, archived
+  permanently on CDC Stacks (`cdc:79104`). It is the November 2015 update of
+  the earlier CDC **2012 CRE Toolkit** (`cdc:13205`), which is a separate,
+  earlier record — the two identities are not interchangeable.
+- CDC attribution is **required** for `CDC-CRE-001`, and use of the source
+  does not imply endorsement by the CDC, HHS, or the U.S. Government. No CDC
+  logo or sponsorship/endorsement claim is introduced.
+- Some CDC contact-screening recommendations have since been superseded by the
+  CDC Containment Strategy, so this record documents the 2015 Facility Guidance
+  version and is treated as historical context rather than current clinical
+  advice.
+- `UNKNOWN-PUBLISHER-001` exists in the manifest purely to prove that approval
+  is an executable control: it matches the hero evidence query on tags/content
+  but is never returned as reasoning/action-relevant authority.
+- No full third-party guideline text is redistributed anywhere in the public
+  repository. A public URL is recorded as canonical metadata, not as a grant of
+  redistribution permission.
+
 ---
 
 ## 6. Evidence Manifest Template
@@ -112,6 +154,11 @@ Add one row per evidence source during corpus construction.
 | `TBD` | `TBD` | `TBD` | `TBD` | `TBD` | metadata/excerpt/full | `TBD` | `TBD` | no until verified |
 
 No source is considered approved merely because it appears in this table. `Approved for retrieval` must be explicitly changed to `yes` after verification.
+
+The authoritative machine-readable manifest for the current corpus is
+`data/guidance/manifest.json` (schema: `data/schemas/evidence_manifest.schema.json`).
+The table above is a discovery/policy record; the manifest + corpus integrity
+digest is the executable source of truth.
 
 ---
 
