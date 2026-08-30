@@ -1,0 +1,8 @@
+NGABO-AUTHORED RETRIEVAL/INDEXING SUMMARY (not a CDC quotation).
+
+CDC-CRE-001 defines carbapenem-resistant Enterobacteriaceae (CRE) as
+Enterobacteriaceae nonsusceptible to a carbapenem or documented to produce a
+carbapenemase.
+
+Retrieval categories: CRE case definition, carbapenem resistance,
+carbapenemase production, laboratory recognition.
