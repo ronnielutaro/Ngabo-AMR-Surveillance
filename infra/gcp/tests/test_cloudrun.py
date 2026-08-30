@@ -167,11 +167,11 @@ class DesiredStateTests(unittest.TestCase):
             self.assertEqual(cloudrun.apply(CORE_DIGEST, WEB_DIGEST), 0)
 
         deploy_calls = [
-            c for c in calls if c[0:3] == ["run", "services", "deploy"]
+            c for c in calls if c[0:2] == ["run", "deploy"]
         ]
         self.assertEqual(len(deploy_calls), 2)
-        self.assertEqual(deploy_calls[0][3], "ngabo-core")
-        self.assertEqual(deploy_calls[1][3], "ngabo-web")
+        self.assertEqual(deploy_calls[0][2], "ngabo-core")
+        self.assertEqual(deploy_calls[1][2], "ngabo-web")
 
         iam_calls = [
             c
