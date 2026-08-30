@@ -10,9 +10,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-import re
-import subprocess
 import sys
 from pathlib import Path
 from typing import Any, TextIO
@@ -23,8 +20,8 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from infra.gcp.bootstrap import redact_sensitive, run_gcloud_command  # noqa: E402
-from infra.gcp.config import ARTIFACT_REGISTRY_REPO, PRIMARY_REGION  # noqa: E402
-from infra.gcp.github_env import GitHubEnvInspector, GitHubEnvManager  # noqa: E402
+from infra.gcp.config import ARTIFACT_REGISTRY_REPO  # noqa: E402
+from infra.gcp.github_env import GitHubEnvManager  # noqa: E402
 from infra.gcp.identity_config import (  # noqa: E402
     ACTIONS_CHECKOUT_PIN,
     CORE_RUNTIME_PROJECT_ROLES,
@@ -39,7 +36,6 @@ from infra.gcp.identity_config import (  # noqa: E402
     GITHUB_ISSUER,
     GITHUB_OWNER_ID,
     GITHUB_REPO_ID,
-    GITHUB_REPO_NAME,
     GOOGLE_AUTH_ACTION_PIN,
     GOOGLE_SETUP_GCLOUD_ACTION_PIN,
     PROHIBITED_BASIC_ROLES,
@@ -81,7 +77,7 @@ class GcpIdentityInspector:
         )
         if code != 0 or not stdout.strip():
             raise RuntimeError(
-                f"INSPECTION_FAILED: Failed to describe project '{self.config.project_id}': {stderr.strip()}"
+                f"INSPECTION_FAILED: Failed to describe project '{self.config.project_id}': {stderr.strip()}"  # noqa: E501
             )
         return stdout.strip()
 
@@ -123,7 +119,7 @@ class GcpIdentityInspector:
             if "NOT_FOUND" in stderr or "404" in stderr or "does not exist" in stderr.lower():
                 return None
             raise RuntimeError(
-                f"INSPECTION_FAILED: Failed to describe service account '{sa_email}': {stderr.strip()}"
+                f"INSPECTION_FAILED: Failed to describe service account '{sa_email}': {stderr.strip()}"  # noqa: E501
             )
         try:
             return json.loads(stdout)  # type: ignore[no-any-return]
@@ -173,13 +169,13 @@ class GcpIdentityInspector:
         )
         if code != 0:
             raise RuntimeError(
-                f"INSPECTION_FAILED: Failed to list keys for service account '{sa_email}': {stderr.strip()}"
+                f"INSPECTION_FAILED: Failed to list keys for service account '{sa_email}': {stderr.strip()}"  # noqa: E501
             )
         try:
             keys = json.loads(stdout)
             if not isinstance(keys, list):
                 raise RuntimeError(
-                    f"INSPECTION_FAILED: Unexpected payload type for keys of '{sa_email}': {type(keys)}"
+                    f"INSPECTION_FAILED: Unexpected payload type for keys of '{sa_email}': {type(keys)}"  # noqa: E501
                 )
             return keys
         except json.JSONDecodeError as err:
@@ -230,7 +226,7 @@ class GcpIdentityInspector:
         )
         if code != 0:
             raise RuntimeError(
-                f"INSPECTION_FAILED: Failed to fetch IAM policy for service account '{sa_email}': {stderr.strip()}"
+                f"INSPECTION_FAILED: Failed to fetch IAM policy for service account '{sa_email}': {stderr.strip()}"  # noqa: E501
             )
         try:
             data = json.loads(stdout)
@@ -261,14 +257,14 @@ class GcpIdentityInspector:
         )
         if code != 0:
             raise RuntimeError(
-                f"INSPECTION_FAILED: Failed to fetch Artifact Registry policy for '{repo_name}': {stderr.strip()}"
+                f"INSPECTION_FAILED: Failed to fetch Artifact Registry policy for '{repo_name}': {stderr.strip()}"  # noqa: E501
             )
         try:
             data = json.loads(stdout)
             bindings = data.get("bindings", [])
             if not isinstance(bindings, list):
                 raise RuntimeError(
-                    f"INSPECTION_FAILED: Expected list for Artifact Registry bindings, got {type(bindings)}"
+                    f"INSPECTION_FAILED: Expected list for Artifact Registry bindings, got {type(bindings)}"  # noqa: E501
                 )
             return bindings
         except json.JSONDecodeError as err:
@@ -369,7 +365,7 @@ class GcpIdentityInspector:
             if "NOT_FOUND" in stderr or "404" in stderr or "not found" in stderr.lower():
                 return None
             raise RuntimeError(
-                f"INSPECTION_FAILED: Failed to describe WIF provider '{provider_id}': {stderr.strip()}"
+                f"INSPECTION_FAILED: Failed to describe WIF provider '{provider_id}': {stderr.strip()}"  # noqa: E501
             )
         try:
             return json.loads(stdout)  # type: ignore[no-any-return]
@@ -444,9 +440,7 @@ class GcpIdentityManager:
         state_valid = False
         if provider_details:
             live_mappings = provider_details.get("attributeMapping", {})
-            mapping_valid = all(
-                live_mappings.get(k) == v for k, v in WIF_ATTRIBUTE_MAPPING.items()
-            )
+            mapping_valid = all(live_mappings.get(k) == v for k, v in WIF_ATTRIBUTE_MAPPING.items())
             live_cond = provider_details.get("attributeCondition", "")
             condition_valid = " ".join(live_cond.split()) == " ".join(
                 WIF_ATTRIBUTE_CONDITION.split()
@@ -457,7 +451,7 @@ class GcpIdentityManager:
             state_valid = state == "ACTIVE"
             if not mapping_valid or not condition_valid or not issuer_valid or not state_valid:
                 planned_actions.append(
-                    f"Update Workload Identity Provider '{WIF_PROVIDER_ID}' (mapping/condition/issuer/state)"
+                    f"Update Workload Identity Provider '{WIF_PROVIDER_ID}' (mapping/condition/issuer/state)"  # noqa: E501
                 )
         elif not wif_provider_exists:
             planned_actions.append(
@@ -496,9 +490,8 @@ class GcpIdentityManager:
             email = self.config.service_account_email(sa_name)
             member = f"serviceAccount:{email}"
             for b in project_bindings:
-                if (
-                    b.get("role") == "roles/secretmanager.secretAccessor"
-                    and member in b.get("members", [])
+                if b.get("role") == "roles/secretmanager.secretAccessor" and member in b.get(
+                    "members", []
                 ):
                     planned_actions.append(
                         f"CRITICAL: Revoke project-wide secretAccessor from '{email}'"
@@ -516,15 +509,31 @@ class GcpIdentityManager:
                     f"Grant '{role}' to '{deployer_email}' on repository '{ARTIFACT_REGISTRY_REPO}'"
                 )
 
+        # Revoke obsolete repository-scoped Artifact Registry roles no longer in
+        # the allow-list (e.g. the #87-era reader replaced by writer in #89), so
+        # the deployer's effective AR authority exactly matches the contract.
+        for binding in ar_bindings:
+            role = binding.get("role")
+            if (
+                isinstance(role, str)
+                and role not in DEPLOYER_ARTIFACT_REGISTRY_ROLES
+                and deployer_member in binding.get("members", [])
+            ):
+                planned_actions.append(
+                    f"Revoke '{role}' from '{deployer_email}' on "
+                    f"repository '{ARTIFACT_REGISTRY_REPO}'"
+                )
+
         # 6. Service Account User (actAs) Bindings
         # Deployer must have NO project-level serviceAccountUser
         has_proj_actas = any(
-            b.get("role") == "roles/iam.serviceAccountUser" and deployer_member in b.get("members", [])
+            b.get("role") == "roles/iam.serviceAccountUser"
+            and deployer_member in b.get("members", [])
             for b in project_bindings
         )
         if has_proj_actas:
             planned_actions.append(
-                f"CRITICAL: Revoke project-level 'roles/iam.serviceAccountUser' from '{deployer_email}'"
+                f"CRITICAL: Revoke project-level 'roles/iam.serviceAccountUser' from '{deployer_email}'"  # noqa: E501
             )
 
         # Deployer must be serviceAccountUser ONLY on approved targets
@@ -538,7 +547,7 @@ class GcpIdentityManager:
             )
             if not has_act_as:
                 planned_actions.append(
-                    f"Grant 'roles/iam.serviceAccountUser' to '{deployer_email}' on '{target_email}'"
+                    f"Grant 'roles/iam.serviceAccountUser' to '{deployer_email}' on '{target_email}'"  # noqa: E501
                 )
 
         # 7. WIF Impersonation on deployer (Exact PrincipalSet validation)
@@ -639,7 +648,7 @@ class GcpIdentityManager:
         attr_mapping_str = ",".join(f"{k}={v}" for k, v in WIF_ATTRIBUTE_MAPPING.items())
         if not self.inspector.wif_provider_exists(WIF_POOL_ID, WIF_PROVIDER_ID):
             self._log(
-                f"[apply] Creating Workload Identity Provider '{WIF_PROVIDER_ID}' in pool '{WIF_POOL_ID}'..."
+                f"[apply] Creating Workload Identity Provider '{WIF_PROVIDER_ID}' in pool '{WIF_POOL_ID}'..."  # noqa: E501
             )
             run_gcloud_command(
                 [
@@ -661,9 +670,7 @@ class GcpIdentityManager:
             operations.append(f"Created Workload Identity Provider '{WIF_PROVIDER_ID}'")
         else:
             # Check for mapping, condition, or issuer drift and update in-place
-            provider_details = self.inspector.get_wif_provider_details(
-                WIF_POOL_ID, WIF_PROVIDER_ID
-            )
+            provider_details = self.inspector.get_wif_provider_details(WIF_POOL_ID, WIF_PROVIDER_ID)
             needs_update = False
             if provider_details:
                 live_mappings = provider_details.get("attributeMapping", {})
@@ -679,10 +686,7 @@ class GcpIdentityManager:
                 state = provider_details.get("state", "")
                 state_valid = state == "ACTIVE"
                 needs_update = (
-                    not mapping_valid
-                    or not condition_valid
-                    or not issuer_valid
-                    or not state_valid
+                    not mapping_valid or not condition_valid or not issuer_valid or not state_valid
                 )
 
             if needs_update:
@@ -707,7 +711,7 @@ class GcpIdentityManager:
                 operations.append(f"Updated Workload Identity Provider '{WIF_PROVIDER_ID}'")
             else:
                 self._log(
-                    f"[apply] Workload Identity Provider '{WIF_PROVIDER_ID}' configuration matches contract (idempotent no-op)."
+                    f"[apply] Workload Identity Provider '{WIF_PROVIDER_ID}' configuration matches contract (idempotent no-op)."  # noqa: E501
                 )
 
         # 4. Project-level IAM Bindings for ngabo-deployer (Reconcile to exact allow-list)
@@ -719,7 +723,9 @@ class GcpIdentityManager:
         for b in project_bindings:
             role = b.get("role", "")
             if deployer_member in b.get("members", []) and role not in DEPLOYER_PROJECT_ROLES:
-                self._log(f"[apply] Revoking unapproved project role '{role}' from '{deployer_email}'...")
+                self._log(
+                    f"[apply] Revoking unapproved project role '{role}' from '{deployer_email}'..."
+                )
                 run_gcloud_command(
                     [
                         "projects",
@@ -741,7 +747,7 @@ class GcpIdentityManager:
             )
             if not has_ar_role:
                 self._log(
-                    f"[apply] Granting '{role}' to '{deployer_email}' on repository '{ARTIFACT_REGISTRY_REPO}'..."
+                    f"[apply] Granting '{role}' to '{deployer_email}' on repository '{ARTIFACT_REGISTRY_REPO}'..."  # noqa: E501
                 )
                 run_gcloud_command(
                     [
@@ -761,6 +767,33 @@ class GcpIdentityManager:
                     f"[apply] Artifact Registry role '{role}' already granted (idempotent no-op)."
                 )
 
+        # Revoke obsolete repository-scoped Artifact Registry roles no longer in
+        # the allow-list, keeping the deployer's effective authority exact.
+        for binding in ar_bindings:
+            role = binding.get("role")
+            if (
+                isinstance(role, str)
+                and role not in DEPLOYER_ARTIFACT_REGISTRY_ROLES
+                and deployer_member in binding.get("members", [])
+            ):
+                self._log(
+                    f"[apply] Revoking '{role}' from '{deployer_email}' on "
+                    f"repository '{ARTIFACT_REGISTRY_REPO}'..."
+                )
+                run_gcloud_command(
+                    [
+                        "artifacts",
+                        "repositories",
+                        "remove-iam-policy-binding",
+                        ARTIFACT_REGISTRY_REPO,
+                        f"--location={self.config.region}",
+                        f"--project={self.config.project_id}",
+                        f"--member={deployer_member}",
+                        f"--role={role}",
+                    ]
+                )
+                operations.append(f"Revoked '{role}' on '{ARTIFACT_REGISTRY_REPO}'")
+
         # 6. Service Account User (actAs) Bindings on runtime service accounts
         for target_sa in DEPLOYER_ACT_AS_TARGETS:
             target_email = self.config.service_account_email(target_sa)
@@ -772,7 +805,7 @@ class GcpIdentityManager:
             )
             if not has_act_as:
                 self._log(
-                    f"[apply] Granting 'roles/iam.serviceAccountUser' to '{deployer_email}' on '{target_email}'..."
+                    f"[apply] Granting 'roles/iam.serviceAccountUser' to '{deployer_email}' on '{target_email}'..."  # noqa: E501
                 )
                 run_gcloud_command(
                     [
@@ -788,7 +821,7 @@ class GcpIdentityManager:
                 operations.append(f"Granted 'roles/iam.serviceAccountUser' on '{target_email}'")
             else:
                 self._log(
-                    f"[apply] Service account user binding on '{target_email}' valid (idempotent no-op)."
+                    f"[apply] Service account user binding on '{target_email}' valid (idempotent no-op)."  # noqa: E501
                 )
 
         # 7. WIF Impersonation Binding on ngabo-deployer (Exact PrincipalSet validation)
@@ -805,7 +838,7 @@ class GcpIdentityManager:
 
         if not any(p in wif_members for p in expected_principals):
             self._log(
-                f"[apply] Granting 'roles/iam.workloadIdentityUser' on '{deployer_email}' to WIF principalSet..."
+                f"[apply] Granting 'roles/iam.workloadIdentityUser' on '{deployer_email}' to WIF principalSet..."  # noqa: E501
             )
             run_gcloud_command(
                 [
@@ -819,7 +852,7 @@ class GcpIdentityManager:
                 ]
             )
             operations.append(
-                f"Granted 'roles/iam.workloadIdentityUser' on '{deployer_email}' to WIF principalSet"
+                f"Granted 'roles/iam.workloadIdentityUser' on '{deployer_email}' to WIF principalSet"  # noqa: E501
             )
         else:
             self._log(
@@ -829,7 +862,9 @@ class GcpIdentityManager:
         # Revoke any unauthorized WIF impersonators
         for m in wif_members:
             if m not in expected_principals:
-                self._log(f"[apply] Revoking unauthorized WIF member '{m}' from '{deployer_email}'...")
+                self._log(
+                    f"[apply] Revoking unauthorized WIF member '{m}' from '{deployer_email}'..."
+                )
                 run_gcloud_command(
                     [
                         "iam",
@@ -920,14 +955,16 @@ class GcpIdentityManager:
         if provider_details:
             state = provider_details.get("state", "")
             if state != "ACTIVE":
-                failures.append(f"WIF Provider '{WIF_PROVIDER_ID}' state is '{state}' (must be ACTIVE).")
+                failures.append(
+                    f"WIF Provider '{WIF_PROVIDER_ID}' state is '{state}' (must be ACTIVE)."
+                )
             issuer = provider_details.get("oidc", {}).get("issuerUri", "")
             if issuer != GITHUB_ISSUER:
-                failures.append(f"WIF Provider '{WIF_PROVIDER_ID}' issuer '{issuer}' does not match '{GITHUB_ISSUER}'.")
+                failures.append(
+                    f"WIF Provider '{WIF_PROVIDER_ID}' issuer '{issuer}' does not match '{GITHUB_ISSUER}'."  # noqa: E501
+                )
             live_mappings = provider_details.get("attributeMapping", {})
-            mapping_valid = all(
-                live_mappings.get(k) == v for k, v in WIF_ATTRIBUTE_MAPPING.items()
-            )
+            mapping_valid = all(live_mappings.get(k) == v for k, v in WIF_ATTRIBUTE_MAPPING.items())
             live_cond = provider_details.get("attributeCondition", "")
             condition_valid = " ".join(live_cond.split()) == " ".join(
                 WIF_ATTRIBUTE_CONDITION.split()
@@ -941,14 +978,11 @@ class GcpIdentityManager:
                     f"WIF Provider '{WIF_PROVIDER_ID}' attribute condition does not match contract."
                 )
             provider_valid = (
-                state == "ACTIVE"
-                and issuer == GITHUB_ISSUER
-                and mapping_valid
-                and condition_valid
+                state == "ACTIVE" and issuer == GITHUB_ISSUER and mapping_valid and condition_valid
             )
         else:
             failures.append(
-                f"Workload Identity Provider '{WIF_PROVIDER_ID}' does not exist in pool '{WIF_POOL_ID}'."
+                f"Workload Identity Provider '{WIF_PROVIDER_ID}' does not exist in pool '{WIF_POOL_ID}'."  # noqa: E501
             )
         checks["wif_provider_valid"] = provider_valid
 
@@ -960,10 +994,12 @@ class GcpIdentityManager:
         current_deployer_project_roles = [
             b.get("role", "") for b in project_bindings if deployer_member in b.get("members", [])
         ]
-        deployer_project_roles_valid = set(current_deployer_project_roles) == set(DEPLOYER_PROJECT_ROLES)
+        deployer_project_roles_valid = set(current_deployer_project_roles) == set(
+            DEPLOYER_PROJECT_ROLES
+        )
         if not deployer_project_roles_valid:
             failures.append(
-                f"Deployer project roles {current_deployer_project_roles} do not exactly match allowlist {DEPLOYER_PROJECT_ROLES}."
+                f"Deployer project roles {current_deployer_project_roles} do not exactly match allowlist {DEPLOYER_PROJECT_ROLES}."  # noqa: E501
             )
         checks["deployer_roles_match_allowlist"] = deployer_project_roles_valid
 
@@ -975,7 +1011,7 @@ class GcpIdentityManager:
         deployer_ar_roles_valid = set(actual_ar_roles) == set(DEPLOYER_ARTIFACT_REGISTRY_ROLES)
         if not deployer_ar_roles_valid:
             failures.append(
-                f"Deployer Artifact Registry roles {actual_ar_roles} do not match allow-list {DEPLOYER_ARTIFACT_REGISTRY_ROLES}."
+                f"Deployer Artifact Registry roles {actual_ar_roles} do not match allow-list {DEPLOYER_ARTIFACT_REGISTRY_ROLES}."  # noqa: E501
             )
         checks["deployer_ar_roles_match_allowlist"] = deployer_ar_roles_valid
 
@@ -984,11 +1020,13 @@ class GcpIdentityManager:
         for sa_name in (CORE_RUNTIME_SA_NAME, WEB_RUNTIME_SA_NAME):
             email = self.config.service_account_email(sa_name)
             member = f"serviceAccount:{email}"
-            assigned_roles = [b.get("role") for b in project_bindings if member in b.get("members", [])]
+            assigned_roles = [
+                b.get("role") for b in project_bindings if member in b.get("members", [])
+            ]
             if len(assigned_roles) > 0:
                 runtime_roles_valid = False
                 failures.append(
-                    f"Runtime account '{sa_name}' possesses unexpected project roles: {assigned_roles}"
+                    f"Runtime account '{sa_name}' possesses unexpected project roles: {assigned_roles}"  # noqa: E501
                 )
         checks["runtime_roles_match_allowlist"] = runtime_roles_valid
 
@@ -1012,9 +1050,8 @@ class GcpIdentityManager:
             email = self.config.service_account_email(sa_name)
             member = f"serviceAccount:{email}"
             for b in project_bindings:
-                if (
-                    b.get("role") == "roles/secretmanager.secretAccessor"
-                    and member in b.get("members", [])
+                if b.get("role") == "roles/secretmanager.secretAccessor" and member in b.get(
+                    "members", []
                 ):
                     secret_accessor_absent = False
                     failures.append(
@@ -1026,12 +1063,15 @@ class GcpIdentityManager:
         act_as_valid = True
         # Check no project-level serviceAccountUser
         has_proj_actas = any(
-            b.get("role") == "roles/iam.serviceAccountUser" and deployer_member in b.get("members", [])
+            b.get("role") == "roles/iam.serviceAccountUser"
+            and deployer_member in b.get("members", [])
             for b in project_bindings
         )
         if has_proj_actas:
             act_as_valid = False
-            failures.append("Deployer possesses prohibited project-level 'roles/iam.serviceAccountUser'.")
+            failures.append(
+                "Deployer possesses prohibited project-level 'roles/iam.serviceAccountUser'."
+            )
 
         # Check approved targets
         for target_sa in DEPLOYER_ACT_AS_TARGETS:
@@ -1064,7 +1104,7 @@ class GcpIdentityManager:
                 ):
                     act_as_valid = False
                     failures.append(
-                        f"Deployer possesses unauthorized actAs on unapproved service account '{sa_email}'."
+                        f"Deployer possesses unauthorized actAs on unapproved service account '{sa_email}'."  # noqa: E501
                     )
         checks["deployer_act_as_valid"] = act_as_valid
 
@@ -1085,7 +1125,7 @@ class GcpIdentityManager:
         wif_impersonation_exact = has_authorized_wif and not unexpected_wif_members
         if not has_authorized_wif:
             failures.append(
-                f"Deployer missing WIF impersonation binding for authorized principalSet '{expected_principals}'."
+                f"Deployer missing WIF impersonation binding for authorized principalSet '{expected_principals}'."  # noqa: E501
             )
         if unexpected_wif_members:
             failures.append(
@@ -1182,9 +1222,15 @@ class GcpIdentityManager:
                 has_web = f"serviceAccount:{web_email}" in accessor_members
                 has_deployer = f"serviceAccount:{deployer_email}" in accessor_members
 
-                probe_results["core_runtime_resource_scoped_accessor_binding"] = "PRESENT" if has_core else "ABSENT"
-                probe_results["web_runtime_resource_scoped_accessor_binding"] = "PRESENT" if has_web else "ABSENT"
-                probe_results["deployer_resource_scoped_accessor_binding"] = "PRESENT" if has_deployer else "ABSENT"
+                probe_results["core_runtime_resource_scoped_accessor_binding"] = (
+                    "PRESENT" if has_core else "ABSENT"
+                )
+                probe_results["web_runtime_resource_scoped_accessor_binding"] = (
+                    "PRESENT" if has_web else "ABSENT"
+                )
+                probe_results["deployer_resource_scoped_accessor_binding"] = (
+                    "PRESENT" if has_deployer else "ABSENT"
+                )
 
                 probe_results["core_runtime_allowed"] = has_core
                 probe_results["web_runtime_denied"] = not has_web
@@ -1192,13 +1238,17 @@ class GcpIdentityManager:
 
             # 4. Check project-wide accessor is absent
             project_bindings = self.inspector.get_project_iam_bindings()
-            sa_members = {f"serviceAccount:{self.config.service_account_email(sa)}" for sa in SERVICE_ACCOUNTS}
+            sa_members = {
+                f"serviceAccount:{self.config.service_account_email(sa)}" for sa in SERVICE_ACCOUNTS
+            }
             has_project_accessor = any(
                 b.get("role") == "roles/secretmanager.secretAccessor"
                 and any(m in b.get("members", []) for m in sa_members)
                 for b in project_bindings
             )
-            probe_results["project_wide_secret_accessor"] = "PRESENT" if has_project_accessor else "ABSENT"
+            probe_results["project_wide_secret_accessor"] = (
+                "PRESENT" if has_project_accessor else "ABSENT"
+            )
             probe_results["project_wide_accessor_absent"] = not has_project_accessor
 
         finally:
@@ -1213,7 +1263,7 @@ class GcpIdentityManager:
                 ],
                 check=False,
             )
-            probe_results["cleanup_successful"] = (del_code == 0)
+            probe_results["cleanup_successful"] = del_code == 0
 
         return probe_results
 
@@ -1229,7 +1279,7 @@ class GcpIdentityManager:
             {
                 "step": 2,
                 "target": "IAM Role Bindings",
-                "description": "Revoke project, Artifact Registry, and actAs IAM bindings for deployer",
+                "description": "Revoke project, Artifact Registry, and actAs IAM bindings for deployer",  # noqa: E501
                 "mode": "PLAN_ONLY",
             },
             {
@@ -1247,7 +1297,7 @@ class GcpIdentityManager:
             {
                 "step": 5,
                 "target": "Cessation Verification",
-                "description": "Assert service accounts, WIF pool, and GitHub environment are absent",
+                "description": "Assert service accounts, WIF pool, and GitHub environment are absent",  # noqa: E501
                 "mode": "PLAN_ONLY",
             },
         ]
@@ -1262,9 +1312,7 @@ class GcpIdentityManager:
     def export_evidence(self, filepath: Path | None = None) -> dict[str, Any]:
         """Derive and write machine-readable identity evidence artifact."""
         if filepath is None:
-            filepath = (
-                _REPO_ROOT / "infra" / "gcp" / "evidence" / "identity_evidence.json"
-            )
+            filepath = _REPO_ROOT / "infra" / "gcp" / "evidence" / "identity_evidence.json"
 
         val = self.validate()
         teardown = self.teardown_rehearsal()
@@ -1292,11 +1340,15 @@ class GcpIdentityManager:
 
         project_bindings = self.inspector.get_project_iam_bindings()
         actual_deployer_project_roles = [
-            b.get("role", "") for b in project_bindings if f"serviceAccount:{deployer_email}" in b.get("members", [])
+            b.get("role", "")
+            for b in project_bindings
+            if f"serviceAccount:{deployer_email}" in b.get("members", [])
         ]
         ar_bindings = self.inspector.get_artifact_registry_iam_bindings(ARTIFACT_REGISTRY_REPO)
         actual_deployer_ar_roles = [
-            b.get("role", "") for b in ar_bindings if f"serviceAccount:{deployer_email}" in b.get("members", [])
+            b.get("role", "")
+            for b in ar_bindings
+            if f"serviceAccount:{deployer_email}" in b.get("members", [])
         ]
 
         gh_env = self.github_manager.inspector.get_environment(GITHUB_ALLOWED_ENV)
@@ -1321,7 +1373,9 @@ class GcpIdentityManager:
                     for sa, info in SERVICE_ACCOUNTS.items()
                 },
                 "observed": sa_live,
-                "verified": all(s["exists"] and s["user_managed_key_count"] == 0 for s in sa_live.values()),
+                "verified": all(
+                    s["exists"] and s["user_managed_key_count"] == 0 for s in sa_live.values()
+                ),
                 "deferred": DEFERRED_SERVICE_ACCOUNTS,
             },
             "workload_identity_federation": {
@@ -1340,12 +1394,20 @@ class GcpIdentityManager:
                 "observed": {
                     "pool_exists": self.inspector.wif_pool_exists(WIF_POOL_ID),
                     "provider_state": provider_details.get("state") if provider_details else None,
-                    "provider_issuer": provider_details.get("oidc", {}).get("issuerUri") if provider_details else None,
-                    "attribute_mapping": provider_details.get("attributeMapping") if provider_details else None,
-                    "attribute_condition": provider_details.get("attributeCondition") if provider_details else None,
+                    "provider_issuer": provider_details.get("oidc", {}).get("issuerUri")
+                    if provider_details
+                    else None,
+                    "attribute_mapping": provider_details.get("attributeMapping")
+                    if provider_details
+                    else None,
+                    "attribute_condition": provider_details.get("attributeCondition")
+                    if provider_details
+                    else None,
                     "actual_wif_members": actual_wif_members,
                 },
-                "verified": val["checks"]["wif_pool_valid"] and val["checks"]["wif_provider_valid"] and val["checks"]["wif_impersonation_exact"],
+                "verified": val["checks"]["wif_pool_valid"]
+                and val["checks"]["wif_provider_valid"]
+                and val["checks"]["wif_impersonation_exact"],
             },
             "github_integration": {
                 "expected": {
@@ -1355,7 +1417,11 @@ class GcpIdentityManager:
                 },
                 "observed": {
                     "environment_present": gh_env is not None,
-                    "custom_branch_policies": (gh_env.get("deployment_branch_policy") or {}).get("custom_branch_policies", False) if gh_env else False,
+                    "custom_branch_policies": (gh_env.get("deployment_branch_policy") or {}).get(
+                        "custom_branch_policies", False
+                    )
+                    if gh_env
+                    else False,
                     "branch_policies": gh_policies,
                 },
                 "verified": val["checks"]["github_env_valid"],
@@ -1451,8 +1517,12 @@ def main(argv: list[str] | None = None) -> int:
     subparsers.add_parser("plan", help="Evaluate target identity state against live environment")
     subparsers.add_parser("apply", help="Idempotently apply identity and WIF configuration")
     subparsers.add_parser("validate", help="Validate live identity state against contracts")
-    subparsers.add_parser("evidence", help="Derive and write machine-readable identity evidence artifact")
-    subparsers.add_parser("secret-probe", help="Run bounded ephemeral synthetic secret policy probe")
+    subparsers.add_parser(
+        "evidence", help="Derive and write machine-readable identity evidence artifact"
+    )
+    subparsers.add_parser(
+        "secret-probe", help="Run bounded ephemeral synthetic secret policy probe"
+    )
 
     teardown_parser = subparsers.add_parser(
         "teardown", help="Identity teardown rehearsal operations"
@@ -1478,7 +1548,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Project ID:       {res['project_id']}")
             print(f"Project Number:   {res['project_number'] or '(Auto-discovered)'}")
             print(
-                f"Service Accounts: {sum(1 for s in res['service_accounts'].values() if s['exists'])}/{len(SERVICE_ACCOUNTS)} Present"
+                f"Service Accounts: {sum(1 for s in res['service_accounts'].values() if s['exists'])}/{len(SERVICE_ACCOUNTS)} Present"  # noqa: E501
             )
             print(f"WIF Pool:         {res['wif_pool']['exists']}")
             print(f"WIF Provider:     {res['wif_provider']['exists']}")
@@ -1539,7 +1609,9 @@ def main(argv: list[str] | None = None) -> int:
             print("Ngabo GCP Identity Evidence Exported")
             print("=" * 60)
             print("Artifact:           infra/gcp/evidence/identity_evidence.json")
-            print(f"Validation:         {'PASSED' if res['verification_results']['validation_passed'] else 'FAILED'}")
+            print(
+                f"Validation:         {'PASSED' if res['verification_results']['validation_passed'] else 'FAILED'}"  # noqa: E501
+            )
             print(f"Positive WIF Proof: {res['verification_results']['positive_wif_proof_status']}")
             print("=" * 60)
         return 0 if res["verification_results"]["validation_passed"] else 1
@@ -1554,11 +1626,21 @@ def main(argv: list[str] | None = None) -> int:
             print("=" * 60)
             print(f"probe_secret_id                               : {res['probe_secret_id']}")
             print(f"secret_probe_mode                             : {res['secret_probe_mode']}")
-            print(f"core_runtime_resource_scoped_accessor_binding: {res['core_runtime_resource_scoped_accessor_binding']}")
-            print(f"web_runtime_resource_scoped_accessor_binding : {res['web_runtime_resource_scoped_accessor_binding']}")
-            print(f"deployer_resource_scoped_accessor_binding    : {res['deployer_resource_scoped_accessor_binding']}")
-            print(f"project_wide_secret_accessor                  : {res['project_wide_secret_accessor']}")
-            print(f"runtime_payload_access                        : {res['runtime_payload_access']}")
+            print(
+                f"core_runtime_resource_scoped_accessor_binding: {res['core_runtime_resource_scoped_accessor_binding']}"  # noqa: E501
+            )
+            print(
+                f"web_runtime_resource_scoped_accessor_binding : {res['web_runtime_resource_scoped_accessor_binding']}"  # noqa: E501
+            )
+            print(
+                f"deployer_resource_scoped_accessor_binding    : {res['deployer_resource_scoped_accessor_binding']}"  # noqa: E501
+            )
+            print(
+                f"project_wide_secret_accessor                  : {res['project_wide_secret_accessor']}"  # noqa: E501
+            )
+            print(
+                f"runtime_payload_access                        : {res['runtime_payload_access']}"
+            )
             print(f"cleanup_successful                            : {res['cleanup_successful']}")
             print("=" * 60)
         all_passed = (

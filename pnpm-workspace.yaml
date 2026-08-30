@@ -2,3 +2,7 @@ packages:
   - apps/*
 allowBuilds:
   unrs-resolver: false
+# Issue #89: hoisted (flat, npm-like) node_modules layout so Next.js
+# standalone output tracing produces a complete, self-contained tree for
+# the production ngabo-web container. The frozen lockfile is unaffected.
+nodeLinker: hoisted

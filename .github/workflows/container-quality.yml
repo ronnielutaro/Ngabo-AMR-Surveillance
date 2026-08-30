@@ -1,0 +1,151 @@
+name: Container Quality
+
+# Issue #89: untrusted PR container-quality lane.
+#
+# Builds and scans both production images on pull requests WITHOUT any GCP
+# credentials, OIDC authority, or registry access. It never authenticates to
+# Google Cloud and never publishes images; publishing is owned exclusively by
+# the trusted develop publish workflow (publish-containers.yml).
+#
+# This lane is informational for the PR quality governance: the repository
+# ruleset required checks (PR Quality Gate, CI Control Plane) remain the
+# merge authority and are not modified here.
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: container-quality-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  build-test-scan:
+    name: Container Build + Test + Scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Derive commit timestamp for reproducible builds
+        shell: bash
+        run: echo "SOURCE_DATE_EPOCH=$(git show -s --format=%ct ${{ github.sha }})" >> "$GITHUB_ENV"
+
+      - name: Set up Docker Buildx
+        # docker/setup-buildx-action v3.12.0
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+
+      - name: Build ngabo-core image
+        id: core-build
+        # docker/build-push-action v7.3.0
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
+        with:
+          context: services/core
+          file: services/core/Dockerfile
+          push: false
+          load: true
+          provenance: false
+          tags: ngabo-core:${{ github.sha }}
+          build-args: |
+            SOURCE_REVISION=${{ github.sha }}
+            SOURCE_URL=${{ github.repositoryUrl }}
+            APP_VERSION=0.1.0
+            SOURCE_DATE_EPOCH=${{ env.SOURCE_DATE_EPOCH }}
+
+      - name: Build ngabo-web image
+        id: web-build
+        # docker/build-push-action v7.3.0
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: false
+          load: true
+          provenance: false
+          tags: ngabo-web:${{ github.sha }}
+          build-args: |
+            SOURCE_REVISION=${{ github.sha }}
+            SOURCE_URL=${{ github.repositoryUrl }}
+            APP_VERSION=0.1.0
+            SOURCE_DATE_EPOCH=${{ env.SOURCE_DATE_EPOCH }}
+
+      - name: Verify core image (health + non-root + metadata)
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="ngabo-core:${{ github.sha }}"
+          output="$(docker run --rm "$image" ngabo-health)"
+          echo "health output: ${output}"
+          grep -q '"status": "ok"' <<<"${output}"
+          grep -q '"service": "ngabo-core"' <<<"${output}"
+          grep -q '"revision": "${{ github.sha }}"' <<<"${output}"
+          user="$(docker inspect --format '{{.Config.User}}' "$image")"
+          echo "runtime user: ${user}"
+          [[ "${user}" == "ngabo" ]]
+          ports="$(docker inspect --format '{{json .Config.ExposedPorts}}' "$image")"
+          echo "exposed ports: ${ports}"
+          [[ "${ports}" == "null" || "${ports}" == "{}" ]]
+
+      - name: Verify web image (HTTP smoke + non-root + metadata)
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="ngabo-web:${{ github.sha }}"
+          user="$(docker inspect --format '{{.Config.User}}' "$image")"
+          echo "runtime user: ${user}"
+          [[ "${user}" == "ngabo" ]]
+          ports="$(docker inspect --format '{{json .Config.ExposedPorts}}' "$image")"
+          echo "exposed ports: ${ports}"
+          grep -q '"8080/tcp"' <<<"${ports}"
+          cid="$(docker run -d --rm -p 127.0.0.1:18080:8080 "$image")"
+          trap 'docker stop "${cid}" >/dev/null 2>&1 || true' EXIT
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18080/ >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:18080/ | grep -qi "html"
+          docker stop "${cid}" >/dev/null
+
+      - name: Scan ngabo-core image
+        # aquasecurity/trivy-action v0.36.0
+        # Gate: fails on ALL HIGH/CRITICAL findings except the explicit
+        # per-CVE exceptions documented in .trivyignore (each with a
+        # justification); no broad gate relaxation.
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8
+        with:
+          image-ref: ngabo-core:${{ github.sha }}
+          format: table
+          exit-code: "1"
+          severity: HIGH,CRITICAL
+          output: core-scan.txt
+
+      - name: Scan ngabo-web image
+        # aquasecurity/trivy-action v0.36.0
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8
+        with:
+          image-ref: ngabo-web:${{ github.sha }}
+          format: table
+          exit-code: "1"
+          severity: HIGH,CRITICAL
+          output: web-scan.txt
+
+      - name: Upload container scan evidence
+        if: always()
+        # actions/upload-artifact v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: container-evidence-${{ github.run_id }}
+          path: |
+            core-scan.txt
+            web-scan.txt
+          if-no-files-found: ignore
+          retention-days: 5
