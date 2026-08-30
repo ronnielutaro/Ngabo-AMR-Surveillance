@@ -131,7 +131,7 @@
     "expected": {
       "deployer_project_roles": [],
       "deployer_ar_roles": [
-        "roles/artifactregistry.reader"
+        "roles/artifactregistry.writer"
       ],
       "deployer_act_as_targets": [
         "ngabo-core-runtime",
@@ -152,7 +152,7 @@
     "observed": {
       "deployer_project_roles": [],
       "deployer_ar_roles": [
-        "roles/artifactregistry.reader"
+        "roles/artifactregistry.writer"
       ]
     },
     "verified": true
