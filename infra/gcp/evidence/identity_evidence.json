@@ -65,7 +65,7 @@
         "attribute.environment": "assertion.environment",
         "attribute.workflow_ref": "assertion.workflow_ref"
       },
-      "attribute_condition": "assertion.repository_id == \"1333677446\" && assertion.repository_owner_id == \"29591720\" && assertion.ref == \"refs/heads/develop\" && assertion.environment == \"dev\"",
+      "attribute_condition": "assertion.repository_id == \"1333677446\" && assertion.repository_owner_id == \"29591720\" && assertion.ref == \"refs/heads/develop\" && assertion.environment in [\"dev\", \"release\", \"judge\"]",
       "authorized_principal_set": "principalSet://iam.googleapis.com/projects/907313480935/locations/global/workloadIdentityPools/ngabo-github/attribute.repository_id/1333677446"
     },
     "observed": {
@@ -80,7 +80,7 @@
         "attribute.workflow_ref": "assertion.workflow_ref",
         "google.subject": "assertion.sub"
       },
-      "attribute_condition": "assertion.repository_id == \"1333677446\" && assertion.repository_owner_id == \"29591720\" && assertion.ref == \"refs/heads/develop\" && assertion.environment == \"dev\"",
+      "attribute_condition": "assertion.repository_id == \"1333677446\" && assertion.repository_owner_id == \"29591720\" && assertion.ref == \"refs/heads/develop\" && assertion.environment in [\"dev\", \"release\", \"judge\"]",
       "actual_wif_members": [
         "principalSet://iam.googleapis.com/projects/907313480935/locations/global/workloadIdentityPools/ngabo-github/attribute.repository_id/1333677446"
       ]
@@ -129,7 +129,9 @@
   },
   "iam_contracts": {
     "expected": {
-      "deployer_project_roles": [],
+      "deployer_project_roles": [
+        "roles/run.developer"
+      ],
       "deployer_ar_roles": [
         "roles/artifactregistry.writer"
       ],
@@ -147,10 +149,13 @@
         "roles/iam.serviceAccountAdmin",
         "roles/secretmanager.admin"
       ],
-      "cloud_run_developer_authority": "DEFERRED_TO_#90"
+      "cloud_run_developer_authority": "roles/run.developer (#90)"
     },
     "observed": {
-      "deployer_project_roles": [],
+      "deployer_project_roles": [
+        "projects/ngabo-amr-2026/roles/ngaboRunServiceIam",
+        "roles/run.developer"
+      ],
       "deployer_ar_roles": [
         "roles/artifactregistry.writer"
       ]
@@ -199,7 +204,8 @@
       "project_wide_secret_accessor_absent": true,
       "deployer_act_as_valid": true,
       "wif_impersonation_exact": true,
-      "github_env_valid": true
+      "github_env_valid": true,
+      "custom_roles_valid": true
     },
     "teardown_rehearsal_passed": true,
     "destructive_actions_executed": false,
