@@ -179,8 +179,7 @@ jobs:
       # buildx --load serializes an OCI manifest while docker push uploads the
       # daemon's re-serialized manifest, so the two digests can differ even
       # though the content is identical. Bind the evidence to the registry
-      # digest. Fail-closed: if evidence generation fails, the published tags
-      # are removed so no evidence-less publication remains.
+      # digest.
       - name: Generate machine-readable publish evidence from registry digests
         shell: bash
         env:
@@ -194,18 +193,6 @@ jobs:
           EVIDENCE_WEB_SCAN: web-scan.txt
         run: |
           set -euo pipefail
-          # Fail-closed: never leave a publication without its evidence.
-          cleanup() {
-            echo "Evidence generation failed; removing published tags"
-            for image in \
-              "${{ env.IMAGE_PREFIX }}/ngabo-core:${{ github.sha }}" \
-              "${{ env.IMAGE_PREFIX }}/ngabo-core:sha-${{ github.sha }}" \
-              "${{ env.IMAGE_PREFIX }}/ngabo-web:${{ github.sha }}" \
-              "${{ env.IMAGE_PREFIX }}/ngabo-web:sha-${{ github.sha }}"; do
-              gcloud artifacts docker tags delete "${image}" --quiet >/dev/null 2>&1 || true
-            done
-          }
-          trap cleanup EXIT
           # container_evidence.py is Python-stdlib-only; the hosted runner
           # provides python3 (no uv dependency in this publish lane).
           core_digest="$(gcloud artifacts docker images describe \
@@ -218,9 +205,9 @@ jobs:
           echo "registry web digest: ${web_digest}"
           EVIDENCE_CORE_DIGEST="${core_digest}" EVIDENCE_WEB_DIGEST="${web_digest}" \
             python3 infra/github/container_evidence.py --output "${EVIDENCE_OUT}"
-          trap - EXIT
 
       - name: Upload publish evidence
+        id: upload-evidence
         # actions/upload-artifact v7.0.1
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
@@ -231,3 +218,22 @@ jobs:
             web-scan.txt
           if-no-files-found: error
           retention-days: 30
+
+      # Fail-closed: a publication must never exist without its durable
+      # evidence artifact. This step runs on every outcome and removes the
+      # published tags unless the evidence upload succeeded — covering any
+      # mid-push failure (a later tag may already be published), evidence
+      # generation failure, or upload failure.
+      - name: Remove published tags if the publication did not complete
+        if: always() && steps.upload-evidence.outcome != 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "::warning::Publication did not complete; removing published tags"
+          for image in \
+            "${{ env.IMAGE_PREFIX }}/ngabo-core:${{ github.sha }}" \
+            "${{ env.IMAGE_PREFIX }}/ngabo-core:sha-${{ github.sha }}" \
+            "${{ env.IMAGE_PREFIX }}/ngabo-web:${{ github.sha }}" \
+            "${{ env.IMAGE_PREFIX }}/ngabo-web:sha-${{ github.sha }}"; do
+            gcloud artifacts docker tags delete "${image}" --quiet >/dev/null 2>&1 || true
+          done
