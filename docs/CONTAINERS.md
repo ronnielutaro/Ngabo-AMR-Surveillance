@@ -50,7 +50,17 @@ Pinned `aquasecurity/trivy-action` (v0.36.0) in both the PR lane and the publish
 
 ## Reproducibility
 
-Both Dockerfiles build from locked inputs (frozen lockfiles, pinned uv/pnpm, digest-pinned base images) and are built with `--provenance=false` plus `BUILDKIT_SOURCE_DATE_EPOCH` derived from the source commit timestamp, yielding **byte-identical image digests** for the same commit (verified locally for both images). The provenance/attestation index is intentionally disabled because its embedded build timestamps would break digest determinism; the machine-readable evidence document binds commit → workflow → digest instead.
+Both Dockerfiles build from locked inputs (frozen lockfiles, pinned uv/pnpm, digest-pinned base images) with `--provenance=false` and `SOURCE_DATE_EPOCH` derived from the source commit timestamp.
+
+Three mechanisms make the published digest deterministic for the same commit:
+
+1. **Declared epoch.** Each Dockerfile declares `ARG SOURCE_DATE_EPOCH` and exports it as `ENV` so BuildKit's frontend consumes it for OCI `created`/`history` metadata and `uv build` honors it for wheel timestamps.
+2. **Layer mtime normalization.** `RUN` steps `touch -d @$SOURCE_DATE_EPOCH` the files and directories written by pip/uv/useradd (excluding the read-only bind mounts `/etc/hosts`, `/etc/resolv.conf`).
+3. **`rewrite-timestamp=true` image export.** The publish workflow builds with the BuildKit ≥ 0.13 `rewrite-timestamp` docker exporter, which rewrites every file/directory timestamp in the exported artifact to the epoch — covering the parent directories that `COPY` stamps with the build time (open [moby/buildkit#6348](https://github.com/moby/buildkit/issues/6348)) — and pushes the exact tested object (`docker push` of the loaded rewrite-normalized image; no second build).
+
+The web build additionally embeds per-build random preview keys (Next.js 16 `previewModeId`/`previewModeSigningKey`/`previewModeEncryptionKey` in `prerender-manifest.json` and `server-reference-manifest.{js,json}`; Next disables its preview-key cache inside containers). `scripts/ci/normalize_next_build.cjs` derives those keys deterministically from the source revision after the build.
+
+**Verified:** two independent no-cache local builds of the same commit produce byte-identical artifacts for both images; two consecutive CI publish runs of the same develop SHA produced the identical ngabo-core registry digest. Residual nondeterminism is recorded: cross-machine byte identity is not claimed where BuildKit versions differ (layer tar serialization of directory entries), and the reproducibility contract is the publish lane itself (same workflow, same runner image, same BuildKit). The provenance/attestation index is intentionally disabled because its embedded build timestamps would break digest determinism; the machine-readable evidence document binds commit → workflow → digest instead.
 
 ## Secrets hygiene
 

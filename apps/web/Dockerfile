@@ -33,7 +33,17 @@ RUN npm install --global pnpm@11.22.0 \
     && pnpm install --frozen-lockfile
 
 COPY apps/web apps/web
+COPY scripts/ci/normalize_next_build.cjs scripts/ci/
 RUN pnpm --filter ngabo-web build
+
+# Next.js 16 embeds per-build random preview keys (previewModeId and the
+# signing/encryption keys) in prerender-manifest.json and
+# server-reference-manifest.{js,json}; its cache is disabled inside
+# containers, so fresh builds of the same commit would differ. Derive the
+# keys deterministically from the source revision so the build output is
+# byte-identical for the same commit.
+RUN node scripts/ci/normalize_next_build.cjs /app/apps/web/.next \
+    "${NGABO_SOURCE_REVISION}"
 
 # Normalize file mtimes of the build output (copied into the runtime stage)
 # to SOURCE_DATE_EPOCH for layer determinism.
