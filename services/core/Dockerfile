@@ -2,8 +2,8 @@
 
 # ngabo-core production container (Issue #89).
 #
-# The core runs the minimal stdlib HTTP adapter (Issue #90) serving the
-# typed /health, /ready, /version endpoints for Cloud Run. `ngabo-health`
+# The core runs the FastAPI HTTP adapter (Issue #90) serving the typed
+# /health, /ready, /version endpoints for Cloud Run. `ngabo-health`
 # (one-shot diagnostic) and `ngabo-certify-hero` remain invocable
 # explicitly; the default process is the HTTP server on $PORT (8080).
 #
@@ -65,7 +65,7 @@ LABEL org.opencontainers.image.source="${SOURCE_URL}" \
       org.opencontainers.image.revision="${SOURCE_REVISION}" \
       org.opencontainers.image.title="ngabo-core" \
       org.opencontainers.image.version="${APP_VERSION}" \
-      org.opencontainers.image.description="Ngabo AMR surveillance core runtime (framework-free; HTTP adapter deferred to Issue #90)" \
+      org.opencontainers.image.description="Ngabo AMR surveillance core runtime (FastAPI HTTP adapter, Issue #90)" \
       ngabo.service="ngabo-core" \
       ngabo.revision="${SOURCE_REVISION}"
 
@@ -105,10 +105,10 @@ RUN find /opt -exec touch -c -h -d "@${SOURCE_DATE_EPOCH}" {} +
 USER ngabo
 WORKDIR /home/ngabo
 
-# Cloud Run port convention (Issue #90): the minimal stdlib HTTP adapter
-# listens on $PORT (default 8080). EXPOSE is informational only — Cloud Run
+# Cloud Run port convention (Issue #90): the FastAPI adapter runs under
+# uvicorn on $PORT (default 8080). EXPOSE is informational only — Cloud Run
 # always routes to $PORT.
 EXPOSE 8080
 
-# Default process: minimal stdlib HTTP adapter (typed health/ready/version).
+# Default process: FastAPI HTTP adapter (typed health/ready/version).
 CMD ["ngabo-http"]

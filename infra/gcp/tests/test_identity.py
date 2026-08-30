@@ -61,7 +61,7 @@ VALID_PROJECT_BINDINGS: list[dict[str, Any]] = [
         ],
     },
     {
-        "role": "roles/ngaboRunServiceIam",
+        "role": f"projects/{SAMPLE_PROJECT_ID}/roles/ngaboRunServiceIam",
         "members": [
             f"serviceAccount:{DEPLOYER_SA_NAME}@{SAMPLE_PROJECT_ID}.iam.gserviceaccount.com"
         ],
@@ -326,6 +326,56 @@ def test_validate_fails_on_unapproved_deployer_project_role() -> None:
     assert res["passed"] is False
     assert res["checks"]["deployer_roles_match_allowlist"] is False
     assert any("Deployer project roles" in f for f in res["failures"])
+
+def test_custom_role_uses_fully_qualified_project_identity() -> None:
+    """Issue #90 repair: project custom roles in IAM bindings must use the
+    canonical resource name projects/{PROJECT_ID}/roles/{ROLE_ID}, not the
+    predefined-role short form roles/{ROLE}."""
+    from infra.gcp.identity import custom_role_binding_name
+
+    assert (
+        custom_role_binding_name(SAMPLE_PROJECT_ID, "ngaboRunServiceIam")
+        == f"projects/{SAMPLE_PROJECT_ID}/roles/ngaboRunServiceIam"
+    )
+    assert custom_role_binding_name(SAMPLE_PROJECT_ID, "x") != "roles/x"
+
+def test_validate_passes_custom_role_with_canonical_name() -> None:
+    """A converged environment whose custom role uses the canonical
+    projects/.../roles/... name must validate cleanly."""
+    mgr = create_converged_manager()
+    res = mgr.validate()
+    assert res["passed"] is True, res["failures"]
+    assert res["checks"]["custom_roles_valid"] is True
+
+def test_validate_fails_custom_role_with_short_roles_prefix() -> None:
+    """A custom role bound with the predefined-role short form must fail
+    closed: it is not the canonical custom-role identity."""
+    mgr = create_converged_manager()
+    short_binding = [
+        {
+            "role": "roles/ngaboRunServiceIam",
+            "members": [
+                f"serviceAccount:{DEPLOYER_SA_NAME}@{SAMPLE_PROJECT_ID}.iam.gserviceaccount.com"
+            ],
+        }
+    ]
+    mgr.inspector.get_project_iam_bindings = MagicMock(return_value=short_binding)  # type: ignore[method-assign]
+    res = mgr.validate()
+    assert res["passed"] is False
+    assert res["checks"]["custom_roles_valid"] is False
+    assert any("ngaboRunServiceIam" in f for f in res["failures"])
+
+def test_validate_fails_custom_role_with_extra_permission() -> None:
+    """The custom role must contain exactly run.services.setIamPolicy;
+    any broader permission set fails validation."""
+    mgr = create_converged_manager()
+    mgr.inspector.get_custom_role_permissions = MagicMock(  # type: ignore[method-assign]
+        return_value=["run.services.setIamPolicy", "run.services.delete"]
+    )
+    res = mgr.validate()
+    assert res["passed"] is False
+    assert res["checks"]["custom_roles_valid"] is False
+    assert any("permissions" in f for f in res["failures"])
 
 def test_plan_revokes_obsolete_artifact_registry_reader() -> None:
     """Issue #89: the #87-era reader must be planned for revocation when the

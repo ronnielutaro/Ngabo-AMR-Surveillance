@@ -56,6 +56,17 @@ from infra.gcp.identity_config import (  # noqa: E402
 )
 
 
+def custom_role_binding_name(project_id: str, role_id: str) -> str:
+    """Canonical IAM resource name for a project-level custom role.
+
+    Official GCP IAM semantics (custom role resource names): a project-level
+    custom role used in an IAM policy binding is identified by its full
+    resource name ``projects/{PROJECT_ID}/roles/{ROLE_ID}``, whereas
+    predefined roles use the short ``roles/{ROLE}`` form.
+    """
+    return f"projects/{project_id}/roles/{role_id}"
+
+
 class GcpIdentityInspector:
     """Read-only inspector for GCP IAM, Service Accounts, and WIF state.
 
@@ -642,7 +653,7 @@ class GcpIdentityManager:
         # and the declared grant_to member must hold the role at project level.
         for role_spec in CUSTOM_ROLES:
             role_id = str(role_spec["role_id"])
-            full_role = f"roles/{role_id}"
+            full_role = custom_role_binding_name(self.config.project_id, role_id)
             PLAN_PERMS: tuple[str, ...] = tuple(role_spec["permissions"])  # type: ignore[arg-type]
             role_exists = self.inspector.custom_role_exists(
                 role_id, self.config.project_id
@@ -918,7 +929,7 @@ class GcpIdentityManager:
         # 5b. Custom IAM Roles (Issue #90: ngaboRunServiceIam)
         for role_spec in CUSTOM_ROLES:
             role_id = str(role_spec["role_id"])
-            full_role = f"roles/{role_id}"
+            full_role = custom_role_binding_name(self.config.project_id, role_id)
             APPLY_PERMS: tuple[str, ...] = tuple(role_spec["permissions"])  # type: ignore[arg-type]
             role_exists = self.inspector.custom_role_exists(
                 role_id, self.config.project_id
@@ -1184,7 +1195,10 @@ class GcpIdentityManager:
 
         # Issue #90 custom roles are a separate exact-match allow-list (see
         # step 8 below); exclude them from the predefined-role comparison.
-        custom_role_ids = {f"roles/{spec['role_id']}" for spec in CUSTOM_ROLES}
+        custom_role_ids = {
+            custom_role_binding_name(self.config.project_id, str(spec["role_id"]))
+            for spec in CUSTOM_ROLES
+        }
         current_deployer_project_roles = [
             b.get("role", "")
             for b in project_bindings
@@ -1341,7 +1355,7 @@ class GcpIdentityManager:
         custom_roles_valid = True
         for role_spec in CUSTOM_ROLES:
             role_id = str(role_spec["role_id"])
-            full_role = f"roles/{role_id}"
+            full_role = custom_role_binding_name(self.config.project_id, role_id)
             VALIDATE_PERMS: tuple[str, ...] = tuple(role_spec["permissions"])  # type: ignore[arg-type]
             if not self.inspector.custom_role_exists(role_id, self.config.project_id):
                 failures.append(f"Custom role '{full_role}' does not exist.")

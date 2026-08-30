@@ -4,12 +4,15 @@ version = "0.1.0"
 description = "Ngabo core service — deterministic AMR surveillance and incident-response core (Clean Architecture)"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "fastapi>=0.115,<1",
+    "uvicorn>=0.34,<1",
+]
 
 [project.scripts]
 ngabo-health = "ngabo.bootstrap.health:main"
 ngabo-certify-hero = "ngabo.bootstrap.certify_hero:main"
-# Issue #90: minimal stdlib HTTP adapter for Cloud Run (typed health/ready/version).
+# Issue #90: FastAPI HTTP adapter for Cloud Run (typed health/ready/version).
 ngabo-http = "ngabo.interfaces.http:main"
 
 [dependency-groups]
@@ -20,6 +23,7 @@ dev = [
     "jsonschema>=4.26.0",
     "pyyaml>=6.0.2",
     "types-pyyaml>=6.0.12.20241230",
+    "httpx>=0.27",
 ]
 
 [build-system]

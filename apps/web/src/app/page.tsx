@@ -39,6 +39,7 @@ type CoreStatus =
       service: string;
       version: string;
       revision: string;
+      imageDigest: string;
       environment: string;
       ready: boolean;
     };
@@ -56,6 +57,10 @@ interface VersionPayload {
   version: string;
   revision: string;
   environment: string;
+  // The immutable core image digest is REQUIRED for LIVE: a deployment
+  // without a valid sha256 digest has incomplete artifact identity and
+  // must render SCHEMA_MISMATCH, not LIVE with an invented value.
+  image_digest: string;
 }
 
 function isReadyPayload(value: unknown): value is ReadyPayload {
@@ -73,7 +78,9 @@ function isVersionPayload(value: unknown): value is VersionPayload {
     typeof record.service === "string" &&
     typeof record.version === "string" &&
     typeof record.revision === "string" &&
-    typeof record.environment === "string"
+    typeof record.environment === "string" &&
+    typeof record.image_digest === "string" &&
+    /^sha256:[0-9a-f]{64}$/.test(record.image_digest)
   );
 }
 
@@ -170,6 +177,7 @@ async function fetchCoreStatus(): Promise<CoreStatus> {
       service: readyRaw.service,
       version: readyRaw.version ?? "unknown",
       revision: readyRaw.revision ?? "unknown",
+      imageDigest: versionRaw.image_digest,
       environment: versionRaw.environment,
       ready: readyRaw.ready ?? false,
     };
@@ -269,6 +277,10 @@ function StatusPanel({ status }: { status: CoreStatus }) {
             <dt className="text-emerald-800/60 dark:text-emerald-200/60">revision</dt>
             <dd className="break-all font-mono text-emerald-900 dark:text-emerald-100">
               {status.revision}
+            </dd>
+            <dt className="text-emerald-800/60 dark:text-emerald-200/60">image digest</dt>
+            <dd className="break-all font-mono text-emerald-900 dark:text-emerald-100">
+              {status.imageDigest}
             </dd>
             <dt className="text-emerald-800/60 dark:text-emerald-200/60">environment</dt>
             <dd className="font-mono text-emerald-900 dark:text-emerald-100">

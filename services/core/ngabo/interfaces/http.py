@@ -1,107 +1,92 @@
-"""Minimal stdlib HTTP adapter for the ngabo-core skeleton (Issue #90).
+"""FastAPI HTTP adapter for the ngabo-core skeleton (Issue #90).
 
-Cloud Run requires a listening HTTP service; the core is intentionally
-framework-free (no FastAPI/uvicorn) so the production image gains no
-runtime dependencies. This adapter uses only :mod:`http.server` and serves
-typed JSON endpoints:
+FastAPI is the sanctioned outer delivery mechanism (docs/SYSTEM_DESIGN.md,
+docs/TECH_STACK.md): it lives in the interfaces layer, owns HTTP concerns
+only, and never leaks into domain or application modules. The adapter
+serves three typed endpoints backed by the framework-free contracts in
+``ngabo.interfaces.health``:
 
-- ``GET /health``  — liveness: status/service/version/revision.
-- ``GET /ready``   — readiness: same payload plus ``ready: true``.
-- ``GET /version`` — service identity metadata (service/version/revision/
-  environment) consumed by the web console's live-status panel.
+- ``GET /health``  — liveness (status/service/version/revision).
+- ``GET /ready``   — readiness (liveness plus ``ready: true``).
+- ``GET /version`` — runtime/artifact identity (service/version/revision/
+  image_digest/environment).
 
-Contract: no domain or application logic lives here; the adapter only
-forwards the bootstrap ``health()`` payload and environment metadata.
-Unknown paths return a typed 404 JSON body (never an HTML error page).
-
-Entry point ``ngabo-http`` (see pyproject ``[project.scripts]``) binds
+Routes contain no AMR business logic; they only forward the health
+contracts. The production entry point ``ngabo-http`` runs uvicorn bound to
 ``0.0.0.0:$PORT`` (Cloud Run convention; default 8080).
 """
 
 from __future__ import annotations
 
-import json
 import os
-from collections.abc import Mapping
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Final
 
-from ngabo.interfaces.health import health
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+
+from ngabo.interfaces.health import health, readiness, runtime_identity
 
 SERVICE_NAME: Final[str] = "ngabo-core"
 DEFAULT_PORT: Final[int] = 8080
-DEFAULT_ENVIRONMENT: Final[str] = "development"
 
-_STATUS_OK: Final[str] = "ok"
-_CONTENT_TYPE: Final[tuple[str, str]] = ("Content-Type", "application/json; charset=utf-8")
-_NO_STORE: Final[tuple[str, str]] = ("Cache-Control", "no-store")
-
-
-def _environment() -> str:
-    return os.environ.get("NGABO_ENVIRONMENT", DEFAULT_ENVIRONMENT)
-
-
-def _version_payload() -> dict[str, str]:
-    return {
-        "service": SERVICE_NAME,
-        "version": os.environ.get("NGABO_SERVICE_VERSION", "0.1.0"),
-        "revision": os.environ.get("NGABO_SOURCE_REVISION", "unknown"),
-        "environment": _environment(),
-    }
+app = FastAPI(
+    title=f"{SERVICE_NAME} skeleton API",
+    version="0.1.0",
+    description=(
+        "Ngabo core skeleton HTTP adapter (Issue #90): typed health, "
+        "readiness, and runtime/artifact identity endpoints."
+    ),
+)
 
 
-def _ready_payload() -> dict[str, str | bool]:
-    payload: dict[str, str | bool] = dict(health())
-    payload["ready"] = True
-    return payload
+@app.get("/health", response_model=dict[str, str], summary="Liveness")
+def get_health() -> dict[str, str]:
+    """Liveness payload (status/service/version/revision)."""
+    return health()
 
 
-class NgaboHttpHandler(BaseHTTPRequestHandler):
-    """Serves the typed health/ready/version endpoints for the skeleton."""
+@app.get("/ready", response_model=dict[str, str | bool], summary="Readiness")
+def get_ready() -> dict[str, str | bool]:
+    """Readiness payload (liveness plus ready: true)."""
+    return readiness()
 
-    server_version = f"ngabo-http/0.1.0 ({SERVICE_NAME})"
 
-    # Silence per-request logging noise; Cloud Run surfaces structured logs
-    # via stdout/stderr at the process level.
-    def log_message(self, format: str, *args: object) -> None:  # noqa: A002
-        pass
+@app.get("/version", response_model=dict[str, str], summary="Runtime identity")
+def get_version() -> dict[str, str]:
+    """Runtime/artifact identity (service/version/revision/image_digest/environment).
 
-    def _send_json(self, status: int, payload: Mapping[str, object]) -> None:
-        body = json.dumps(payload, sort_keys=True).encode("utf-8")
-        self.send_response(status)
-        self.send_header(*_CONTENT_TYPE)
-        self.send_header(*_NO_STORE)
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+    ``image_digest`` is present only when a valid immutable digest was
+    injected by the trusted deployment (``NGABO_IMAGE_DIGEST``); absent or
+    malformed values are omitted so consumers can treat identity as
+    incomplete rather than invented.
+    """
+    return runtime_identity()
 
-    def do_GET(self) -> None:
-        if self.path in ("/", "/health"):
-            self._send_json(200, dict(health()))
-        elif self.path == "/ready":
-            self._send_json(200, _ready_payload())
-        elif self.path == "/version":
-            self._send_json(200, _version_payload())
-        else:
-            self._send_json(404, {"status": "error", "error": "not_found"})
+
+@app.get("/", response_model=dict[str, str], summary="Root alias")
+def get_root() -> dict[str, str]:
+    """Root alias for the liveness payload (Cloud Run startup probe friendly)."""
+    return health()
+
+
+@app.exception_handler(404)
+async def not_found_handler(_request: Request, _exc: Exception) -> JSONResponse:
+    """Typed JSON 404 instead of an HTML error page."""
+    return JSONResponse(status_code=404, content={"status": "error", "error": "not_found"})
 
 
 def serve(host: str = "0.0.0.0", port: int | None = None) -> None:
-    """Run the skeleton HTTP server until interrupted."""
+    """Run the uvicorn production ASGI server on ``0.0.0.0:$PORT``."""
+    import uvicorn
+
     bound_port = port if port is not None else int(
         os.environ.get("PORT", str(DEFAULT_PORT))
     )
-    server = ThreadingHTTPServer((host, bound_port), NgaboHttpHandler)
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        pass
-    finally:
-        server.server_close()
+    uvicorn.run(app, host=host, port=bound_port, log_level="info")
 
 
 def main() -> None:
-    """Console entry point ``ngabo-http``."""
+    """Console entry point ``ngabo-http`` (Cloud Run $PORT convention)."""
     port = int(os.environ.get("PORT", str(DEFAULT_PORT)))
     serve(port=port)
 

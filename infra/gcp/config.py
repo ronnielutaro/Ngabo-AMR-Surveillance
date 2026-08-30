@@ -60,6 +60,20 @@ STANDARD_LABELS: dict[str, str] = {
     "owner": OWNER_LABEL,
 }
 
+# Issue #90: canonical Cloud Run label set for the dev skeleton. This is the
+# single source of truth for BOTH the trusted deployment path and the
+# desired-state validator. The skeleton runs in the `dev` environment, so
+# environment=dev here (distinct from the shared STANDARD_LABELS value used
+# by other foundation resources). managed-by=ngabo-bootstrap is truthful:
+# Terraform does not manage these services.
+CLOUD_RUN_LABELS: dict[str, str] = {
+    "app": APP_LABEL,
+    "managed-by": MANAGED_BY_LABEL,
+    "lifecycle": LIFECYCLE_LABEL,
+    "environment": "dev",
+    "owner": OWNER_LABEL,
+}
+
 # ---------------------------------------------------------------------------
 # API Allow-list (14 Justified APIs)
 # ---------------------------------------------------------------------------

@@ -1,18 +1,15 @@
-"""Tests for the minimal stdlib HTTP adapter (Issue #90)."""
+"""Tests for the FastAPI HTTP adapter (Issue #90)."""
 
 from __future__ import annotations
 
-import json
 import os
-import threading
-import time
 import unittest
-from http.client import HTTPConnection
-from typing import Any
 
-from ngabo.interfaces.http import serve
+from fastapi.testclient import TestClient
 
-HOST = "127.0.0.1"
+from ngabo.interfaces.http import app
+
+VALID_DIGEST = "sha256:" + "a" * 64
 
 
 class HttpAdapterTests(unittest.TestCase):
@@ -22,108 +19,73 @@ class HttpAdapterTests(unittest.TestCase):
         os.environ["NGABO_SERVICE_VERSION"] = "0.1.0"
         os.environ["NGABO_SOURCE_REVISION"] = "a" * 40
         os.environ["NGABO_ENVIRONMENT"] = "test"
+        os.environ["NGABO_IMAGE_DIGEST"] = VALID_DIGEST
+        self.client = TestClient(app)
 
     def tearDown(self) -> None:
         os.environ.clear()
         os.environ.update(self._env)
 
-    @staticmethod
-    def _start_server() -> tuple[threading.Thread, int]:
-        """Start the adapter on an ephemeral port; return (thread, port)."""
-        import socket
-
-        probe = socket.socket()
-        probe.bind((HOST, 0))
-        port = probe.getsockname()[1]
-        probe.close()
-
-        # serve() reads PORT from the environment; bind the chosen port.
-        old = os.environ.get("PORT")
-        os.environ["PORT"] = str(port)
-        thread = threading.Thread(
-            target=serve, kwargs={"host": HOST, "port": port}, daemon=True
-        )
-        thread.start()
-        if old is None:
-            os.environ.pop("PORT", None)
-        else:
-            os.environ["PORT"] = old
-        return thread, port
-
-    @staticmethod
-    def _get(port: int, path: str) -> tuple[int, dict[str, Any]]:
-        # The serve thread binds asynchronously; retry briefly so a slow
-        # CI scheduler cannot produce a spurious ConnectionRefusedError.
-        last_error: OSError | None = None
-        for _ in range(20):
-            try:
-                conn = HTTPConnection(HOST, port, timeout=5)
-                conn.request("GET", path)
-                response = conn.getresponse()
-                body = json.loads(response.read().decode("utf-8"))
-                conn.close()
-                return response.status, body
-            except OSError as exc:
-                last_error = exc
-                time.sleep(0.05)
-        raise AssertionError(f"server on port {port} did not accept: {last_error}")
-
     def test_health_returns_ok_payload(self) -> None:
-        thread, port = self._start_server()
-        try:
-            status, body = self._get(port, "/health")
-            self.assertEqual(status, 200)
-            self.assertEqual(body["status"], "ok")
-            self.assertEqual(body["service"], "ngabo-core")
-            self.assertEqual(body["version"], "0.1.0")
-            self.assertEqual(body["revision"], "a" * 40)
-        finally:
-            thread.join(timeout=2)
+        response = self.client.get("/health")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {
+                "status": "ok",
+                "service": "ngabo-core",
+                "version": "0.1.0",
+                "revision": "a" * 40,
+            },
+        )
 
     def test_root_alias_returns_health(self) -> None:
-        thread, port = self._start_server()
-        try:
-            status, body = self._get(port, "/")
-            self.assertEqual(status, 200)
-            self.assertEqual(body["status"], "ok")
-        finally:
-            thread.join(timeout=2)
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "ok")
 
     def test_ready_returns_ready_true(self) -> None:
-        thread, port = self._start_server()
-        try:
-            status, body = self._get(port, "/ready")
-            self.assertEqual(status, 200)
-            self.assertEqual(body["status"], "ok")
-            self.assertTrue(body["ready"])
-        finally:
-            thread.join(timeout=2)
+        response = self.client.get("/ready")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "ok")
+        self.assertTrue(response.json()["ready"])
 
-    def test_version_returns_service_identity(self) -> None:
-        thread, port = self._start_server()
-        try:
-            status, body = self._get(port, "/version")
-            self.assertEqual(status, 200)
-            self.assertEqual(
-                body,
-                {
-                    "service": "ngabo-core",
-                    "version": "0.1.0",
-                    "revision": "a" * 40,
-                    "environment": "test",
-                },
-            )
-        finally:
-            thread.join(timeout=2)
+    def test_version_returns_full_runtime_identity(self) -> None:
+        response = self.client.get("/version")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {
+                "service": "ngabo-core",
+                "version": "0.1.0",
+                "revision": "a" * 40,
+                "environment": "test",
+                "image_digest": VALID_DIGEST,
+            },
+        )
+
+    def test_version_omits_missing_digest(self) -> None:
+        os.environ.pop("NGABO_IMAGE_DIGEST", None)
+        response = self.client.get("/version")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("image_digest", response.json())
+
+    def test_version_omits_malformed_digest(self) -> None:
+        os.environ["NGABO_IMAGE_DIGEST"] = "latest"
+        response = self.client.get("/version")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("image_digest", response.json())
+
+    def test_version_omits_non_sha_digest(self) -> None:
+        os.environ["NGABO_IMAGE_DIGEST"] = "sha256:nothex"
+        response = self.client.get("/version")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("image_digest", response.json())
 
     def test_unknown_path_returns_typed_404(self) -> None:
-        thread, port = self._start_server()
-        try:
-            status, body = self._get(port, "/definitely-not-a-route")
-            self.assertEqual(status, 404)
-            self.assertEqual(body["error"], "not_found")
-        finally:
-            thread.join(timeout=2)
+        response = self.client.get("/definitely-not-a-route")
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()["error"], "not_found")
 
 
 if __name__ == "__main__":

@@ -27,6 +27,7 @@ function liveCore() {
       version: "0.1.0",
       revision: "abc123".repeat(7),
       environment: "test",
+      image_digest: "sha256:" + "d".repeat(64),
     }),
   };
 }
@@ -72,6 +73,7 @@ describe("Home", () => {
     expect(html).toContain("ngabo-core");
     expect(html).toContain("0.1.0");
     expect(html).toContain("abc123".repeat(7));
+    expect(html).toContain("sha256:" + "d".repeat(64));
     expect(html).toContain("test");
     expect(html).toContain("true");
   });
@@ -114,5 +116,71 @@ describe("Home", () => {
     );
     const html = renderToStaticMarkup(await Home());
     expect(html).toContain("SCHEMA MISMATCH");
+  });
+});
+
+describe("Home — immutable digest identity", () => {
+  it("renders SCHEMA_MISMATCH when the core omits image_digest", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string) =>
+        url.endsWith("/ready")
+          ? Promise.resolve(liveCore().ready)
+          : Promise.resolve(
+              okJson({
+                service: "ngabo-core",
+                version: "0.1.0",
+                revision: "abc123".repeat(7),
+                environment: "test",
+              }),
+            ),
+      ),
+    );
+    const html = renderToStaticMarkup(await Home());
+    expect(html).toContain("SCHEMA MISMATCH");
+    expect(html).not.toContain("LIVE");
+  });
+
+  it("renders SCHEMA_MISMATCH when image_digest is malformed", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string) =>
+        url.endsWith("/ready")
+          ? Promise.resolve(liveCore().ready)
+          : Promise.resolve(
+              okJson({
+                service: "ngabo-core",
+                version: "0.1.0",
+                revision: "abc123".repeat(7),
+                environment: "test",
+                image_digest: "latest",
+              }),
+            ),
+      ),
+    );
+    const html = renderToStaticMarkup(await Home());
+    expect(html).toContain("SCHEMA MISMATCH");
+    expect(html).not.toContain("LIVE");
+  });
+
+  it("renders SCHEMA_MISMATCH when revision is missing", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string) =>
+        url.endsWith("/ready")
+          ? Promise.resolve(liveCore().ready)
+          : Promise.resolve(
+              okJson({
+                service: "ngabo-core",
+                version: "0.1.0",
+                environment: "test",
+                image_digest: "sha256:" + "d".repeat(64),
+              }),
+            ),
+      ),
+    );
+    const html = renderToStaticMarkup(await Home());
+    expect(html).toContain("SCHEMA MISMATCH");
+    expect(html).not.toContain("LIVE");
   });
 });

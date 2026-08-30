@@ -4,20 +4,20 @@ name: Deploy Cloud Run Skeleton
 #
 # Trust boundary: runs ONLY from the develop ref, in the `dev` GitHub
 # environment, authenticating keylessly via Workload Identity Federation
-# as ngabo-deployer (which holds roles/run.developer for Cloud Run
-# deploys). It never runs from arbitrary PR branches and never uses
-# stored credentials or JSON service-account keys.
+# as ngabo-deployer (which holds roles/run.developer plus the
+# ngaboRunServiceIam custom role for run.services.setIamPolicy). It never
+# runs from arbitrary PR branches and never uses stored credentials or
+# JSON service-account keys.
 #
 # Deployment identity contract: inputs accept ONLY immutable digests
-# (sha256:<64 hex>); mutable tags, "latest", or bare repository
-# references are rejected before any gcloud call. The deployed artifact
-# is the tested artifact from the Issue #89 publish workflow.
+# (sha256:<64 hex>); mutable tags, "latest", or bare repository references
+# are rejected before any gcloud call.
 #
-# The web service is the public entry point (--allow-unauthenticated);
-# core stays private (--no-allow-unauthenticated) and is reached by the
-# web runtime identity through Cloud Run's service-to-service boundary.
-# Bounds come from CLOUD_RUN_CAPS_CONTRACT in infra/gcp/config.py:
-# min 0, max 2, cpu 1, memory 512Mi, timeout 60s, scale-to-zero.
+# Deployment semantics live in ONE place: infra/gcp/cloudrun.py (canonical
+# apply sequence: deploy core → resolve real status.url → grant web-runtime
+# run.invoker on core → deploy web with the real CORE_API_URL). This
+# workflow owns only the trusted trigger, authentication, input validation,
+# and evidence recording.
 
 on:
   workflow_dispatch:
@@ -46,10 +46,6 @@ jobs:
     environment: dev
     timeout-minutes: 20
     if: github.ref == 'refs/heads/develop'
-    env:
-      PROJECT_ID: ngabo-amr-2026
-      REGION: us-central1
-      REPO: ngabo-artifacts
     steps:
       - name: Checkout the exact dispatch commit
         # actions/checkout v7.0.1
@@ -86,70 +82,27 @@ jobs:
         with:
           project_id: ngabo-amr-2026
 
-      - name: Deploy ngabo-core (private, immutable digest)
+      - name: Canonical Cloud Run deployment (infra/gcp/cloudrun.py)
+        # Single source of deployment truth: core deploy → status.url
+        # resolution → web-runtime invoker grant → web deploy with the real
+        # core URL. The workflow does not duplicate any gcloud run flags.
         shell: bash
         run: |
           set -euo pipefail
-          gcloud run services deploy ngabo-core \
-            --image "us-central1-docker.pkg.dev/${PROJECT_ID}/${REPO}/ngabo-core@${core_digest}" \
-            --region "${REGION}" \
-            --service-account ngabo-core-runtime@${PROJECT_ID}.iam.gserviceaccount.com \
-            --min-instances 0 \
-            --max-instances 2 \
-            --cpu 1 \
-            --memory 512Mi \
-            --timeout 60s \
-            --concurrency 80 \
-            --no-allow-unauthenticated \
-            --no-cpu-throttling \
-            --labels app=ngabo,managed-by=terraform,environment=dev \
-            --quiet
+          cd services/core
+          uv sync --frozen
+          uv run python ../../infra/gcp/cloudrun.py apply \
+            --core-digest "${core_digest}" \
+            --web-digest "${web_digest}"
 
-      - name: Grant web runtime invoker on core service
-        # Issue #90 service-to-service boundary: ngabo-core is private; the
-        # web runtime identity needs run.invoker on the core service so the
-        # console's server-side /health fetch succeeds. The deployer holds
-        # run.services.setIamPolicy through the custom ngaboRunServiceIam role.
+      - name: Validate deployed state against #90 contract
         shell: bash
         run: |
           set -euo pipefail
-          gcloud run services add-iam-policy-binding ngabo-core \
-            --region "${REGION}" \
-            --member "serviceAccount:ngabo-web-runtime@${PROJECT_ID}.iam.gserviceaccount.com" \
-            --role roles/run.invoker \
-            --quiet
-
-      - name: Resolve deployed core service URL
-        # Cloud Run's deterministic hostname is derived from the project
-        # NUMBER, not the project ID (older services may carry a hashed URL);
-        # read the actual status.url so CORE_API_URL is exact.
-        id: core-url
-        shell: bash
-        run: |
-          set -euo pipefail
-          core_url="$(gcloud run services describe ngabo-core --region "${REGION}" \
-            --format='value(status.url)')"
-          echo "core_url=${core_url}" >> "$GITHUB_OUTPUT"
-
-      - name: Deploy ngabo-web (public, immutable digest)
-        shell: bash
-        run: |
-          set -euo pipefail
-          gcloud run services deploy ngabo-web \
-            --image "us-central1-docker.pkg.dev/${PROJECT_ID}/${REPO}/ngabo-web@${web_digest}" \
-            --region "${REGION}" \
-            --service-account ngabo-web-runtime@${PROJECT_ID}.iam.gserviceaccount.com \
-            --min-instances 0 \
-            --max-instances 2 \
-            --cpu 1 \
-            --memory 512Mi \
-            --timeout 60s \
-            --concurrency 80 \
-            --allow-unauthenticated \
-            --no-cpu-throttling \
-            --labels app=ngabo,managed-by=terraform,environment=dev \
-            --set-env-vars "CORE_API_URL=${{ steps.core-url.outputs.core_url }}" \
-            --quiet
+          cd services/core
+          uv run python ../../infra/gcp/cloudrun.py validate \
+            --core-digest "${core_digest}" \
+            --web-digest "${web_digest}"
 
       - name: Record deployed revisions (redacted)
         shell: bash
@@ -157,6 +110,6 @@ jobs:
           set -euo pipefail
           for service in ngabo-core ngabo-web; do
             echo "== ${service} =="
-            gcloud run services describe "${service}" --region "${REGION}" \
+            gcloud run services describe "${service}" --region us-central1 \
               --format='value(spec.template.metadata.name, status.latestReadyRevisionName, spec.template.spec.containers[0].image)'
           done
