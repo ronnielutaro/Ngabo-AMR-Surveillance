@@ -329,14 +329,28 @@ the workflow routes to `BLOCK`. The bound is enforced (no unbounded loop).
 invocation_id)` from plain application/Python code; a synthetic event dict is
 the entry message. No interactive chat required.
 
-### Cloud Run proof: **PENDING (certification evidence below)**
+### Cloud Run proof: **PASS**
 
 The exact locked deps and the `ngabo-adk-spike` console entry are shipped.
 `live_capability.py` supports both an API-key developer path
 (`GEMINI_API_KEY`) and the **keyless Vertex path** (`GOOGLE_GENAI_USE_VERTEXAI=true`
-with ADC/WIF and a Vertex/Gemini caller grant). The disposable reachability
-proof will be executed after merge; see the Issue #49 certification comment
-for the source SHA / digest / revision / invocation result.
+with ADC/WIF and a Vertex/Gemini caller grant).
+
+Disposable Cloud Run Job verification (post-merge, develop `7478e68e`):
+
+- source SHA: `7478e68e8c1f510231365d19a556eeea4c8b7c83`
+- core image digest: `sha256:17bdabb957fc6e3426ef30011167ae58965b1cbdfbbd82e716e4586bc32866a1`
+- job/execution: `ngabo-adk-spike-proof-x4zr2` (and `-cxncb`), `succeeded`
+- ADK version / model: `google-adk==2.8.0` / `gemini-3.6-flash`
+- result: `status=ACCEPTED`, claim `claim-101` (`DERIVED_FINDING`),
+  `verification.valid=true`, `repair_attempts=0`
+
+Keyless Vertex note: the project `aiplatform.googleapis.com` was enabled for
+the keyless path, but the Agent Platform API returned `SERVICE_DISABLED`
+until propagation. The disposable proof was therefore completed via the
+developer-API path with a temporary Secret Manager key (never printed); the
+temp SA/secret/job were deleted afterward. The keyless Vertex path is expected
+to work once the AI Platform activation fully propagates.
 
 ### Material unsupported / ambiguous APIs
 
