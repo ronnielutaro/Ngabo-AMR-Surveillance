@@ -249,23 +249,35 @@ def _deploy_service(service: ServiceDesiredState) -> None:
         )
 
 
-def apply(core_digest: str, web_digest: str) -> int:
-    """Canonical deployment sequence (single source of deployment truth)."""
+def apply(core_digest: str, web_digest: str, services: list[str] | None = None) -> int:
+    """Canonical deployment sequence (single source of deployment truth).
+
+    ``services`` selects a subset ``{core, web}`` for a targeted delivery;
+    the default applies both in the exact #90 order. Deploying only web
+    still resolves the real core URL; deploying only core retains the
+    existing web revision and refresh of the web-runtime invoker grant.
+    """
+    selected = list(services) if services else ["core", "web"]
+    invalid = [s for s in selected if s not in ("core", "web")]
+    if invalid:
+        raise ValueError(f"unknown service(s): {invalid}")
+
     core, _web = desired_services(core_digest, web_digest)
+    if "core" in selected:
+        _deploy_service(core)
+        grant_web_invoker_on_core()
 
-    _deploy_service(core)
-    core_url = resolve_core_url()
-    print(f"ngabo-core status.url: {core_url}")
-    grant_web_invoker_on_core()
-
-    web = ServiceDesiredState(
-        name="ngabo-web",
-        image=artifact_uri("ngabo-web", web_digest),
-        runtime_sa=WEB_RUNTIME_SA,
-        allow_unauthenticated=True,
-        env_vars={CORE_URL_ENV: core_url},
-    )
-    _deploy_service(web)
+    if "web" in selected:
+        core_url = resolve_core_url()
+        print(f"ngabo-core status.url: {core_url}")
+        web = ServiceDesiredState(
+            name="ngabo-web",
+            image=artifact_uri("ngabo-web", web_digest),
+            runtime_sa=WEB_RUNTIME_SA,
+            allow_unauthenticated=True,
+            env_vars={CORE_URL_ENV: core_url},
+        )
+        _deploy_service(web)
 
     print("Deploy complete.")
     return 0
@@ -543,6 +555,12 @@ def main(argv: list[str] | None = None) -> int:
     for name in ("plan", "apply", "validate"):
         p = sub.add_parser(name)
         add_digest_args(p)
+        if name == "apply":
+            p.add_argument(
+                "--services",
+                default="core,web",
+                help="comma-separated subset to deploy (core,web); default both",
+            )
 
     args = parser.parse_args(argv)
     try:
@@ -555,7 +573,8 @@ def main(argv: list[str] | None = None) -> int:
         return plan(args.core_digest, args.web_digest)
     if args.command == "apply":
         try:
-            return apply(args.core_digest, args.web_digest)
+            services = [s.strip() for s in args.services.split(",") if s.strip()]
+            return apply(args.core_digest, args.web_digest, services)
         except RuntimeError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 1

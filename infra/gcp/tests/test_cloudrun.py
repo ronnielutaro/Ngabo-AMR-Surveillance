@@ -198,6 +198,49 @@ class DesiredStateTests(unittest.TestCase):
         ):
             cloudrun.apply(CORE_DIGEST, WEB_DIGEST)
 
+    def test_apply_core_only_deploys_single_service(self) -> None:
+        from infra.gcp import cloudrun
+
+        calls: list[list[str]] = []
+
+        def fake_run(args: list[str], check: bool = True) -> mock.Mock:
+            calls.append(args)
+            return mock.Mock(
+                returncode=0, stdout="https://ngabo-core-123456.run.app", stderr=""
+            )
+
+        with mock.patch.object(cloudrun, "run_gcloud", side_effect=fake_run):
+            self.assertEqual(cloudrun.apply(CORE_DIGEST, WEB_DIGEST, ["core"]), 0)
+
+        deploy_calls = [c for c in calls if c[0:2] == ["run", "deploy"]]
+        self.assertEqual([c[2] for c in deploy_calls], ["ngabo-core"])
+
+    def test_apply_web_only_deploys_web_with_core_url(self) -> None:
+        from infra.gcp import cloudrun
+
+        calls: list[list[str]] = []
+
+        def fake_run(args: list[str], check: bool = True) -> mock.Mock:
+            calls.append(args)
+            return mock.Mock(
+                returncode=0, stdout="https://ngabo-core-123456.run.app", stderr=""
+            )
+
+        with mock.patch.object(cloudrun, "run_gcloud", side_effect=fake_run):
+            self.assertEqual(cloudrun.apply(CORE_DIGEST, WEB_DIGEST, ["web"]), 0)
+
+        deploy_calls = [c for c in calls if c[0:2] == ["run", "deploy"]]
+        self.assertEqual([c[2] for c in deploy_calls], ["ngabo-web"])
+        self.assertIn(
+            "CORE_API_URL=https://ngabo-core-123456.run.app", deploy_calls[0]
+        )
+
+    def test_apply_rejects_unknown_service(self) -> None:
+        from infra.gcp import cloudrun
+
+        with self.assertRaises(ValueError):
+            cloudrun.apply(CORE_DIGEST, WEB_DIGEST, ["database"])
+
     def test_resolve_core_url_uses_status_url(self) -> None:
         from infra.gcp import cloudrun
 
