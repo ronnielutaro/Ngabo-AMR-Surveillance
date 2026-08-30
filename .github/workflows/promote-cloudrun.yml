@@ -126,7 +126,7 @@ jobs:
             echo "::error::No successful Delivery Develop run for commit ${commit_sha}; refusing to promote untested digests."
             exit 1
           fi
-          gh run download "${run_id}" --repo "${GITHUB_REPOSITORY}" --name "delivery-evidence-${run_id}" --dir delivery-evidence --force
+          gh run download "${run_id}" --repo "${GITHUB_REPOSITORY}" --name "delivery-evidence-${run_id}" --dir delivery-evidence
           python3 infra/github/delivery.py evidence-check --record delivery-evidence/delivery-evidence.json --core-digest "${core_digest}" --web-digest "${web_digest}"
 
       - name: Deploy exact tested digest(s) — NO rebuild
