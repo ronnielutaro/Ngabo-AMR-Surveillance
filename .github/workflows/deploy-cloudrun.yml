@@ -82,6 +82,12 @@ jobs:
         with:
           project_id: ngabo-amr-2026
 
+      - name: Set up uv
+        # astral-sh/setup-uv v10.0.1
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          version: 0.11.16
+
       - name: Canonical Cloud Run deployment (infra/gcp/cloudrun.py)
         # Single source of deployment truth: core deploy → status.url
         # resolution → web-runtime invoker grant → web deploy with the real
