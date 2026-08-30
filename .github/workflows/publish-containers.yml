@@ -133,14 +133,14 @@ jobs:
 
       - name: Scan pushed ngabo-core digest
         # aquasecurity/trivy-action v0.36.0
-        # Gate: HIGH/CRITICAL with a published fix (--ignore-unfixed).
+        # Gate: fails on ALL HIGH/CRITICAL findings except the explicit
+        # per-CVE exceptions in .trivyignore.
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8
         with:
           image-ref: ${{ env.IMAGE_PREFIX }}/ngabo-core:${{ github.sha }}
           format: table
           exit-code: "1"
           severity: HIGH,CRITICAL
-          ignore-unfixed: true
           output: core-scan.txt
 
       - name: Scan pushed ngabo-web digest
@@ -151,7 +151,6 @@ jobs:
           format: table
           exit-code: "1"
           severity: HIGH,CRITICAL
-          ignore-unfixed: true
           output: web-scan.txt
 
       - name: Generate machine-readable publish evidence

@@ -1,4 +1,5 @@
-"""Configuration and constants for Ngabo keyless IAM, service accounts, and secret boundaries (Issue #87).
+"""Configuration and constants for Ngabo keyless IAM, service accounts, and
+secret boundaries (Issue #87).
 
 Governs service accounts, Workload Identity Federation (WIF) with GitHub Actions,
 least-privilege IAM allow-lists, and Secret Manager access contracts in alignment
@@ -8,8 +9,7 @@ with docs/CLOUD_COST_AND_TEARDOWN_POLICY.md.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
-from typing import Any
+from dataclasses import dataclass
 
 # ---------------------------------------------------------------------------
 # Core Project & Location Constants
@@ -53,11 +53,15 @@ GOOGLE_SETUP_GCLOUD_ACTION_PIN = {
 
 WIF_POOL_ID = "ngabo-github"
 WIF_POOL_DISPLAY_NAME = "Ngabo GitHub Actions Pool"
-WIF_POOL_DESCRIPTION = "Workload Identity Pool for ronnielutaro/Ngabo-AMR-Surveillance GitHub Actions"
+WIF_POOL_DESCRIPTION = (
+    "Workload Identity Pool for ronnielutaro/Ngabo-AMR-Surveillance GitHub Actions"
+)
 
 WIF_PROVIDER_ID = "ngabo-repo"
 WIF_PROVIDER_DISPLAY_NAME = "Ngabo GitHub Repository Provider"
-WIF_PROVIDER_DESCRIPTION = "OIDC Provider for GitHub Actions with repository, ref, and environment constraints"
+WIF_PROVIDER_DESCRIPTION = (
+    "OIDC Provider for GitHub Actions with repository, ref, and environment constraints"
+)
 
 WIF_ATTRIBUTE_MAPPING: dict[str, str] = {
     "google.subject": "assertion.sub",
@@ -86,15 +90,15 @@ WEB_RUNTIME_SA_NAME = "ngabo-web-runtime"
 SERVICE_ACCOUNTS: dict[str, dict[str, str]] = {
     DEPLOYER_SA_NAME: {
         "display_name": "Ngabo CI/CD Deployment Identity",
-        "description": "Dedicated deployment identity for automated GitHub Actions delivery to Cloud Run.",
+        "description": "Dedicated deployment identity for automated GitHub Actions delivery to Cloud Run.",  # noqa: E501
     },
     CORE_RUNTIME_SA_NAME: {
         "display_name": "Ngabo Core Backend Runtime Identity",
-        "description": "Dedicated least-privilege runtime service identity for ngabo-core Cloud Run service.",
+        "description": "Dedicated least-privilege runtime service identity for ngabo-core Cloud Run service.",  # noqa: E501
     },
     WEB_RUNTIME_SA_NAME: {
         "display_name": "Ngabo Web Frontend Runtime Identity",
-        "description": "Dedicated least-privilege runtime service identity for ngabo-web Cloud Run service.",
+        "description": "Dedicated least-privilege runtime service identity for ngabo-web Cloud Run service.",  # noqa: E501
     },
 }
 
@@ -141,6 +145,7 @@ PROHIBITED_BASIC_ROLES: tuple[str, ...] = (
 # Secret Manager Contract Specification
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class SecretContract:
     """Governance contract for a Secret Manager secret resource."""
@@ -162,9 +167,9 @@ SECRET_CONTRACTS: tuple[SecretContract, ...] = (
         owner_workload="ngabo-core",
         authorized_readers=(CORE_RUNTIME_SA_NAME,),
         rotation_trigger="Manual via maintainer / 90-day cadence",
-        missing_secret_behavior="Startup fails fast with explicit missing-secret error; no fallback",
-        invalid_version_behavior="Startup fails fast with explicit invalid-version error; no fallback",
-        teardown_behavior="Destroy secret versions and delete secret container upon environment teardown",
+        missing_secret_behavior="Startup fails fast with explicit missing-secret error; no fallback",  # noqa: E501
+        invalid_version_behavior="Startup fails fast with explicit invalid-version error; no fallback",  # noqa: E501
+        teardown_behavior="Destroy secret versions and delete secret container upon environment teardown",  # noqa: E501
     ),
     SecretContract(
         name_pattern="ngabo-judge-*",
@@ -172,9 +177,9 @@ SECRET_CONTRACTS: tuple[SecretContract, ...] = (
         owner_workload="ngabo-core",
         authorized_readers=(CORE_RUNTIME_SA_NAME,),
         rotation_trigger="Manual via maintainer / release-freeze cadence",
-        missing_secret_behavior="Startup fails fast with explicit missing-secret error; no fallback",
-        invalid_version_behavior="Startup fails fast with explicit invalid-version error; no fallback",
-        teardown_behavior="Destroy secret versions and delete secret container upon environment teardown",
+        missing_secret_behavior="Startup fails fast with explicit missing-secret error; no fallback",  # noqa: E501
+        invalid_version_behavior="Startup fails fast with explicit invalid-version error; no fallback",  # noqa: E501
+        teardown_behavior="Destroy secret versions and delete secret container upon environment teardown",  # noqa: E501
     ),
 )
 

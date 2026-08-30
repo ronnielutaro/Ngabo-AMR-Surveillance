@@ -46,7 +46,7 @@ pnpm container:scan              # trivy (HIGH,CRITICAL, exit 1 on findings)
 
 ## Vulnerability scanning
 
-Pinned `aquasecurity/trivy-action` (v0.36.0) in both the PR lane and the publish workflow. Gate: fail on HIGH/CRITICAL **with a published fix** (`--ignore-unfixed`); findings without available fixes (e.g. base-image packages pending upstream patches) are recorded in the evidence summaries rather than failing the gate or being claimed as zero. Concise sanitized scan tables are uploaded as evidence; no raw databases are stored.
+Pinned `aquasecurity/trivy-action` (v0.36.0) in both the PR lane and the publish workflow. Gate: fails on ALL HIGH/CRITICAL findings except the explicit per-CVE exceptions listed with justification in `.trivyignore` (base-image packages with no published upstream fix, and packages bundled inside the Next.js server closure whose versions are pinned by the upstream release). No broad gate relaxation. Concise sanitized scan tables are uploaded as evidence; no raw databases are stored.
 
 ## Reproducibility
 

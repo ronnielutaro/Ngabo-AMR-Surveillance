@@ -1,4 +1,5 @@
-"""Offline deterministic unit tests for Ngabo Identity, Service Accounts, and WIF Management (Issue #87).
+"""Offline deterministic unit tests for Ngabo Identity, Service Accounts, and
+WIF Management (Issue #87).
 
 All tests execute strictly offline with mocked subprocess/Cloud SDK execution.
 """
@@ -17,10 +18,6 @@ from infra.gcp.identity import GcpIdentityInspector, GcpIdentityManager
 from infra.gcp.identity_config import (
     ACTIONS_CHECKOUT_PIN,
     CORE_RUNTIME_SA_NAME,
-    DEFERRED_SERVICE_ACCOUNTS,
-    DEPLOYER_ACT_AS_TARGETS,
-    DEPLOYER_ARTIFACT_REGISTRY_ROLES,
-    DEPLOYER_PROJECT_ROLES,
     DEPLOYER_SA_NAME,
     GITHUB_ALLOWED_ENV,
     GITHUB_ALLOWED_REF,
@@ -30,9 +27,7 @@ from infra.gcp.identity_config import (
     GOOGLE_AUTH_ACTION_PIN,
     GOOGLE_SETUP_GCLOUD_ACTION_PIN,
     PROHIBITED_BASIC_ROLES,
-    SECRET_CONTRACTS,
     SERVICE_ACCOUNTS,
-    WEB_RUNTIME_SA_NAME,
     WIF_ATTRIBUTE_CONDITION,
     WIF_ATTRIBUTE_MAPPING,
     WIF_POOL_ID,
@@ -44,7 +39,10 @@ SAMPLE_PROJECT_ID = "ngabo-amr-2026"
 SAMPLE_PROJECT_NUMBER = "907313480935"
 
 VALID_SAMPLE_PROVIDER_DETAILS = {
-    "name": f"projects/{SAMPLE_PROJECT_NUMBER}/locations/global/workloadIdentityPools/{WIF_POOL_ID}/providers/{WIF_PROVIDER_ID}",
+    "name": (
+        f"projects/{SAMPLE_PROJECT_NUMBER}/locations/global/"
+        f"workloadIdentityPools/{WIF_POOL_ID}/providers/{WIF_PROVIDER_ID}"
+    ),
     "displayName": "Ngabo GitHub Repository Provider",
     "attributeMapping": WIF_ATTRIBUTE_MAPPING,
     "attributeCondition": WIF_ATTRIBUTE_CONDITION,
@@ -58,14 +56,18 @@ VALID_PROJECT_BINDINGS: list[dict[str, Any]] = []
 VALID_AR_BINDINGS = [
     {
         "role": "roles/artifactregistry.writer",
-        "members": [f"serviceAccount:{DEPLOYER_SA_NAME}@{SAMPLE_PROJECT_ID}.iam.gserviceaccount.com"],
+        "members": [
+            f"serviceAccount:{DEPLOYER_SA_NAME}@{SAMPLE_PROJECT_ID}.iam.gserviceaccount.com"
+        ],
     }
 ]
 
 VALID_RUNTIME_SA_BINDINGS = [
     {
         "role": "roles/iam.serviceAccountUser",
-        "members": [f"serviceAccount:{DEPLOYER_SA_NAME}@{SAMPLE_PROJECT_ID}.iam.gserviceaccount.com"],
+        "members": [
+            f"serviceAccount:{DEPLOYER_SA_NAME}@{SAMPLE_PROJECT_ID}.iam.gserviceaccount.com"
+        ],
     }
 ]
 
@@ -73,19 +75,23 @@ VALID_DEPLOYER_SA_BINDINGS = [
     {
         "role": "roles/iam.workloadIdentityUser",
         "members": [
-            f"principalSet://iam.googleapis.com/projects/{SAMPLE_PROJECT_NUMBER}/locations/global/workloadIdentityPools/{WIF_POOL_ID}/attribute.repository_id/{GITHUB_REPO_ID}"
+            (
+                f"principalSet://iam.googleapis.com/projects/{SAMPLE_PROJECT_NUMBER}/"
+                f"locations/global/workloadIdentityPools/{WIF_POOL_ID}/"
+                f"attribute.repository_id/{GITHUB_REPO_ID}"
+            ),
         ],
     }
 ]
-
 
 @pytest.fixture(autouse=True)
 def guard_offline_execution() -> Any:
     """Ensure no tests ever call real gcloud/gh binaries."""
     with patch("subprocess.run") as mock_subproc:
-        mock_subproc.side_effect = RuntimeError("Real subprocess execution blocked in offline test suite.")
+        mock_subproc.side_effect = RuntimeError(
+            "Real subprocess execution blocked in offline test suite."
+        )
         yield mock_subproc
-
 
 def create_converged_manager() -> GcpIdentityManager:
     """Helper to construct a manager with all inspector queries mocked to match target contract."""
@@ -102,7 +108,9 @@ def create_converged_manager() -> GcpIdentityManager:
     mgr.inspector.wif_provider_exists = MagicMock(return_value=True)  # type: ignore[method-assign]
     mgr.inspector.get_wif_provider_details = MagicMock(return_value=VALID_SAMPLE_PROVIDER_DETAILS)  # type: ignore[method-assign]
     mgr.inspector.get_project_iam_bindings = MagicMock(return_value=list(VALID_PROJECT_BINDINGS))  # type: ignore[method-assign]
-    mgr.inspector.get_artifact_registry_iam_bindings = MagicMock(return_value=list(VALID_AR_BINDINGS))  # type: ignore[method-assign]
+    mgr.inspector.get_artifact_registry_iam_bindings = MagicMock(
+        return_value=list(VALID_AR_BINDINGS)
+    )  # type: ignore[method-assign]
     mgr.inspector.get_all_project_service_accounts = MagicMock(  # type: ignore[method-assign]
         return_value=[{"email": mgr.config.service_account_email(sa)} for sa in SERVICE_ACCOUNTS]
     )
@@ -132,11 +140,9 @@ def create_converged_manager() -> GcpIdentityManager:
 
     return mgr
 
-
 # ---------------------------------------------------------------------------
 # WIF & Synthetic OIDC Claim Policy Evaluation Tests
 # ---------------------------------------------------------------------------
-
 
 def test_wif_attribute_mapping_has_required_keys() -> None:
     """Validate that WIF attribute mappings include mandatory subject and numeric claims."""
@@ -147,7 +153,6 @@ def test_wif_attribute_mapping_has_required_keys() -> None:
     assert WIF_ATTRIBUTE_MAPPING["attribute.ref"] == "assertion.ref"
     assert WIF_ATTRIBUTE_MAPPING["attribute.environment"] == "assertion.environment"
     assert WIF_ATTRIBUTE_MAPPING["attribute.workflow_ref"] == "assertion.workflow_ref"
-
 
 def test_synthetic_oidc_claims_evaluation() -> None:
     """Evaluate synthetic OIDC assertions against the provider attribute condition."""
@@ -201,11 +206,9 @@ def test_synthetic_oidc_claims_evaluation() -> None:
     tag_ref = {**valid_assertion, "ref": "refs/tags/v0.1.0"}
     assert evaluate_condition(tag_ref) is False
 
-
 # ---------------------------------------------------------------------------
 # Key Policy & Validation Tests
 # ---------------------------------------------------------------------------
-
 
 def test_validate_passes_on_converged_environment() -> None:
     """Test that validation passes cleanly on a fully converged environment."""
@@ -226,7 +229,6 @@ def test_validate_passes_on_converged_environment() -> None:
     assert res["checks"]["wif_impersonation_exact"] is True
     assert res["checks"]["github_env_valid"] is True
 
-
 def test_validate_fails_if_user_managed_key_present() -> None:
     """Test that validation fails if any user-managed key exists on a service account."""
     mgr = create_converged_manager()
@@ -238,7 +240,6 @@ def test_validate_fails_if_user_managed_key_present() -> None:
     assert res["checks"]["user_managed_keys_zero"] is False
     assert any("Prohibited user-managed key" in f for f in res["failures"])
 
-
 def test_validate_fails_if_service_account_missing() -> None:
     """Test that validation fails if any required service account is absent."""
     mgr = create_converged_manager()
@@ -246,7 +247,6 @@ def test_validate_fails_if_service_account_missing() -> None:
     res = mgr.validate()
     assert res["passed"] is False
     assert res["checks"]["service_accounts_present"] is False
-
 
 def test_validate_fails_if_wif_pool_missing() -> None:
     """Test that validation fails if WIF pool does not exist."""
@@ -256,7 +256,6 @@ def test_validate_fails_if_wif_pool_missing() -> None:
     assert res["passed"] is False
     assert res["checks"]["wif_pool_valid"] is False
 
-
 def test_validate_fails_if_wif_provider_missing() -> None:
     """Test that validation fails if WIF provider does not exist."""
     mgr = create_converged_manager()
@@ -265,7 +264,6 @@ def test_validate_fails_if_wif_provider_missing() -> None:
     res = mgr.validate()
     assert res["passed"] is False
     assert res["checks"]["wif_provider_valid"] is False
-
 
 def test_validate_fails_if_wif_provider_issuer_mismatched_or_inactive() -> None:
     """Test that validation fails if WIF provider issuer or state is invalid."""
@@ -286,11 +284,9 @@ def test_validate_fails_if_wif_provider_issuer_mismatched_or_inactive() -> None:
     assert res2["passed"] is False
     assert any("ACTIVE" in f for f in res2["failures"])
 
-
 # ---------------------------------------------------------------------------
 # IAM Allow-list & Scope Enforcement Tests
 # ---------------------------------------------------------------------------
-
 
 def test_validate_fails_on_unapproved_deployer_project_role() -> None:
     """Test that validation fails if deployer has ANY project role not in DEPLOYER_PROJECT_ROLES."""
@@ -299,7 +295,9 @@ def test_validate_fails_on_unapproved_deployer_project_role() -> None:
     unapproved_bindings = [
         {
             "role": "roles/run.developer",
-            "members": [f"serviceAccount:{DEPLOYER_SA_NAME}@{SAMPLE_PROJECT_ID}.iam.gserviceaccount.com"],
+            "members": [
+                f"serviceAccount:{DEPLOYER_SA_NAME}@{SAMPLE_PROJECT_ID}.iam.gserviceaccount.com"
+            ],
         }
     ]
     mgr.inspector.get_project_iam_bindings = MagicMock(return_value=unapproved_bindings)  # type: ignore[method-assign]
@@ -307,7 +305,6 @@ def test_validate_fails_on_unapproved_deployer_project_role() -> None:
     assert res["passed"] is False
     assert res["checks"]["deployer_roles_match_allowlist"] is False
     assert any("Deployer project roles" in f for f in res["failures"])
-
 
 def test_plan_revokes_obsolete_artifact_registry_reader() -> None:
     """Issue #89: the #87-era reader must be planned for revocation when the
@@ -317,7 +314,9 @@ def test_plan_revokes_obsolete_artifact_registry_reader() -> None:
     legacy_ar_bindings = [
         {
             "role": "roles/artifactregistry.reader",
-            "members": [f"serviceAccount:{DEPLOYER_SA_NAME}@{SAMPLE_PROJECT_ID}.iam.gserviceaccount.com"],
+            "members": [
+                f"serviceAccount:{DEPLOYER_SA_NAME}@{SAMPLE_PROJECT_ID}.iam.gserviceaccount.com"
+            ],
         }
     ]
     mgr.inspector.get_artifact_registry_iam_bindings = MagicMock(  # type: ignore[method-assign]
@@ -325,13 +324,8 @@ def test_plan_revokes_obsolete_artifact_registry_reader() -> None:
     )
     plan = mgr.plan()
     assert plan["is_converged"] is False
-    assert any(
-        "Grant 'roles/artifactregistry.writer'" in a for a in plan["planned_actions"]
-    )
-    assert any(
-        "Revoke 'roles/artifactregistry.reader'" in a for a in plan["planned_actions"]
-    )
-
+    assert any("Grant 'roles/artifactregistry.writer'" in a for a in plan["planned_actions"])
+    assert any("Revoke 'roles/artifactregistry.reader'" in a for a in plan["planned_actions"])
 
 def test_validate_fails_on_extra_artifact_registry_role() -> None:
     """Test that validation fails if deployer possesses extra Artifact Registry roles."""
@@ -339,18 +333,21 @@ def test_validate_fails_on_extra_artifact_registry_role() -> None:
     extra_ar_bindings = [
         {
             "role": "roles/artifactregistry.reader",
-            "members": [f"serviceAccount:{DEPLOYER_SA_NAME}@{SAMPLE_PROJECT_ID}.iam.gserviceaccount.com"],
+            "members": [
+                f"serviceAccount:{DEPLOYER_SA_NAME}@{SAMPLE_PROJECT_ID}.iam.gserviceaccount.com"
+            ],
         },
         {
             "role": "roles/artifactregistry.writer",
-            "members": [f"serviceAccount:{DEPLOYER_SA_NAME}@{SAMPLE_PROJECT_ID}.iam.gserviceaccount.com"],
+            "members": [
+                f"serviceAccount:{DEPLOYER_SA_NAME}@{SAMPLE_PROJECT_ID}.iam.gserviceaccount.com"
+            ],
         },
     ]
     mgr.inspector.get_artifact_registry_iam_bindings = MagicMock(return_value=extra_ar_bindings)  # type: ignore[method-assign]
     res = mgr.validate()
     assert res["passed"] is False
     assert res["checks"]["deployer_ar_roles_match_allowlist"] is False
-
 
 def test_validate_fails_on_prohibited_basic_role() -> None:
     """Test that validation fails if any service account possesses a basic role."""
@@ -359,7 +356,9 @@ def test_validate_fails_on_prohibited_basic_role() -> None:
         bad_bindings = [
             {
                 "role": role,
-                "members": [f"serviceAccount:{DEPLOYER_SA_NAME}@{SAMPLE_PROJECT_ID}.iam.gserviceaccount.com"],
+                "members": [
+                    f"serviceAccount:{DEPLOYER_SA_NAME}@{SAMPLE_PROJECT_ID}.iam.gserviceaccount.com"
+                ],
             }
         ]
         mgr.inspector.get_project_iam_bindings = MagicMock(return_value=bad_bindings)  # type: ignore[method-assign]
@@ -367,14 +366,15 @@ def test_validate_fails_on_prohibited_basic_role() -> None:
         assert res["passed"] is False
         assert res["checks"]["prohibited_basic_roles_absent"] is False
 
-
 def test_validate_fails_on_project_wide_secret_accessor() -> None:
     """Test that validation fails if any service account has project-wide secretAccessor."""
     mgr = create_converged_manager()
     bad_bindings = [
         {
             "role": "roles/secretmanager.secretAccessor",
-            "members": [f"serviceAccount:{CORE_RUNTIME_SA_NAME}@{SAMPLE_PROJECT_ID}.iam.gserviceaccount.com"],
+            "members": [
+                f"serviceAccount:{CORE_RUNTIME_SA_NAME}@{SAMPLE_PROJECT_ID}.iam.gserviceaccount.com"
+            ],
         }
     ]
     mgr.inspector.get_project_iam_bindings = MagicMock(return_value=bad_bindings)  # type: ignore[method-assign]
@@ -382,38 +382,44 @@ def test_validate_fails_on_project_wide_secret_accessor() -> None:
     assert res["passed"] is False
     assert res["checks"]["project_wide_secret_accessor_absent"] is False
 
-
 def test_validate_fails_on_project_wide_service_account_user() -> None:
     """Test that validation fails if deployer has project-level roles/iam.serviceAccountUser."""
     mgr = create_converged_manager()
     bad_bindings = [
         {
             "role": "roles/iam.serviceAccountUser",
-            "members": [f"serviceAccount:{DEPLOYER_SA_NAME}@{SAMPLE_PROJECT_ID}.iam.gserviceaccount.com"],
+            "members": [
+                f"serviceAccount:{DEPLOYER_SA_NAME}@{SAMPLE_PROJECT_ID}.iam.gserviceaccount.com"
+            ],
         }
     ]
     mgr.inspector.get_project_iam_bindings = MagicMock(return_value=bad_bindings)  # type: ignore[method-assign]
     res = mgr.validate()
     assert res["passed"] is False
     assert res["checks"]["deployer_act_as_valid"] is False
-    assert any("prohibited project-level 'roles/iam.serviceAccountUser'" in f for f in res["failures"])
-
+    assert any(
+        "prohibited project-level 'roles/iam.serviceAccountUser'" in f for f in res["failures"]
+    )
 
 def test_validate_fails_on_unauthorized_act_as_target() -> None:
     """Test that validation fails if deployer has actAs on an unapproved service account."""
     mgr = create_converged_manager()
-    unapproved_sa = f"907313480935-compute@developer.gserviceaccount.com"
-    all_sas = [
-        {"email": mgr.config.service_account_email(sa)} for sa in SERVICE_ACCOUNTS
-    ] + [{"email": unapproved_sa}]
+    unapproved_sa = "907313480935-compute@developer.gserviceaccount.com"
+    all_sas = [{"email": mgr.config.service_account_email(sa)} for sa in SERVICE_ACCOUNTS] + [
+        {"email": unapproved_sa}
+    ]
     mgr.inspector.get_all_project_service_accounts = MagicMock(return_value=all_sas)  # type: ignore[method-assign]
 
     def bad_sa_bindings(email: str) -> list[dict[str, Any]]:
         if email == unapproved_sa:
-            return [{
-                "role": "roles/iam.serviceAccountUser",
-                "members": [f"serviceAccount:{DEPLOYER_SA_NAME}@{SAMPLE_PROJECT_ID}.iam.gserviceaccount.com"],
-            }]
+            return [
+                {
+                    "role": "roles/iam.serviceAccountUser",
+                    "members": [
+                        f"serviceAccount:{DEPLOYER_SA_NAME}@{SAMPLE_PROJECT_ID}.iam.gserviceaccount.com"
+                    ],
+                }
+            ]
         if DEPLOYER_SA_NAME in email:
             return list(VALID_DEPLOYER_SA_BINDINGS)
         return list(VALID_RUNTIME_SA_BINDINGS)
@@ -424,15 +430,19 @@ def test_validate_fails_on_unauthorized_act_as_target() -> None:
     assert res["checks"]["deployer_act_as_valid"] is False
     assert any("unauthorized actAs on unapproved service account" in f for f in res["failures"])
 
-
 def test_validate_fails_on_unauthorized_wif_impersonator() -> None:
-    """Test that validation fails if any extra or unauthorized principal can impersonate deployer."""
+    """Test that validation fails if any extra or unauthorized principal can
+    impersonate deployer."""
     mgr = create_converged_manager()
     bad_deployer_bindings = [
         {
             "role": "roles/iam.workloadIdentityUser",
             "members": [
-                f"principalSet://iam.googleapis.com/projects/{SAMPLE_PROJECT_NUMBER}/locations/global/workloadIdentityPools/{WIF_POOL_ID}/attribute.repository_id/{GITHUB_REPO_ID}",
+                (
+                f"principalSet://iam.googleapis.com/projects/{SAMPLE_PROJECT_NUMBER}/"
+                f"locations/global/workloadIdentityPools/{WIF_POOL_ID}/"
+                f"attribute.repository_id/{GITHUB_REPO_ID}"
+            ),
                 "user:attacker@evil.com",
             ],
         }
@@ -449,14 +459,13 @@ def test_validate_fails_on_unauthorized_wif_impersonator() -> None:
     assert res["checks"]["wif_impersonation_exact"] is False
     assert any("unauthorized WIF impersonator members" in f for f in res["failures"])
 
-
 # ---------------------------------------------------------------------------
 # Fail-Closed Inspector Exception Handling Tests
 # ---------------------------------------------------------------------------
 
-
 def test_inspector_fails_closed_on_subprocess_error() -> None:
-    """Test that inspector raises RuntimeError on subprocess failures instead of returning empty lists."""
+    """Test that inspector raises RuntimeError on subprocess failures instead of
+    returning empty lists."""
     cfg = GcpIdentityConfig(project_id=SAMPLE_PROJECT_ID)
     inspector = GcpIdentityInspector(cfg)
 
@@ -474,7 +483,6 @@ def test_inspector_fails_closed_on_subprocess_error() -> None:
         with pytest.raises(RuntimeError, match="INSPECTION_FAILED"):
             inspector.get_artifact_registry_iam_bindings("repo")
 
-
 def test_inspector_fails_closed_on_malformed_json() -> None:
     """Test that inspector raises RuntimeError on malformed JSON stdout."""
     cfg = GcpIdentityConfig(project_id=SAMPLE_PROJECT_ID)
@@ -485,11 +493,9 @@ def test_inspector_fails_closed_on_malformed_json() -> None:
         with pytest.raises(RuntimeError, match="INSPECTION_FAILED"):
             inspector.get_user_managed_keys("some-sa@proj.iam.gserviceaccount.com")
 
-
 # ---------------------------------------------------------------------------
 # GitHub Environment Automation Tests
 # ---------------------------------------------------------------------------
-
 
 def test_github_env_clean_creation() -> None:
     """Test clean creation starting with no dev environment."""
@@ -542,7 +548,6 @@ def test_github_env_clean_creation() -> None:
     parsed_payload = json.loads(put_inputs[0])
     assert parsed_payload["deployment_branch_policy"]["custom_branch_policies"] is True
 
-
 def test_github_env_existing_wrong_branch_mode() -> None:
     """Test existing environment with custom_branch_policies disabled."""
     inspector = GitHubEnvInspector()
@@ -585,7 +590,6 @@ def test_github_env_existing_wrong_branch_mode() -> None:
     parsed = json.loads(put_inputs[0])
     assert parsed["deployment_branch_policy"]["custom_branch_policies"] is True
 
-
 def test_github_env_extra_branch_drift() -> None:
     """Test extra branch drift (e.g. develop and main) is safely reconciled."""
     inspector = GitHubEnvInspector()
@@ -608,7 +612,9 @@ def test_github_env_extra_branch_drift() -> None:
 
     plan = mgr.plan()
     assert plan["is_converged"] is False
-    assert any("Remove unauthorized deployment branch policy 'main'" in a for a in plan["planned_actions"])
+    assert any(
+        "Remove unauthorized deployment branch policy 'main'" in a for a in plan["planned_actions"]
+    )
 
     deleted_endpoints: list[str] = []
 
@@ -634,7 +640,6 @@ def test_github_env_extra_branch_drift() -> None:
     val = mgr.validate()
     assert val["passed"] is True
     assert val["checks"]["exact_branch_policy_matches"] is True
-
 
 def test_github_env_missing_expected_branch() -> None:
     """Test missing expected branch (empty policy list) adds develop."""
@@ -675,7 +680,6 @@ def test_github_env_missing_expected_branch() -> None:
     assert val["passed"] is True
     assert val["checks"]["exact_branch_policy_matches"] is True
 
-
 def test_github_env_api_mutation_failure_fails_closed() -> None:
     """Test that any non-zero API response on mutation raises RuntimeError."""
     inspector = GitHubEnvInspector()
@@ -687,10 +691,11 @@ def test_github_env_api_mutation_failure_fails_closed() -> None:
     mock_fail.returncode = 1
     mock_fail.stderr = "HTTP 403: Resource not accessible by personal access token"
 
-    with patch("infra.gcp.github_env.run_gh_command", return_value=mock_fail):
-        with pytest.raises(RuntimeError, match="Failed to create GitHub environment"):
-            mgr.apply()
-
+    with (
+        patch("infra.gcp.github_env.run_gh_command", return_value=mock_fail),
+        pytest.raises(RuntimeError, match="Failed to create GitHub environment"),
+    ):
+        mgr.apply()
 
 def test_github_env_inspector_malformed_json_fails_closed() -> None:
     """Test that inspector raises RuntimeError on malformed API JSON."""
@@ -699,19 +704,21 @@ def test_github_env_inspector_malformed_json_fails_closed() -> None:
     mock_bad_json.returncode = 0
     mock_bad_json.stdout = "<html>Error</html>"
 
-    with patch("infra.gcp.github_env.run_gh_command", return_value=mock_bad_json):
-        with pytest.raises(RuntimeError, match="INSPECTION_FAILED"):
-            inspector.get_environment("dev")
+    with (
+        patch("infra.gcp.github_env.run_gh_command", return_value=mock_bad_json),
+        pytest.raises(RuntimeError, match="INSPECTION_FAILED"),
+    ):
+        inspector.get_environment("dev")
 
-    with patch("infra.gcp.github_env.run_gh_command", return_value=mock_bad_json):
-        with pytest.raises(RuntimeError, match="INSPECTION_FAILED"):
-            inspector.get_branch_policy_details("dev")
-
+    with (
+        patch("infra.gcp.github_env.run_gh_command", return_value=mock_bad_json),
+        pytest.raises(RuntimeError, match="INSPECTION_FAILED"),
+    ):
+        inspector.get_branch_policy_details("dev")
 
 # ---------------------------------------------------------------------------
 # Pinned Actions Contract Verification Tests
 # ---------------------------------------------------------------------------
-
 
 def test_actions_checkout_pin_contract() -> None:
     """Ensure actions/checkout pin uses verified current version and full commit SHA."""
@@ -719,25 +726,23 @@ def test_actions_checkout_pin_contract() -> None:
     assert ACTIONS_CHECKOUT_PIN["commit_sha"] == "3d3c42e5aac5ba805825da76410c181273ba90b1"
     assert len(ACTIONS_CHECKOUT_PIN["commit_sha"]) == 40
 
-
 def test_google_auth_action_pin_contract() -> None:
     """Ensure google-github-actions/auth pin uses verified current version and full commit SHA."""
     assert GOOGLE_AUTH_ACTION_PIN["version"] == "v3.0.0"
     assert GOOGLE_AUTH_ACTION_PIN["commit_sha"] == "7c6bc770dae815cd3e89ee6cdf493a5fab2cc093"
     assert len(GOOGLE_AUTH_ACTION_PIN["commit_sha"]) == 40
 
-
-def test_google_setup_gcloud_action_pin_contract() -> None:
-    """Ensure google-github-actions/setup-gcloud pin uses verified current version and full commit SHA."""
+    """Ensure google-github-actions/setup-gcloud pin uses verified current
+    version and full commit SHA."""
     assert GOOGLE_SETUP_GCLOUD_ACTION_PIN["version"] == "v3.0.1"
-    assert GOOGLE_SETUP_GCLOUD_ACTION_PIN["commit_sha"] == "aa5489c8933f4cc7a4f7d45035b3b1440c9c10db"
+    assert (
+        GOOGLE_SETUP_GCLOUD_ACTION_PIN["commit_sha"] == "aa5489c8933f4cc7a4f7d45035b3b1440c9c10db"
+    )
     assert len(GOOGLE_SETUP_GCLOUD_ACTION_PIN["commit_sha"]) == 40
-
 
 # ---------------------------------------------------------------------------
 # Evidence & Teardown Rehearsal Tests
 # ---------------------------------------------------------------------------
-
 
 def test_export_evidence_derives_expected_observed_verified(tmp_path: Path) -> None:
     """Ensure export_evidence produces expected, observed, and verified sections."""
@@ -756,9 +761,11 @@ def test_export_evidence_derives_expected_observed_verified(tmp_path: Path) -> N
     assert evidence["workload_identity_federation"]["verified"] is True
 
     assert evidence["verification_results"]["positive_wif_proof_status"] == "PENDING_POST_MERGE"
-    assert evidence["verification_results"]["runtime_payload_access"] == "DEFERRED_UNTIL_FIRST_REAL_SECRET_VERSION"
+    assert (
+        evidence["verification_results"]["runtime_payload_access"]
+        == "DEFERRED_UNTIL_FIRST_REAL_SECRET_VERSION"
+    )
     assert evidence["verification_results"]["privacy_audit_status"] == "EXTERNAL_REVIEW_REQUIRED"
-
 
 def test_teardown_rehearsal_is_plan_only() -> None:
     """Ensure teardown rehearsal does not execute destructive actions."""
@@ -767,7 +774,6 @@ def test_teardown_rehearsal_is_plan_only() -> None:
     assert rehearsal["teardown_mode"] == "PLAN_ONLY"
     assert rehearsal["destructive_actions_executed"] is False
     assert len(rehearsal["steps"]) == 5
-
 
 def test_synthetic_secret_probe_mocked() -> None:
     """Test verify_synthetic_secret_probe with mocked gcloud responses."""
@@ -778,14 +784,16 @@ def test_synthetic_secret_probe_mocked() -> None:
         # 2. add-binding -> 0
         # 3. get-iam-policy -> 0 with core binding
         # 4. delete -> 0
-        policy_json = json.dumps({
-            "bindings": [
-                {
-                    "role": "roles/secretmanager.secretAccessor",
-                    "members": [f"serviceAccount:{core_email}"],
-                }
-            ]
-        })
+        policy_json = json.dumps(
+            {
+                "bindings": [
+                    {
+                        "role": "roles/secretmanager.secretAccessor",
+                        "members": [f"serviceAccount:{core_email}"],
+                    }
+                ]
+            }
+        )
         mock_gcloud.side_effect = [
             (0, "", ""),
             (0, "", ""),
