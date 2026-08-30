@@ -84,7 +84,7 @@ jobs:
           echo "core_digest=${{ inputs.core_digest }}" | tee -a "$GITHUB_ENV"
           echo "web_digest=${{ inputs.web_digest }}" | tee -a "$GITHUB_ENV"
 
-      - name: Verify rollback inputs against known-good delivery evidence
+      - name: Verify rollback inputs are the recorded previous known-good
         shell: bash
         run: |
           set -euo pipefail
@@ -94,7 +94,7 @@ jobs:
             exit 1
           fi
           gh run download "${run_id}" --repo "${GITHUB_REPOSITORY}" --name "delivery-evidence-${run_id}" --dir delivery-evidence --force
-          python3 infra/github/delivery.py evidence-check --record delivery-evidence/delivery-evidence.json --core-digest "${core_digest}" --web-digest "${web_digest}"
+          python3 infra/github/delivery.py rollback-check --record delivery-evidence/delivery-evidence.json --core-digest "${core_digest}" --web-digest "${web_digest}"
 
       - name: Deploy exact previous-known-good digest(s) — NO rebuild
         shell: bash
