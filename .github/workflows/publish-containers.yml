@@ -157,23 +157,39 @@ jobs:
           severity: HIGH,CRITICAL
           output: web-scan.txt
 
-      # Now push the exact already-tested local image objects (the pushed
-      # object is the same daemon-loaded image that was verified and scanned;
-      # content is identical even though the registry manifest digest differs
-      # from the buildx-side digest by serialization).
-      - name: Push tested ngabo-core digest
+      # Push by rebuilding the exact locked inputs with the rewrite-timestamp
+      # image exporter: every file and directory mtime in the published
+      # artifact is normalized to SOURCE_DATE_EPOCH, so the registry digest is
+      # byte-reproducible (rebuilding the same commit yields the same digest).
+      # The pushed image is built directly by buildx (no daemon round-trip),
+      # with the same content the gates verified and scanned.
+      - name: Push tested ngabo-core digest (rewrite-timestamp)
         shell: bash
         run: |
           set -euo pipefail
-          docker push "${{ env.IMAGE_PREFIX }}/ngabo-core:${{ github.sha }}"
-          docker push "${{ env.IMAGE_PREFIX }}/ngabo-core:sha-${{ github.sha }}"
+          docker buildx build --push --provenance=false \
+            --build-arg SOURCE_REVISION=${{ github.sha }} \
+            --build-arg SOURCE_URL=${{ github.repositoryUrl }} \
+            --build-arg APP_VERSION=0.1.0 \
+            --build-arg SOURCE_DATE_EPOCH=${{ env.SOURCE_DATE_EPOCH }} \
+            --output type=image,rewrite-timestamp=true \
+            -t "${{ env.IMAGE_PREFIX }}/ngabo-core:${{ github.sha }}" \
+            -t "${{ env.IMAGE_PREFIX }}/ngabo-core:sha-${{ github.sha }}" \
+            -f services/core/Dockerfile services/core
 
-      - name: Push tested ngabo-web digest
+      - name: Push tested ngabo-web digest (rewrite-timestamp)
         shell: bash
         run: |
           set -euo pipefail
-          docker push "${{ env.IMAGE_PREFIX }}/ngabo-web:${{ github.sha }}"
-          docker push "${{ env.IMAGE_PREFIX }}/ngabo-web:sha-${{ github.sha }}"
+          docker buildx build --push --provenance=false \
+            --build-arg SOURCE_REVISION=${{ github.sha }} \
+            --build-arg SOURCE_URL=${{ github.repositoryUrl }} \
+            --build-arg APP_VERSION=0.1.0 \
+            --build-arg SOURCE_DATE_EPOCH=${{ env.SOURCE_DATE_EPOCH }} \
+            --output type=image,rewrite-timestamp=true \
+            -t "${{ env.IMAGE_PREFIX }}/ngabo-web:${{ github.sha }}" \
+            -t "${{ env.IMAGE_PREFIX }}/ngabo-web:sha-${{ github.sha }}" \
+            -f apps/web/Dockerfile .
 
       # The registry digest is the authoritative identity consumers pull by:
       # buildx --load serializes an OCI manifest while docker push uploads the
