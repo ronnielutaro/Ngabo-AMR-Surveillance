@@ -41,6 +41,21 @@ def _is_vertex_mode() -> bool:
     return _vertex_mode_from(os.environ)
 
 
+def _normalized_vertex_env(env: Mapping[str, str]) -> dict[str, str]:
+    """Return ``env`` with the Vertex flag normalized to the SDK spelling.
+
+    ``_vertex_mode_from`` accepts ``true`` / ``1`` / ``yes`` as intent, but the
+    pinned ``google-genai`` client enables Vertex mode only when
+    ``GOOGLE_GENAI_USE_VERTEXAI`` equals ``true`` (case-insensitive). This
+    normalizes the intent to the exact spelling so the client and this helper
+    agree on the keyless Vertex path.
+    """
+    normalized = dict(env)
+    if _vertex_mode_from(env):
+        normalized["GOOGLE_GENAI_USE_VERTEXAI"] = "true"
+    return normalized
+
+
 def _redacted_result(result: SpikeRunResult) -> dict[str, object]:
     """Explicit, secret-free JSON-safe representation of a ``SpikeRunResult``."""
     claim = result.claim
@@ -85,7 +100,9 @@ def main() -> None:
     api_key = os.environ.get("GEMINI_API_KEY")
     if vertex_mode:
         # Keyless Vertex path: rely on ADC/WIF. No API key is required.
-        pass
+        # Normalize the flag to the exact spelling the pinned google-genai
+        # client recognizes (true/1/yes intent -> "true").
+        os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "true"
     else:
         # Developer-API path: google.genai's default client reads
         # GOOGLE_API_KEY; ADK's GoogleLlm uses it.

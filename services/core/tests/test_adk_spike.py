@@ -21,7 +21,11 @@ from ngabo.domain.enums.claim_type import ClaimType
 from ngabo.domain.enums.spike_outcome import SpikeOutcome
 from ngabo.domain.value_objects.spike_proof_claim import SpikeProofClaim
 from ngabo.infrastructure.adk.fake_llm import SpikeFakeLlm
-from ngabo.infrastructure.adk.live_capability import _redacted_result, _vertex_mode_from
+from ngabo.infrastructure.adk.live_capability import (
+    _normalized_vertex_env,
+    _redacted_result,
+    _vertex_mode_from,
+)
 from ngabo.infrastructure.adk.spike_adapter import SpikeRunResult, run_spike
 
 
@@ -242,6 +246,18 @@ class TestSpikeGraph:
 
 
 class TestLiveRedaction:
+    def test_vertex_mode_normalization(self) -> None:
+        assert _normalized_vertex_env({"GOOGLE_GENAI_USE_VERTEXAI": "1"}) == {
+            "GOOGLE_GENAI_USE_VERTEXAI": "true"
+        }
+        assert _normalized_vertex_env({"GOOGLE_GENAI_USE_VERTEXAI": "yes"}) == {
+            "GOOGLE_GENAI_USE_VERTEXAI": "true"
+        }
+        assert _normalized_vertex_env({"GOOGLE_GENAI_USE_VERTEXAI": "true"}) == {
+            "GOOGLE_GENAI_USE_VERTEXAI": "true"
+        }
+        assert _normalized_vertex_env({}) == {}
+
     def test_vertex_mode_detection(self) -> None:
         assert _vertex_mode_from({"GOOGLE_GENAI_USE_VERTEXAI": "true"}) is True
         assert _vertex_mode_from({"GOOGLE_GENAI_USE_VERTEXAI": "1"}) is True
