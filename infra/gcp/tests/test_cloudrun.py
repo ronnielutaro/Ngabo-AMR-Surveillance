@@ -37,16 +37,19 @@ def live_service(
     cpu_throttling: str = "false",
 ) -> dict[str, object]:
     """Representative Cloud Run Admin API V1 Service payload."""
+    annotations = {
+        "autoscaling.knative.dev/maxScale": max_scale,
+        "run.googleapis.com/cpu-throttling": cpu_throttling,
+    }
+    # gcloud omits the minScale annotation when min instances is 0 (default).
+    if min_scale != "0":
+        annotations["autoscaling.knative.dev/minScale"] = min_scale
     return {
         "metadata": {"labels": labels or dict(CLOUD_RUN_LABELS)},
         "spec": {
             "template": {
                 "metadata": {
-                    "annotations": {
-                        "autoscaling.knative.dev/maxScale": max_scale,
-                        "autoscaling.knative.dev/minScale": min_scale,
-                        "run.googleapis.com/cpu-throttling": cpu_throttling,
-                    }
+                    "annotations": annotations
                 },
                 "spec": {
                     "serviceAccountName": runtime_sa,

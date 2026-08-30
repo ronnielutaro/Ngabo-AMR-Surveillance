@@ -411,7 +411,7 @@ def validate(core_digest: str, web_digest: str) -> int:
             failures,
         )
         _check(
-            annotations.get("autoscaling.knative.dev/minScale", "")
+            annotations.get("autoscaling.knative.dev/minScale", "0")
             == str(service.caps["min_instances"]),
             f"{service.name}: minScale "
             f"{annotations.get('autoscaling.knative.dev/minScale', '')} != "
