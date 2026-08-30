@@ -74,6 +74,7 @@ def main() -> None:
         known_record_ids=frozenset({"rec-01"}),
         known_finding_ids=frozenset({"finding-amr-a", "finding-amr-b"}),
         known_source_ids=frozenset({"src-01"}),
+        known_claim_ids=frozenset({"claim-initial"}),
     )
     result = run_spike(
         {

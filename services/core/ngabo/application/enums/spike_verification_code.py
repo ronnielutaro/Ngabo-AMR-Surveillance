@@ -13,6 +13,11 @@ Codes:
 - ``UNKNOWN_RECORD_REFERENCE`` — referenced canonical record ID does not exist.
 - ``UNKNOWN_FINDING_REFERENCE`` — referenced deterministic finding ID does not exist.
 - ``UNKNOWN_SOURCE_REFERENCE`` — referenced evidence source ID does not exist.
+- ``UNKNOWN_CLAIM_REFERENCE`` — a referenced (e.g. contradicting) claim ID does
+  not exist in the verification context.
+- ``MISSING_REQUIRED_REFERENCE`` — a claim omits the reference family its
+  claim type requires (e.g. a ``DERIVED_FINDING`` without finding IDs), so a
+  proof-free claim cannot be accepted.
 - ``MALFORMED_PROOF`` — the structured claim could not satisfy the DTO/schema.
 - ``REQUIRED_BRANCH_FAILED`` — a required deterministic parallel branch failed.
 """
@@ -28,5 +33,7 @@ class SpikeVerificationCode(StrEnum):
     UNKNOWN_RECORD_REFERENCE = "UNKNOWN_RECORD_REFERENCE"
     UNKNOWN_FINDING_REFERENCE = "UNKNOWN_FINDING_REFERENCE"
     UNKNOWN_SOURCE_REFERENCE = "UNKNOWN_SOURCE_REFERENCE"
+    UNKNOWN_CLAIM_REFERENCE = "UNKNOWN_CLAIM_REFERENCE"
+    MISSING_REQUIRED_REFERENCE = "MISSING_REQUIRED_REFERENCE"
     MALFORMED_PROOF = "MALFORMED_PROOF"
     REQUIRED_BRANCH_FAILED = "REQUIRED_BRANCH_FAILED"

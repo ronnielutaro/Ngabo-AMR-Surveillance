@@ -309,9 +309,12 @@ owns accept/reject; Gemini never self-verifies.
 ### Deterministic verifier boundary: **PASS**
 
 Verifier checks required-branch completeness, DTO structural validity, and
-record/finding/source reference existence. Error codes:
+the proof-reference family required by the claim type (so a proof-free claim
+cannot be accepted), and record/finding/source/contradicting-claim reference
+existence. Error codes:
 `UNKNOWN_RECORD_REFERENCE`, `UNKNOWN_FINDING_REFERENCE`,
-`UNKNOWN_SOURCE_REFERENCE`, `MALFORMED_PROOF`, `REQUIRED_BRANCH_FAILED`.
+`UNKNOWN_SOURCE_REFERENCE`, `UNKNOWN_CLAIM_REFERENCE`,
+`MISSING_REQUIRED_REFERENCE`, `MALFORMED_PROOF`, `REQUIRED_BRANCH_FAILED`.
 No model self-"is my evidence valid?" answer is used for routing.
 
 ### Bounded repair: **PASS**

@@ -30,6 +30,7 @@ def _context() -> VerificationContext:
         known_record_ids=frozenset({"rec-01"}),
         known_finding_ids=frozenset({"finding-amr-a", "finding-amr-b"}),
         known_source_ids=frozenset({"src-01"}),
+        known_claim_ids=frozenset({"claim-01", "claim-02"}),
     )
 
 
@@ -107,6 +108,42 @@ class TestVerifier:
         report = verifier.verify(claim, branches)
         assert report.valid is False
         assert report.errors[0].code is SpikeVerificationCode.UNKNOWN_FINDING_REFERENCE
+
+    def test_derived_finding_without_findings_blocks(self) -> None:
+        # A proof-free DERIVED_FINDING must not be accepted (P1).
+        verifier = SpikeProofVerifier(_context())
+        claim = SpikeProofClaim(
+            claim_id="claim-01",
+            claim_type=ClaimType.DERIVED_FINDING,
+            statement="suspected clonal cluster",
+        )
+        branches = (
+            BranchResult("branch_a", ok=True, finding_id="finding-amr-a"),
+            BranchResult("branch_b", ok=True, finding_id="finding-amr-b"),
+        )
+        report = verifier.verify(claim, branches)
+        assert report.valid is False
+        assert report.errors[0].code is SpikeVerificationCode.MISSING_REQUIRED_REFERENCE
+        assert report.errors[0].field == "supporting_finding_ids"
+
+    def test_fabricated_contradicting_claim_blocks(self) -> None:
+        # A fabricated contra claim ID must not pass (P2).
+        verifier = SpikeProofVerifier(_context())
+        claim = SpikeProofClaim(
+            claim_id="claim-03",
+            claim_type=ClaimType.DERIVED_FINDING,
+            statement="suspected clonal cluster",
+            supporting_finding_ids=("finding-amr-a", "finding-amr-b"),
+            contradicting_claim_ids=("claim-does-not-exist",),
+        )
+        branches = (
+            BranchResult("branch_a", ok=True, finding_id="finding-amr-a"),
+            BranchResult("branch_b", ok=True, finding_id="finding-amr-b"),
+        )
+        report = verifier.verify(claim, branches)
+        assert report.valid is False
+        assert report.errors[0].code is SpikeVerificationCode.UNKNOWN_CLAIM_REFERENCE
+        assert report.errors[0].field == "contradicting_claim_ids"
 
 
 class TestSpikeGraph:

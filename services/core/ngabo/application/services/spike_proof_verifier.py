@@ -12,8 +12,12 @@ Checks performed (in order, fail-closed):
    synthesis can be trusted.
 2. The proposed claim exists and is structurally usable; otherwise
    ``MALFORMED_PROOF``.
-3. Every referenced record/finding/source ID exists in the verification
+3. The claim carries the reference family its claim type requires; a
+   proof-free claim yields ``MISSING_REQUIRED_REFERENCE``.
+4. Every referenced record/finding/source ID exists in the verification
    context; any unknown reference yields its ``UNKNOWN_*_REFERENCE`` family.
+5. Every supplied ``contradicting_claim_ids`` entry exists as a known claim;
+   an unknown one yields ``UNKNOWN_CLAIM_REFERENCE``.
 
 The verifier does NOT judge the *truth* of the statement; it judges only
 referential integrity and required-input completeness, which is the
@@ -35,6 +39,20 @@ from ngabo.application.value_objects.spike_verification_result import (
 from ngabo.domain.value_objects.spike_proof_claim import SpikeProofClaim
 
 REQUIRED_BRANCHES: Final[tuple[str, str]] = ("branch_a", "branch_b")
+
+# Reference family a claim type must carry, per the proof-carrying contract
+# (docs/PROOF_CARRYING_REASONING.md §4, AGENTS.md §9):
+#   observed facts reference canonical records;
+#   derived findings reference deterministic result IDs;
+#   evidence statements reference actually retrieved approved source IDs.
+REQUIRED_REFERENCE_FAMILY: Final[dict[str, str]] = {
+    "OBSERVED_FACT": "supporting_record_ids",
+    "DERIVED_FINDING": "supporting_finding_ids",
+    "EVIDENCE_STATEMENT": "supporting_source_ids",
+}
+
+# Claim types that must carry at least one supporting reference of any family.
+EVIDENCE_BEARING_TYPES: Final[tuple[str, str]] = ("HYPOTHESIS", "ACTION_JUSTIFICATION")
 
 
 @dataclass(frozen=True)
@@ -69,12 +87,14 @@ class VerificationContext:
     known_record_ids: frozenset[str]
     known_finding_ids: frozenset[str]
     known_source_ids: frozenset[str]
+    known_claim_ids: frozenset[str] = frozenset()
 
     def __post_init__(self) -> None:
         for label, values in (
             ("known_record_ids", self.known_record_ids),
             ("known_finding_ids", self.known_finding_ids),
             ("known_source_ids", self.known_source_ids),
+            ("known_claim_ids", self.known_claim_ids),
         ):
             if not isinstance(values, frozenset):
                 raise ValueError(f"{label} must be a frozenset")
@@ -146,6 +166,39 @@ class SpikeProofVerifier:
             )
 
         errors: list[SpikeVerificationError] = []
+        # 3. Required reference family per claim type (proof-carrying boundary).
+        family = REQUIRED_REFERENCE_FAMILY.get(claim.claim_type.value)
+        if family is not None:
+            if not getattr(claim, family):
+                errors.append(
+                    _error(
+                        SpikeVerificationCode.MISSING_REQUIRED_REFERENCE,
+                        field=family,
+                        detail=(
+                            f"A {claim.claim_type.value} claim must cite a "
+                            f"supporting {family}"
+                        ),
+                    )
+                )
+        elif claim.claim_type.value in EVIDENCE_BEARING_TYPES:
+            has_evidence = bool(
+                claim.supporting_record_ids
+                or claim.supporting_finding_ids
+                or claim.supporting_source_ids
+            )
+            if not has_evidence:
+                errors.append(
+                    _error(
+                        SpikeVerificationCode.MISSING_REQUIRED_REFERENCE,
+                        field="supporting_references",
+                        detail=(
+                            f"A {claim.claim_type.value} claim must carry "
+                            "supporting evidence"
+                        ),
+                    )
+                )
+
+        # 4. Reference existence.
         for record_id in claim.supporting_record_ids:
             if record_id not in self._context.known_record_ids:
                 errors.append(
@@ -171,6 +224,16 @@ class SpikeProofVerifier:
                         SpikeVerificationCode.UNKNOWN_SOURCE_REFERENCE,
                         reference=source_id,
                         field="supporting_source_ids",
+                    )
+                )
+        # 5. Contradicting-claim referential integrity.
+        for claim_id in claim.contradicting_claim_ids:
+            if claim_id not in self._context.known_claim_ids:
+                errors.append(
+                    _error(
+                        SpikeVerificationCode.UNKNOWN_CLAIM_REFERENCE,
+                        reference=claim_id,
+                        field="contradicting_claim_ids",
                     )
                 )
 
