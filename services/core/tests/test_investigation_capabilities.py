@@ -175,6 +175,11 @@ def test_context_capability_stale_version() -> None:
     assert result.outcome is CapabilityOutcome.STALE_INCIDENT_VERSION
     assert result.requested_version == IncidentVersion(5)
     assert result.incident_version == VERSION_1
+    # Fail closed: no stale-context data is exposed for consumption.
+    assert result.isolates == ()
+    assert result.signal_config is None
+    assert result.window_end is None
+    assert result.source_watermark == WATERMARK
 
 
 def test_profile_comparison_success_and_stable_reference() -> None:
@@ -213,6 +218,15 @@ def test_profile_comparison_missing_input() -> None:
     capability = CompareResistanceProfiles(_repo())
     result = capability.execute(
         CompareProfilesQuery(incident_id=INCIDENT_1, isolate_id_a="ISO-001", isolate_id_b="ISO-999")
+    )
+    assert result.outcome is CapabilityOutcome.MISSING_INPUT
+    assert result.finding is None
+
+
+def test_profile_comparison_same_isolate_is_not_a_comparison() -> None:
+    capability = CompareResistanceProfiles(_repo())
+    result = capability.execute(
+        CompareProfilesQuery(incident_id=INCIDENT_1, isolate_id_a="ISO-001", isolate_id_b="ISO-001")
     )
     assert result.outcome is CapabilityOutcome.MISSING_INPUT
     assert result.finding is None
@@ -329,6 +343,28 @@ def test_missingness_missing_comparison_input() -> None:
     assert result.outcome is CapabilityOutcome.SUCCESS
     assert result.has_material_missingness is True
     assert any(i.code is MissingnessCode.MISSING_COMPARISON_INPUT for i in result.missing_items)
+    assert any(
+        i.code is MissingnessCode.UNAVAILABLE_REQUIRED_BRANCH_RESULT
+        for i in result.missing_items
+    )
+
+
+def test_missingness_order_independent() -> None:
+    capability = AssessMaterialMissingness(_repo())
+    ab = capability.execute(
+        AssessMissingnessQuery(
+            incident_id=INCIDENT_1,
+            required_isolate_ids=("ISO-001", "ISO-777"),
+        )
+    )
+    ba = capability.execute(
+        AssessMissingnessQuery(
+            incident_id=INCIDENT_1,
+            required_isolate_ids=("ISO-777", "ISO-001"),
+        )
+    )
+    assert ab.missing_items == ba.missing_items
+    assert ab.has_material_missingness == ba.has_material_missingness
 
 
 def test_missingness_missing_incident_is_material() -> None:

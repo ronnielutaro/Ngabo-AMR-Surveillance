@@ -98,6 +98,20 @@ class CompareResistanceProfiles:
                 isolate_id_b=query.isolate_id_b,
             )
 
+        if query.isolate_id_a == query.isolate_id_b:
+            # A comparison requires two distinct isolates; a self-pair is not a
+            # meaningful deterministic comparison input.
+            return ProfileComparisonResult(
+                outcome=CapabilityOutcome.MISSING_INPUT,
+                incident_id=stored.incident_id,
+                incident_version=stored.incident_version,
+                source_watermark=stored.source_watermark,
+                finding=None,
+                finding_reference=None,
+                isolate_id_a=query.isolate_id_a,
+                isolate_id_b=query.isolate_id_b,
+            )
+
         # Canonicalize the symmetric pair so (A, B) and (B, A) are identical.
         first, second = sorted((isolate_a, isolate_b), key=lambda iso: iso.isolate_id)
         finding = self._compare(first, second)

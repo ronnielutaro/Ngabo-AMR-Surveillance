@@ -52,6 +52,13 @@ class StoredIncidentContext:
         if not isinstance(self.source_watermark, SourceWatermark):
             raise ValueError("source_watermark must be a SourceWatermark")
         _require_isolates(self.isolates)
+        # Canonical, deterministic isolate ordering: equivalent contexts must
+        # produce the same semantic result regardless of repository return order.
+        object.__setattr__(
+            self,
+            "isolates",
+            tuple(sorted(self.isolates, key=lambda iso: iso.isolate_id)),
+        )
         if type(self.signal_config) is not SignalConfig:
             raise TypeError("signal_config must be an exact SignalConfig")
         if type(self.window_end) is not date:
@@ -101,6 +108,11 @@ class InvestigationContextResult:
         ):
             raise ValueError("source_watermark must be a SourceWatermark or None")
         _require_isolates(self.isolates)
+        object.__setattr__(
+            self,
+            "isolates",
+            tuple(sorted(self.isolates, key=lambda iso: iso.isolate_id)),
+        )
         if self.signal_config is not None and type(self.signal_config) is not SignalConfig:
             raise TypeError("signal_config must be an exact SignalConfig or None")
         if self.window_end is not None and type(self.window_end) is not date:

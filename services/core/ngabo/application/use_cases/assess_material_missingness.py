@@ -91,8 +91,10 @@ class AssessMaterialMissingness:
 
         # Required comparison inputs requested by the caller.
         present = {iso.isolate_id for iso in stored.isolates}
+        comparison_missing = False
         for isolate_id in query.required_isolate_ids:
             if isolate_id not in present:
+                comparison_missing = True
                 items.append(
                     _item(
                         MissingnessCode.MISSING_COMPARISON_INPUT,
@@ -100,6 +102,15 @@ class AssessMaterialMissingness:
                         detail=f"required isolate {isolate_id!r} is absent",
                     )
                 )
+        if comparison_missing:
+            # The required comparison branch cannot produce a result.
+            items.append(
+                _item(
+                    MissingnessCode.UNAVAILABLE_REQUIRED_BRANCH_RESULT,
+                    "profile_comparison",
+                    detail="a required comparison isolate is absent",
+                )
+            )
 
         has_material = bool(items)
         return MissingnessResult(
@@ -107,7 +118,7 @@ class AssessMaterialMissingness:
             incident_id=stored.incident_id,
             incident_version=stored.incident_version,
             source_watermark=stored.source_watermark,
-            missing_items=tuple(items),
+            missing_items=tuple(sorted(items, key=lambda i: (i.code.value, i.field))),
             has_material_missingness=has_material,
         )
 

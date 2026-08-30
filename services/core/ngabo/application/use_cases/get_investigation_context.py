@@ -57,9 +57,10 @@ class GetInvestigationContext:
                 incident_id=stored.incident_id,
                 incident_version=stored.incident_version,
                 source_watermark=stored.source_watermark,
-                isolates=stored.isolates,
-                signal_config=stored.signal_config,
-                window_end=stored.window_end,
+                # Fail closed: never expose stale-context data for consumption.
+                isolates=(),
+                signal_config=None,
+                window_end=None,
                 requested_version=query.requested_version,
             )
 
