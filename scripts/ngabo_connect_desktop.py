@@ -8,6 +8,8 @@ Run:  python scripts/ngabo_connect_desktop.py
 Config via env:  NGABO_INTAKE_URL, NGABO_LAB_ID, NGABO_SOURCE_ID, NGABO_HMAC_SECRET
 """
 
+# ruff: noqa: E402
+
 from __future__ import annotations
 
 import os
@@ -30,9 +32,12 @@ DEFAULT_INVOKER_SERVICE_ACCOUNT = (
 _SERVICE_CORE = Path(__file__).resolve().parents[1] / "services" / "core"
 sys.path.insert(0, str(_SERVICE_CORE))
 
-from ngabo.infrastructure.connect.connect_queue import ConnectQueue  # noqa: E402
-from ngabo.infrastructure.connect.edge import file_sha256, stable_size_mtime  # noqa: E402
-from ngabo.infrastructure.connect.hmac_auth import compute_signature  # noqa: E402
+from ngabo.infrastructure.connect.connect_queue import ConnectQueue
+from ngabo.infrastructure.connect.edge import (
+    file_sha256,
+    stable_size_mtime,
+)
+from ngabo.infrastructure.connect.hmac_auth import compute_signature
 
 
 class ConnectApp(tk.Tk):
