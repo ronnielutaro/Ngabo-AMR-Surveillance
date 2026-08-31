@@ -160,7 +160,6 @@ class HeroOrchestrator:
 
         payload = HeroCoordinationPayload(
             incident_id=context.incident_id.value,
-            verified_package_id=package.package_id.value,
             action_class=ActionClass.SAFE_EXTERNAL_COORDINATION.value,
             message=self._coordination_message,
             synthetic=True,
@@ -295,10 +294,13 @@ class HeroOrchestrator:
         """Build an immutable intent with a logical idempotency key (no execution id).
 
         The identity derives from the stable logical action binding: incident/
-        version/watermark (policy binding), verified package identity, authorized
-        target, action class, and the canonical payload hash. Reprocessing the
-        same logical action under a NEW execution id yields the SAME action_id and
-        idempotency_key, so the receiver can de-duplicate rather than create a
+        version/watermark (policy binding), authorized target, action class, and
+        the canonical payload hash. It deliberately EXCLUDES both ``execution_id``
+        and the run-scoped package_id, because ``_package_id_for`` derives the
+        package id from ``execution_id`` (so reprocessing the same logical effect
+        under a NEW execution changes both, which must NOT change the key).
+        Reprocessing the same logical action therefore yields the SAME action_id
+        and idempotency_key, so the receiver de-duplicates instead of creating a
         second external effect.
         """
         material = "|".join(
@@ -306,7 +308,6 @@ class HeroOrchestrator:
                 context.incident_id.value,
                 str(context.incident_version.value),
                 context.source_watermark.value,
-                verified_package_id,
                 authorized_target_id,
                 ActionClass.SAFE_EXTERNAL_COORDINATION.value,
                 payload_hash,

@@ -12,24 +12,27 @@ import json
 import re
 from dataclasses import dataclass
 
-_A1_WHOLE_TOKENS = (
-    "OUTBREAK_CONFIRMED",
-    "MANDATORY_CONTAINMENT",
-    "OFFICIAL_PUBLIC_HEALTH_DECLARATION",
-    "ACTION_READY",
-    "ACKNOWLEDGED",
-)
-_A1_STEM_TOKENS = (
-    "DIAGNOS",
-    "PRESCRIB",
-    "TREAT",
-    "AUTHORIZ",
-    "APPROV",
-    "VERIF",
-)
-_FORBIDDEN_A1_RE = re.compile(
-    r"\b(?:" + "|".join(re.escape(t) for t in _A1_WHOLE_TOKENS) + r")\b"
-    r"|\b(?:" + "|".join(re.escape(s) for s in _A1_STEM_TOKENS) + r")",
+# Reject the prohibited authority concepts in ordinary spaced/inflected form
+# (not only internal enum-like tokens), scoped to the narrative payload so the
+# #56 false-positive bug is not recreated.
+# Reject the prohibited authority concepts in ordinary spaced/inflected form
+# (not only internal enum-like tokens), scoped to the narrative payload so the
+# #56 false-positive bug is not recreated. Stems match at a word boundary with no
+# trailing boundary; phrases match the whole phrase with a trailing boundary.
+_A1_FORBIDDEN_RE = re.compile(
+    r"(?:\b(?:diagnos|prescrib|treat|authoriz|approv|verif))"
+    r"|(?:\b(?:"
+    r"outbreak\s+(?:is\s+)?confirmed"
+    r"|confirm(?:ed)?\s+(?:(?:an?|the)\s+)?outbreak"
+    r"|declare[ds]?\s+(?:an?\s+)?outbreak"
+    r"|outbreak\s+declaration|outbreak_confirmed"
+    r"|mandatory\s+containment|containment\s+order|mandatory_containment"
+    r"|official\s+public\s+health\s+(?:declaration|declar)"
+    r"|public\s+health\s+declaration"
+    r"|notify\s+(?:the\s+)?(?:hospital|health\s+department|facility)"
+    r"|action_ready|acknowledged"
+    r"|send\s+samples\s+for\s+(?:treatment|testing)"
+    r")\b)",
     re.I,
 )
 
@@ -45,14 +48,12 @@ class HeroCoordinationPayload:
     """Safe, draft-only, explicitly-synthetic coordination message."""
 
     incident_id: str
-    verified_package_id: str
     action_class: str
     message: str
     synthetic: bool = True
 
     def __post_init__(self) -> None:
         _require_nonblank(self.incident_id, "incident id")
-        _require_nonblank(self.verified_package_id, "verified package id")
         _require_nonblank(self.action_class, "action class")
         _require_nonblank(self.message, "coordination message")
         if not self.synthetic:
@@ -61,7 +62,6 @@ class HeroCoordinationPayload:
     def to_primitive(self) -> dict[str, object]:
         return {
             "incident_id": self.incident_id,
-            "verified_package_id": self.verified_package_id,
             "action_class": self.action_class,
             "message": self.message,
             "synthetic": self.synthetic,
@@ -80,6 +80,6 @@ def validate_coordination_message(message: str) -> tuple[bool, str | None]:
         return False, "coordination message must be text"
     if not message.strip():
         return False, "coordination message must be non-blank"
-    if _FORBIDDEN_A1_RE.search(message):
+    if _A1_FORBIDDEN_RE.search(message):
         return False, "coordination message contains forbidden authority wording"
     return True, None

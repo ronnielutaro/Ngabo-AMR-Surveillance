@@ -31,6 +31,7 @@ from ngabo.application.value_objects.hero_verification import (
     HeroVerificationResult,
 )
 from ngabo.application.value_objects.incident_package import IncidentPackageCandidate
+from ngabo.domain.enums.action_class import ActionClass
 from ngabo.domain.enums.claim_type import ClaimType
 from ngabo.domain.value_objects.reasoning_claim import ReasoningClaim
 
@@ -151,6 +152,22 @@ class VerifyHeroPackage:
     ) -> list[HeroVerificationError]:
         errors: list[HeroVerificationError] = []
         claim_id = claim.claim_id.value
+        # Authority boundary: never allow a model-requested A2/A3 action class to
+        # reach the autonomous A1 lane.
+        if claim.requested_action_class in (
+            ActionClass.REAL_OPERATIONAL_ESCALATION,
+            ActionClass.CLINICAL_OR_OFFICIAL_PUBLIC_HEALTH_DECISION,
+        ):
+            errors.append(
+                HeroVerificationError(
+                    HeroErrorCode.VERIFICATION_FAILED,
+                    (
+                        "claim requests a forbidden "
+                        f"{claim.requested_action_class.value} autonomous action"
+                    ),
+                    claim_id,
+                )
+            )
         if _FORBIDDEN_AUTHORITY_RE.search(claim.statement):
             errors.append(
                 HeroVerificationError(
@@ -351,6 +368,18 @@ class VerifyHeroPackage:
                     )
                 )
                 continue
+            if ref.provenance != canonical.provenance:
+                errors.append(
+                    HeroVerificationError(
+                        HeroErrorCode.VERIFICATION_FAILED,
+                        (
+                            f"evidence source {ref.source_id!r} provenance "
+                            f"{ref.provenance!r} does not match canonical "
+                            f"{canonical.provenance!r}"
+                        ),
+                        claim.claim_id.value,
+                    )
+                )
             if ref.chunk_id is not None and ref.chunk_id not in canonical.chunk_ids:
                 errors.append(
                     HeroVerificationError(

@@ -8,9 +8,20 @@ from typing import cast
 
 import pytest
 
+from ngabo.application.enums.evidence_search_outcome import EvidenceSearchOutcome
 from ngabo.application.enums.hero_error_code import HeroErrorCode
 from ngabo.application.enums.hero_outcome import HeroOutcome
 from ngabo.application.enums.intent_state import IntentState
+from ngabo.application.enums.investigation_execution_outcome import (
+    InvestigationExecutionOutcome,
+)
+from ngabo.application.enums.package_candidate_outcome import (
+    PackageCandidateOutcome,
+)
+from ngabo.application.enums.triage_outcome import TriageOutcome
+from ngabo.application.services.hero_support_context_builder import (
+    HeroSupportContextBuilder,
+)
 from ngabo.application.services.incident_package_codec import parse_incident_package
 from ngabo.application.use_cases.check_hero_freshness import CheckHeroFreshness
 from ngabo.application.use_cases.hero_action_policy import HeroActionPolicy
@@ -23,6 +34,7 @@ from ngabo.application.value_objects.canonical_binding import (
     HeroStateBinding,
 )
 from ngabo.application.value_objects.effect_delivery import EffectDelivery
+from ngabo.application.value_objects.evidence_search import EvidenceSearchResult
 from ngabo.application.value_objects.hero_action_intent import HeroActionIntent
 from ngabo.application.value_objects.hero_completion_result import HeroCompletionResult
 from ngabo.application.value_objects.hero_payload import (
@@ -31,12 +43,22 @@ from ngabo.application.value_objects.hero_payload import (
 )
 from ngabo.application.value_objects.hero_support_context import HeroSupportContext
 from ngabo.application.value_objects.incident_package import IncidentPackageCandidate
+from ngabo.application.value_objects.investigation_execution import (
+    EventInvestigationCommand,
+    EventInvocationResult,
+    InvestigationExecutionId,
+)
+from ngabo.application.value_objects.package_candidate_result import (
+    PackageCandidateResult,
+)
+from ngabo.application.value_objects.triage_result import TriageResult
 from ngabo.domain.value_objects.incident_id import IncidentId
 from ngabo.domain.value_objects.incident_version import IncidentVersion
 from ngabo.domain.value_objects.source_watermark import SourceWatermark
 from ngabo.infrastructure.effect.fake_action_intent_store import FakeActionIntentStore
 from ngabo.infrastructure.effect.fake_effect_port import FakeEffectPort
 from ngabo.infrastructure.effect.fake_freshness_state_port import FakeFreshnessStatePort
+from ngabo.infrastructure.hero.hero_runtime import HeroRuntime
 
 INCIDENT = IncidentId("INC-001")
 VERSION = IncidentVersion(1)
@@ -199,7 +221,7 @@ def _canonical(**overrides: object) -> HeroSupportContext:
                 {
                     "WHO-AMR-001": CanonicalEvidence(
                         source_id="WHO-AMR-001",
-                        provenance="1",
+                        provenance="ngabo-approved-evidence-v1",
                         chunk_ids=("WHO-AMR-001::ipc-principle-01",),
                     )
                 },
@@ -330,6 +352,23 @@ class TestVerificationProofValues:
         assert result.verified is False
         assert any("policy version" in e.detail for e in result.errors)
 
+    def test_evidence_provenance_mismatch_blocks(self) -> None:
+        mutated = _package_primitive()
+        claims = cast("list[dict[str, object]]", mutated["claims"])
+        claims[2]["supporting_evidence_refs"] = [
+            {
+                "source_id": "WHO-AMR-001",
+                "chunk_id": "WHO-AMR-001::ipc-principle-01",
+                "provenance": "fabricated-v999",
+                "support": "supports",
+            }
+        ]
+        parse = parse_incident_package(mutated)
+        assert parse.ok and parse.package is not None
+        result = VerifyHeroPackage().verify(parse.package, _canonical())
+        assert result.verified is False
+        assert any("provenance" in e.detail for e in result.errors)
+
     def test_fabricated_record_finding_evidence_refs_block(self) -> None:
         for claim_index, field in (
             (0, "supporting_record_refs"),
@@ -403,6 +442,26 @@ class TestClaimResolution:
         assert result.verified is False
         assert any("cycle" in e.detail for e in result.errors)
 
+    def test_requested_a2_action_class_blocks(self) -> None:
+        mutated = _package_primitive()
+        claims = cast("list[dict[str, object]]", mutated["claims"])
+        claims[3]["requested_action_class"] = "A2"
+        parse = parse_incident_package(mutated)
+        assert parse.ok and parse.package is not None
+        result = VerifyHeroPackage().verify(parse.package, _canonical())
+        assert result.verified is False
+        assert any("A2" in e.detail for e in result.errors)
+
+    def test_requested_a3_action_class_blocks(self) -> None:
+        mutated = _package_primitive()
+        claims = cast("list[dict[str, object]]", mutated["claims"])
+        claims[3]["requested_action_class"] = "A3"
+        parse = parse_incident_package(mutated)
+        assert parse.ok and parse.package is not None
+        result = VerifyHeroPackage().verify(parse.package, _canonical())
+        assert result.verified is False
+        assert any("A3" in e.detail for e in result.errors)
+
 
 class TestFreshnessReload:
     def test_unchanged_current_state_happy_path(self) -> None:
@@ -444,14 +503,24 @@ class TestIdempotency:
         orchestrator, _, _, _ = _orchestrator()
         ctx = _canonical()
         base = orchestrator._build_intent(ctx, "PKG-1", "demo-receiver-01", "0" * 64)
-        different_package = orchestrator._build_intent(
-            ctx, "PKG-2", "demo-receiver-01", "0" * 64
-        )
         different_target = orchestrator._build_intent(
             ctx, "PKG-1", "other-receiver", "0" * 64
         )
-        assert base.idempotency_key != different_package.idempotency_key
+        different_payload = orchestrator._build_intent(
+            ctx, "PKG-1", "demo-receiver-01", "1" * 64
+        )
         assert base.idempotency_key != different_target.idempotency_key
+        assert base.idempotency_key != different_payload.idempotency_key
+
+    def test_same_logical_effect_different_package_id_same_key(self) -> None:
+        orchestrator, _, _, _ = _orchestrator()
+        ctx = _canonical()
+        # The same logical effect must be idempotent even if the run-scoped
+        # package ID differs (package ids derive from execution_id upstream).
+        a = orchestrator._build_intent(ctx, "PKG-1", "demo-receiver-01", "0" * 64)
+        b = orchestrator._build_intent(ctx, "PKG-2", "demo-receiver-01", "0" * 64)
+        assert a.action_id == b.action_id
+        assert a.idempotency_key == b.idempotency_key
 
     def test_duplicate_dispatch_cannot_become_duplicate_intent(self) -> None:
         orchestrator, effect, store, _ = _orchestrator()
@@ -528,8 +597,11 @@ class TestA1PayloadSafety:
         [
             "We prescribe IV meropenem immediately.",
             "This is a diagnosis of carbapenem-resistant infection.",
-            "OUTBREAK_CONFIRMED in ward A.",
-            "This is an OFFICIAL_PUBLIC_HEALTH_DECLARATION.",
+            "Outbreak confirmed in Ward A.",
+            "We confirm an outbreak in Ward A.",
+            "Mandatory containment is required.",
+            "This is an official public health declaration.",
+            "Notify the hospital immediately.",
             "We authorize immediate action.",
         ],
     )
@@ -640,3 +712,141 @@ class TestHero:
         assert result.outcome is HeroOutcome.HERO_COMPLETED
         for key, value in result.zero_human.items():
             assert value == 0, f"{key} is not zero"
+
+
+def _evidence_hit() -> object:
+    from ngabo.application.value_objects.evidence_search import EvidenceSearchHit
+    from ngabo.domain.value_objects.evidence_reference import (
+        EvidenceReferenceId,
+        EvidenceSourceId,
+    )
+
+    return EvidenceSearchHit(
+        reference_id=EvidenceReferenceId("WHO-AMR-001::ipc-principle-01"),
+        source_id=EvidenceSourceId("WHO-AMR-001"),
+        publisher="WHO",
+        source_title="IPC guidance",
+        canonical_url="https://www.who.int/publications/i/item/9789241550178",
+        publication_date="2017-11-01",
+        source_version="1",
+        attribution_required=True,
+        content="Contact precautions.",
+        chunk_tags=("ipc",),
+        score=4,
+    )
+
+
+class _FixedContextBuilder(HeroSupportContextBuilder):
+    def build(self, *args: object) -> HeroSupportContext:
+        del args
+        return _canonical()
+
+
+class _StubInvestigation:
+    def __init__(self, outcome: InvestigationExecutionOutcome) -> None:
+        self._outcome = outcome
+
+    def execute(self, command: object) -> EventInvocationResult:
+        del command
+        return EventInvocationResult(
+            outcome=self._outcome,
+            execution_id=InvestigationExecutionId(EXECUTION_ID),
+            metadata=None,
+            capability_result=None,
+            failure_code=None,
+        )
+
+
+class _StubTriage:
+    def triage(self, ready: object) -> TriageResult:
+        del ready
+        return TriageResult(
+            outcome=TriageOutcome.EVIDENCE_RETRIEVED,
+            proposal=None,
+            evidence_result=EvidenceSearchResult(
+                outcome=EvidenceSearchOutcome.SUCCESS, hits=(_evidence_hit(),)
+            ),
+            model_calls=1,
+            duration_ms=1,
+            model_version="gemini-3.6-flash",
+            error_code=None,
+            execution_id=EXECUTION_ID,
+        )
+
+
+class _StubSynthesis:
+    def synthesize(self, ready: object, triage: object) -> PackageCandidateResult:
+        del ready, triage
+        return PackageCandidateResult(
+            outcome=PackageCandidateOutcome.PACKAGE_CANDIDATE_GENERATED,
+            package=_package(),
+            model_calls=1,
+            duration_ms=1,
+            model_version="gemini-3.6-flash",
+            error_code=None,
+            execution_id=EXECUTION_ID,
+        )
+
+
+class TestHeroRuntimeComposition:
+    def test_hero_runtime_composes_full_chain(self) -> None:
+        store = FakeActionIntentStore()
+        runtime = HeroRuntime(
+            investigation_runtime=_StubInvestigation(
+                InvestigationExecutionOutcome.READY_FOR_DOWNSTREAM
+            ),
+            triage_runtime=_StubTriage(),
+            synthesis_runtime=_StubSynthesis(),
+            hero_orchestrator=HeroOrchestrator(
+                verifier=VerifyHeroPackage(),
+                policy=HeroActionPolicy(freshness=CheckHeroFreshness()),
+                effect_port=FakeEffectPort(ack_secret=ACK_SECRET),
+                ack_verifier=VerifyHeroAck(ack_secret=ACK_SECRET),
+                intent_store=store,
+                freshness_port=FakeFreshnessStatePort(_binding()),
+                coordination_message="Synthetic demo surveillance review; draft only.",
+            ),
+            context_builder=_FixedContextBuilder(),
+        )
+        result = runtime.execute(
+            EventInvestigationCommand(
+                incident_id=INCIDENT,
+                incident_version=VERSION,
+                source_watermark=WATERMARK,
+                event_id="evt-hero-001",
+                correlation_id="corr-hero-001",
+            )
+        )
+        assert result.outcome is HeroOutcome.HERO_COMPLETED
+        assert result.ack_verified is True
+        for key, value in result.zero_human.items():
+            assert value == 0, f"{key} is not zero"
+
+    def test_hero_runtime_fails_closed_on_blocked_investigation(self) -> None:
+        runtime = HeroRuntime(
+            investigation_runtime=_StubInvestigation(
+                InvestigationExecutionOutcome.BLOCKED
+            ),
+            triage_runtime=_StubTriage(),
+            synthesis_runtime=_StubSynthesis(),
+            hero_orchestrator=HeroOrchestrator(
+                verifier=VerifyHeroPackage(),
+                policy=HeroActionPolicy(),
+                effect_port=FakeEffectPort(ack_secret=ACK_SECRET),
+                ack_verifier=VerifyHeroAck(ack_secret=ACK_SECRET),
+                intent_store=FakeActionIntentStore(),
+                freshness_port=FakeFreshnessStatePort(_binding()),
+                coordination_message="draft only",
+            ),
+            context_builder=_FixedContextBuilder(),
+        )
+        result = runtime.execute(
+            EventInvestigationCommand(
+                incident_id=INCIDENT,
+                incident_version=VERSION,
+                source_watermark=WATERMARK,
+                event_id="evt-hero-002",
+                correlation_id="corr-hero-002",
+            )
+        )
+        assert result.outcome is HeroOutcome.BLOCKED

@@ -1,11 +1,10 @@
-"""Durable filesystem-backed ``ActionIntentStore`` for the deadline hero (#176).
+"""Dev/offline filesystem-backed ``ActionIntentStore`` for the deadline hero (#176).
 
-The deadline-safe minimum uses a small file-per-intent outbox rooted at a
-configured data directory. Creating a document is atomic (``O_CREAT|O_EXCL``),
-so two dispatchers of the same logical idempotency key cannot both acquire the
-lease; the second caller receives ``owned=False``. Records are JSON and survive a
-process restart. This deliberately does NOT implement full transactional outbox
-recovery/distributed dispatcher hardening (#67/#69).
+This is a single-process/dev artifact. It is NOT cross-instance durable: Cloud Run
+instances have container-local filesystems, so this must never back the deployed
+hero. Prefer :class:`FirestoreActionIntentStore` for shared durable state. It is
+kept only so offline/adversarial tests can exercise the store boundary without a
+cloud SDK.
 """
 
 from __future__ import annotations
