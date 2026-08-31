@@ -17,6 +17,12 @@ class PackageCandidateErrorCode(StrEnum):
     """The #54 result was not READY_FOR_DOWNSTREAM or the #55 result was not
     EVIDENCE_RETRIEVED, so synthesis must not begin."""
 
+    RUN_BINDING_MISMATCH = "RUN_BINDING_MISMATCH"
+    """The supplied #55 triage result belongs to a different investigation run
+    than the supplied #54 result (``triage_result.execution_id`` does not match
+    ``investigation_result.execution_id``). Cross-run evidence must never be
+    accepted as support for this run."""
+
     NO_APPROVED_EVIDENCE = "NO_APPROVED_EVIDENCE"
     """The #55 outcome reported no approved evidence hits, so synthesis has no
     grounded authority to build a candidate on."""

@@ -24,6 +24,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import math
 import re
 import time
 import uuid
@@ -70,6 +71,40 @@ _URL_RE = re.compile(
     r"https?://|www\.|\b[a-z0-9.-]+\.(?:com|org|net|edu|gov|io)\b", re.I
 )
 
+# Strict allow-list of every field the #56 model output may declare. This
+# mirrors the #52 codec allow-list so an authority field such as ``verified``
+# cannot be silently dropped by Pydantic ``extra="ignore"`` and then rebuilt as
+# an allow-listed package. Model output carrying any unknown field fails closed.
+_PACKAGE_FIELDS = frozenset(
+    {"claims", "uncertainties", "limitations", "draft_coordination_message"}
+)
+_CLAIM_FIELDS = frozenset(
+    {
+        "claim_id",
+        "claim_type",
+        "statement",
+        "supporting_record_refs",
+        "supporting_finding_refs",
+        "supporting_evidence_refs",
+        "supporting_claim_ids",
+        "contradicting_claim_ids",
+        "uncertainties",
+        "requested_action_class",
+        "confidence_label",
+    }
+)
+_RECORD_REF_FIELDS = frozenset({"record_id", "field_path", "expected_value"})
+_FINDING_REF_FIELDS = frozenset(
+    {"finding_id", "policy_version", "input_refs", "output_value"}
+)
+_EVIDENCE_REF_FIELDS = frozenset(
+    {"source_id", "chunk_id", "provenance", "support"}
+)
+_DRAFT_FIELDS = frozenset(
+    {"subject", "body", "intended_purpose", "candidate_recipient_role"}
+)
+
+
 # Forbidden authority / completion / decision semantics surfaced in model output.
 # These are matched as whole words/tokens so ordinary clinical vocabulary cannot
 # trip the boundary while authority claims fail closed.
@@ -88,15 +123,10 @@ FORBIDDEN_AUTHORITY_TOKENS = (
     "OFFICIAL_PUBLIC_HEALTH_DECLARATION",
     "PACKAGE_COMPLETED",
     "INVESTIGATION_COMPLETE",
-    "COMPLETE",
-    "SENT",
     "DELIVERED",
     "ACKNOWLEDGED",
-    "DONE",
-    "DECISION",
     "NO_ACTION_NEEDED",
     "ESCALATE",
-    "SEND",
 )
 _FORBIDDEN_AUTHORITY_RE = re.compile(
     r"\b(?:" + "|".join(re.escape(tok) for tok in FORBIDDEN_AUTHORITY_TOKENS) + r")\b",
@@ -211,6 +241,7 @@ class SynthesisBudget:
         if (
             isinstance(self.max_runtime_seconds, bool)
             or not isinstance(self.max_runtime_seconds, (int, float))
+            or not math.isfinite(self.max_runtime_seconds)
             or self.max_runtime_seconds <= 0
         ):
             raise ValueError("max_runtime_seconds must be a finite positive number")
@@ -237,11 +268,70 @@ def _recover_model_text(events: list[Event]) -> str | None:
 def _parse_schema(raw: object) -> SynthesisPackageSchema:
     if isinstance(raw, SynthesisPackageSchema):
         return raw
+    data: object
     if isinstance(raw, str):
-        return SynthesisPackageSchema.model_validate_json(raw)
-    if isinstance(raw, dict):
-        return SynthesisPackageSchema.model_validate(raw)
-    raise ValueError("model output is not a recognizable package payload")
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ValueError("model output is not valid JSON") from exc
+    elif isinstance(raw, dict):
+        data = raw
+    else:
+        raise ValueError("model output is not a recognizable package payload")
+    _reject_unknown_model_fields(data)
+    return SynthesisPackageSchema.model_validate(data)
+
+
+def _reject_unknown_model_fields(data: object) -> None:
+    """Reject any unknown/authority field before Pydantic drops it.
+
+    Pydantic defaults to ``extra="ignore"``, so a response containing
+    ``verified``/``approved``/``outbreak_confirmed`` would otherwise be silently
+    normalized into an allow-listed package and the strict #52 codec would never
+    see the forbidden field. Walking the raw primitive here makes the boundary
+    fail closed instead.
+    """
+    if not isinstance(data, dict):
+        raise ValueError("package payload must be a JSON object")
+    for key in data:
+        if key not in _PACKAGE_FIELDS:
+            raise ValueError(f"unknown/authority field {key!r} at package root")
+    claims = data.get("claims")
+    if not isinstance(claims, list):
+        raise ValueError("claims must be a list")
+    for index, claim in enumerate(claims):
+        if not isinstance(claim, dict):
+            raise ValueError("each claim must be a JSON object")
+        for key in claim:
+            if key not in _CLAIM_FIELDS:
+                raise ValueError(
+                    f"unknown/authority field {key!r} at claims[{index}]"
+                )
+        for ref_field, allowed in (
+            ("supporting_record_refs", _RECORD_REF_FIELDS),
+            ("supporting_finding_refs", _FINDING_REF_FIELDS),
+            ("supporting_evidence_refs", _EVIDENCE_REF_FIELDS),
+        ):
+            refs = claim.get(ref_field, [])
+            if not isinstance(refs, list):
+                raise ValueError(f"{ref_field} must be a list")
+            for ref_index, ref in enumerate(refs):
+                if not isinstance(ref, dict):
+                    raise ValueError(f"{ref_field}[{ref_index}] must be an object")
+                for key in ref:
+                    if key not in allowed:
+                        raise ValueError(
+                            f"unknown field {key!r} at {ref_field}[{ref_index}]"
+                        )
+    draft = data.get("draft_coordination_message")
+    if draft is not None:
+        if not isinstance(draft, dict):
+            raise ValueError("draft_coordination_message must be an object or null")
+        for key in draft:
+            if key not in _DRAFT_FIELDS:
+                raise ValueError(
+                    f"unknown/authority field {key!r} in draft_coordination_message"
+                )
 
 
 def _contains_forbidden_semantic(schema: SynthesisPackageSchema) -> bool:
@@ -371,6 +461,23 @@ class BoundedSynthesisRuntime:
                 duration_ms=_duration_ms(start),
                 model_version=None,
                 error_code=code,
+                execution_id=execution_id,
+            )
+        # Bind the #55 triage evidence to THIS investigation run. A successful
+        # TriageResult from a concurrent/retried run must never be treated as
+        # this run's evidence; otherwise the package would record only the
+        # current execution id and erase a cross-run evidence mismatch.
+        if (
+            triage_result.execution_id is not None
+            and str(triage_result.execution_id) != execution_id
+        ):
+            return PackageCandidateResult(
+                outcome=PackageCandidateOutcome.BLOCKED,
+                package=None,
+                model_calls=0,
+                duration_ms=_duration_ms(start),
+                model_version=None,
+                error_code=PackageCandidateErrorCode.RUN_BINDING_MISMATCH,
                 execution_id=execution_id,
             )
 

@@ -8,6 +8,7 @@ from collections.abc import AsyncGenerator
 from datetime import date
 from types import MappingProxyType
 
+import pytest
 from google.adk.models.llm_request import LlmRequest
 from google.adk.models.llm_response import LlmResponse
 from google.genai import types
@@ -215,6 +216,8 @@ def _approved_hit(content: str = "Contact precautions and hand hygiene.") -> Evi
 
 def _evidence_retrieved_result(
     content: str = "Contact precautions and hand hygiene.",
+    *,
+    execution_id: str | None = None,
 ) -> TriageResult:
     from ngabo.application.value_objects.evidence_search import EvidenceSearchResult
 
@@ -228,7 +231,7 @@ def _evidence_retrieved_result(
         duration_ms=1,
         model_version="fake-model",
         error_code=None,
-        execution_id="RUN-" + "a" * 32,
+        execution_id=execution_id,
     )
 
 
@@ -379,6 +382,18 @@ class TestEntryGate:
         assert result.outcome is PackageCandidateOutcome.NO_EVIDENCE
         assert result.model_calls == 0
         assert result.error_code is PackageCandidateErrorCode.NO_APPROVED_EVIDENCE
+        assert result.package is None
+
+    def test_cross_run_triage_evidence_blocks(self) -> None:
+        # A successful #55 TriageResult carrying a different execution_id must be
+        # treated as cross-run evidence and must not reach synthesis.
+        ready = _ready_result()
+        foreign = _evidence_retrieved_result(execution_id="RUN-" + "f" * 32)
+        runtime = _synthesis_runtime([_package_json(ready, foreign)])
+        result = runtime.synthesize(ready, foreign)
+        assert result.outcome is PackageCandidateOutcome.BLOCKED
+        assert result.model_calls == 0
+        assert result.error_code is PackageCandidateErrorCode.RUN_BINDING_MISMATCH
         assert result.package is None
 
 
@@ -534,6 +549,49 @@ class TestForbiddenSemantics:
         result = runtime.synthesize(ready, triage)
         assert result.error_code is PackageCandidateErrorCode.FORBIDDEN_SEMANTIC
 
+    def test_benign_disclaimer_not_blocked(self) -> None:
+        # Cautious synthetic wording that mentions "decision"/"send" in a
+        # disclaimer/instruction must not cause a false abstention.
+        ready = _ready_result()
+        triage = _evidence_retrieved_result()
+        payload = _package_json(ready, triage)
+        bad = json.loads(payload)
+        bad["claims"][0]["uncertainties"].append(
+            "This is a synthetic demo and is not an official decision."
+        )
+        bad["draft_coordination_message"]["body"] = (
+            "Requesting samples be sent for laboratory testing; draft only."
+        )
+        runtime = _synthesis_runtime([json.dumps(bad)])
+        result = runtime.synthesize(ready, triage)
+        assert result.outcome is PackageCandidateOutcome.PACKAGE_CANDIDATE_GENERATED
+        assert result.error_code is None
+
+
+class TestExtraFieldRejection:
+    def test_verified_extra_field_fails_schema(self) -> None:
+        ready = _ready_result()
+        triage = _evidence_retrieved_result()
+        payload = _package_json(ready, triage)
+        bad = json.loads(payload)
+        bad["verified"] = True
+        bad["approved"] = True
+        runtime = _synthesis_runtime([json.dumps(bad)])
+        result = runtime.synthesize(ready, triage)
+        assert result.outcome is PackageCandidateOutcome.FAILED
+        assert result.error_code is PackageCandidateErrorCode.SCHEMA_VIOLATION
+        assert result.package is None
+
+    def test_claim_level_authority_field_fails_schema(self) -> None:
+        ready = _ready_result()
+        triage = _evidence_retrieved_result()
+        payload = _package_json(ready, triage)
+        bad = json.loads(payload)
+        bad["claims"][0]["outbreak_confirmed"] = True
+        runtime = _synthesis_runtime([json.dumps(bad)])
+        result = runtime.synthesize(ready, triage)
+        assert result.error_code is PackageCandidateErrorCode.SCHEMA_VIOLATION
+
 
 class TestPromptInjection:
     def test_prompt_injection_evidence_cannot_create_authority(self) -> None:
@@ -592,6 +650,10 @@ class TestModelBounds:
             PackageCandidateErrorCode.SCHEMA_VIOLATION,
         )
         assert result.package is None
+
+    def test_non_finite_deadline_rejected_at_construction(self) -> None:
+        with pytest.raises(ValueError):
+            SynthesisBudget(max_model_calls=1, max_runtime_seconds=float("inf"))
 
 
 class TestZeroHuman:
