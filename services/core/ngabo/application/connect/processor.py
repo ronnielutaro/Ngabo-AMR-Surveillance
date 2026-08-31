@@ -40,6 +40,7 @@ def process_connect_csv(
     source_id: str,
     window_end_iso: str,
     execute_hero: Callable[[dict[str, object]], dict[str, object]],
+    persist_isolates: Callable[[str, list[CanonicalIsolate]], None] | None = None,
 ) -> dict[str, Any]:
     """Run cleaning + signal detection + hero handoff for one raw CSV batch.
 
@@ -88,6 +89,8 @@ def process_connect_csv(
             "event_id": f"evt-{hashlib.sha256(raw).hexdigest()[:16]}",
             "correlation_id": f"corr-{signal_id or 'none'}",
         }
+        if persist_isolates is not None:
+            persist_isolates(str(command["incident_id"]), isolates)
         events.append({"event": "INVESTIGATION_STARTED"})
         hero_result = execute_hero(command)
         outcome = hero_result.get("outcome") if hero_result else None

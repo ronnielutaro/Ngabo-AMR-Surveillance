@@ -22,6 +22,7 @@ import base64
 import binascii
 import json
 import os
+from datetime import date
 from typing import Final, Protocol, runtime_checkable
 
 from fastapi import FastAPI, Request
@@ -32,6 +33,11 @@ from ngabo.application.enums.hero_error_code import HeroErrorCode
 from ngabo.application.enums.hero_outcome import HeroOutcome
 from ngabo.application.value_objects.investigation_execution import (
     EventInvestigationCommand,
+)
+from ngabo.domain.entities.canonical_isolate import CanonicalIsolate
+from ngabo.infrastructure.connect.firestore_incident_repository import (
+    FirestoreInvestigationContextRepository,
+    persist_batch_events,
 )
 from ngabo.infrastructure.connect.hmac_auth import verify_upload
 from ngabo.interfaces.health import health, readiness, runtime_identity
@@ -240,6 +246,22 @@ def ingest_connect_batch(request: Request) -> JSONResponse:
     )
     if not ok:
         return JSONResponse(status_code=400, content={"status": "rejected", "error": err})
+    project = os.environ.get("NGABO_GCP_PROJECT", "")
+
+    def _persist(incident_id: str, isolates: list[CanonicalIsolate]) -> None:
+        if not project:
+            return
+        repo = FirestoreInvestigationContextRepository(project=project)
+
+        repo.persist_incident(
+            incident_id=incident_id,
+            incident_version=1,
+            source_watermark=f"connect/{lab_id}/{source_id}/v1",
+            window_end=_parsed_window_end(),
+            isolates=isolates,
+            profile_pair=_isolate_pair(),
+        )
+
     try:
         batch = process_connect_csv(
             body,
@@ -247,7 +269,12 @@ def ingest_connect_batch(request: Request) -> JSONResponse:
             source_id=source_id,
             window_end_iso=os.environ.get("NGABO_SURVEILLANCE_WINDOW_END", "2026-08-31"),
             execute_hero=_run_connect_hero,
+            persist_isolates=_persist,
         )
+        if project and batch.get("signal_id"):
+            persist_batch_events(
+                project=project, batch_id=str(batch["signal_id"]), payload=batch
+            )
     except Exception as exc:  # noqa: BLE001
         return JSONResponse(
             status_code=500, content={"status": "processing_failed", "error": str(exc)}
@@ -271,6 +298,18 @@ def _read_body(request: Request) -> bytes:
     import asyncio
 
     return asyncio.run(request.body())
+
+
+def _parsed_window_end() -> date:
+    return date.fromisoformat(os.environ.get("NGABO_SURVEILLANCE_WINDOW_END", "2026-08-31"))
+
+
+def _isolate_pair() -> tuple[str, str] | None:
+    value = os.environ.get("NGABO_PROFILE_PAIR")
+    if not value:
+        return None
+    parts = value.split(",")
+    return (parts[0], parts[1]) if len(parts) == 2 else None
 
 
 @app.exception_handler(404)
