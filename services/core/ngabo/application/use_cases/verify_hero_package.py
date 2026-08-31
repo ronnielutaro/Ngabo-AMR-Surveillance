@@ -238,12 +238,15 @@ class VerifyHeroPackage:
         if family is ClaimType.OBSERVED_FACT:
             for record_ref in claim.supporting_record_refs:
                 # The statement must assert the referenced field/value, not merely
-                # mention the record id. A reference to an unrelated field proves
-                # nothing about a differing proposition.
+                # mention the record id, and must not smuggle a second independent
+                # clause (e.g. '...; ten isolates were collected in Ward Z') the
+                # reference does not support. Full structured proposition
+                # resolution is #57/#58.
                 if (
                     record_ref.record_id in statement
                     and record_ref.field_path in statement
                     and record_ref.expected_value in statement
+                    and ";" not in statement
                 ):
                     return None
         elif family is ClaimType.DERIVED_FINDING:

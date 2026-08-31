@@ -34,7 +34,7 @@ class FakeActionIntentStore:
         max_retries: int = 2,
         now: float | None = None,
     ) -> IntentReservation:
-        current = now if now is not None else time.monotonic()
+        current = now if now is not None else time.time()
         key = intent.idempotency_key
         if key not in self._records:
             self._records[key] = (
@@ -55,21 +55,22 @@ class FakeActionIntentStore:
             lease_expired = (
                 state is IntentState.DISPATCHED and current > lease_left
             )
-            if (stateless or lease_expired) and retries < max_retries:
-                self._records[key] = (
-                    IntentState.DISPATCHED,
-                    delivery,
-                    current + lease_ttl_seconds,
-                    retries + 1 if state is IntentState.RETRYABLE else retries,
-                )
-                reservation = IntentReservation(
-                    intent=intent, state=IntentState.DISPATCHED, owned=True
-                )
-            elif state is IntentState.RETRYABLE and retries >= max_retries:
-                self._records[key] = (IntentState.FAILED, delivery, 0.0, retries)
-                reservation = IntentReservation(
-                    intent=intent, state=IntentState.FAILED, owned=False
-                )
+            if stateless or lease_expired:
+                if retries < max_retries:
+                    self._records[key] = (
+                        IntentState.DISPATCHED,
+                        delivery,
+                        current + lease_ttl_seconds,
+                        retries + 1,
+                    )
+                    reservation = IntentReservation(
+                        intent=intent, state=IntentState.DISPATCHED, owned=True
+                    )
+                else:
+                    self._records[key] = (IntentState.FAILED, delivery, 0.0, retries)
+                    reservation = IntentReservation(
+                        intent=intent, state=IntentState.FAILED, owned=False
+                    )
             else:
                 reservation = IntentReservation(
                     intent=intent, state=state, owned=False

@@ -405,6 +405,20 @@ class TestVerificationProofValues:
         assert result.verified is False
         assert any("support material" in e.detail for e in result.errors)
 
+    def test_grounded_statement_with_unsupported_clause_blocks(self) -> None:
+        # A grounded OBSERVED_FACT clause plus an extra unsupported clause must
+        # not be accepted just because the grounded substrings are present.
+        mutated = _package_primitive()
+        claims = cast("list[dict[str, object]]", mutated["claims"])
+        claims[0]["statement"] = (
+            "ISO-031 organism_code is kle; ten isolates were collected in Ward Z."
+        )
+        parse = parse_incident_package(mutated)
+        assert parse.ok and parse.package is not None
+        result = VerifyHeroPackage().verify(parse.package, _canonical())
+        assert result.verified is False
+        assert any("support material" in e.detail for e in result.errors)
+
     def test_completion_denial_claim_blocks(self) -> None:
         mutated = _package_primitive()
         claims = cast("list[dict[str, object]]", mutated["claims"])
@@ -733,6 +747,13 @@ class TestActionIntentPersistence:
         third = store.reserve(intent, lease_ttl_seconds=10.0, now=115.0)
         assert third.owned is True
         assert third.intent.idempotency_key == intent.idempotency_key
+        # Expired-lease redispatches count against the retry budget; after
+        # max_retries the intent becomes terminal FAILED (never redispatched forever).
+        fourth = store.reserve(intent, lease_ttl_seconds=10.0, now=126.0, max_retries=2)
+        assert fourth.owned is True
+        fifth = store.reserve(intent, lease_ttl_seconds=10.0, now=137.0, max_retries=2)
+        assert fifth.owned is False
+        assert fifth.state is IntentState.FAILED
 
 
 class TestA1PayloadSafety:

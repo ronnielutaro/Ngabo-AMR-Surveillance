@@ -47,7 +47,9 @@ class FirestoreActionIntentStore:
         max_retries: int = 2,
         now: float | None = None,
     ) -> IntentReservation:
-        current = now if now is not None else time.monotonic()
+        # Use a wall-clock epoch (UTC) so lease expiry is comparable ACROSS Cloud
+        # Run instances; monotonic clocks are process-local and mismatch.
+        current = now if now is not None else time.time()
         deadline = current + lease_ttl_seconds
         from google.cloud import firestore
 
@@ -73,21 +75,21 @@ class FirestoreActionIntentStore:
             lease_expired = (
                 state is IntentState.DISPATCHED and current > lease_expires
             )
-            if (stateless or lease_expired) and retries < max_retries:
-                transaction.set(
-                    doc,
-                    _record(
-                        intent,
-                        IntentState.DISPATCHED,
-                        None,
-                        deadline,
-                        retries + 1 if state is IntentState.RETRYABLE else retries,
-                    ),
-                )
-                return IntentReservation(
-                    intent=intent, state=IntentState.DISPATCHED, owned=True
-                )
-            if state is IntentState.RETRYABLE and retries >= max_retries:
+            if stateless or lease_expired:
+                if retries < max_retries:
+                    transaction.set(
+                        doc,
+                        _record(
+                            intent,
+                            IntentState.DISPATCHED,
+                            None,
+                            deadline,
+                            retries + 1,
+                        ),
+                    )
+                    return IntentReservation(
+                        intent=intent, state=IntentState.DISPATCHED, owned=True
+                    )
                 transaction.set(
                     doc, _record(intent, IntentState.FAILED, None, 0.0, retries)
                 )
@@ -112,8 +114,8 @@ class FirestoreActionIntentStore:
                 intent,
                 state,
                 delivery,
-                float(record.get("lease_expires_at", 0.0)),
-                int(record.get("retries", 0)),
+                record.get("lease_expires_at"),
+                int(record.get("retries") or 0),
             )
         )
 
