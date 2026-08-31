@@ -323,7 +323,7 @@ class EventInvestigationRuntime:
         start: float,
     ) -> EventInvocationResult:
         """Run the deterministic graph across a bounded number of logical attempts."""
-        max_attempts = max(1, self._budget.max_loop_iterations)
+        max_attempts = self._budget.max_loop_iterations
         for attempt_number in range(1, max_attempts + 1):
             graph_attempt = GraphAttemptId(attempt_number)
             telemetry = _RunTelemetry()
@@ -334,19 +334,34 @@ class EventInvestigationRuntime:
                 command, execution_id, session_id, invocation_id, graph_attempt
             )
             self._last_attempt[execution_id.value] = (session_id, invocation_id, dict(envelope))
-            terminal = await self._run_graph(
-                envelope, telemetry, session_id, invocation_id, graph_attempt
-            )
-            duration_ms = _duration_ms(start)
-            result = self._interpret(
-                terminal,
-                execution_id=execution_id,
-                session_id=session_id,
-                invocation_id=invocation_id,
-                envelope=envelope,
-                telemetry=telemetry,
-                duration_ms=duration_ms,
-            )
+            try:
+                terminal = await self._run_graph(
+                    envelope, telemetry, session_id, invocation_id, graph_attempt
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                # A transient graph-runtime exception is routed through the same
+                # bounded retry decision as a returned retryable result, so a
+                # configured multi-attempt budget is actually used.
+                duration_ms = _duration_ms(start)
+                result = self._failure_result(
+                    execution_id,
+                    InvestigationExecutionErrorCode.ADK_RUNTIME_EXCEPTION,
+                    telemetry=telemetry,
+                    duration_ms=duration_ms,
+                )
+            else:
+                duration_ms = _duration_ms(start)
+                result = self._interpret(
+                    terminal,
+                    execution_id=execution_id,
+                    session_id=session_id,
+                    invocation_id=invocation_id,
+                    envelope=envelope,
+                    telemetry=telemetry,
+                    duration_ms=duration_ms,
+                )
             if result.outcome.is_success or not self._is_retryable(result):
                 return result
             # Retryable failure.
@@ -358,8 +373,9 @@ class EventInvestigationRuntime:
                     return result
                 # Terminal retry exhaustion: surface the typed failure while
                 # preserving the last attempt's joined snapshot + telemetry so
-                # downstream sees a truthful non-ready context.
-                exhausted = EventInvocationResult(
+                # downstream sees a truthful non-ready context. The outer
+                # execute_async finally performs final run-state cleanup.
+                return EventInvocationResult(
                     outcome=InvestigationExecutionOutcome.FAILED,
                     execution_id=execution_id,
                     metadata=result.metadata,
@@ -368,8 +384,6 @@ class EventInvestigationRuntime:
                     joined_investigation=result.joined_investigation,
                     branch_records=result.branch_records,
                 )
-                self._cleanup(execution_id.value)
-                return exhausted
         # Unreachable (range is non-empty); defensive.
         return self._failure_result(
             execution_id,
@@ -1010,7 +1024,6 @@ class EventInvestigationRuntime:
             joined_investigation=joined,
             branch_records=self._build_branch_records(telemetry),
         )
-        self._cleanup(execution_id.value)
         return result
 
     def _rejected_result(

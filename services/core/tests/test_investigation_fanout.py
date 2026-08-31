@@ -205,6 +205,20 @@ def _runtime(
     )
 
 
+class _RetryGraphRuntime(EventInvestigationRuntime):
+    """Probe: inject a transient graph-runtime exception on the first attempt."""
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        super().__init__(*args, **kwargs)  # type: ignore[arg-type]
+        self.graph_calls = 0
+
+    async def _run_graph(self, *args: object, **kwargs: object) -> dict[str, object] | None:
+        self.graph_calls += 1
+        if self.graph_calls == 1:
+            raise RuntimeError("transient graph failure")
+        return await super()._run_graph(*args, **kwargs)  # type: ignore[arg-type]
+
+
 class TestSuccessfulFanout:
     def test_all_three_required_branches_run(self) -> None:
         calls: dict[str, int] = {}
@@ -1198,3 +1212,65 @@ class TestMissingDataAndIncompleteResults:
         assert result.joined_investigation.ready_for_downstream is False
         assert result.metadata is not None
         assert result.metadata.model_calls == 0
+
+
+class TestRetryGraphAndAttemptBudget:
+    """Review: graph-runtime exceptions are retried; run budget is never reset."""
+
+    def test_graph_exception_is_retried_and_budget_preserved(self) -> None:
+        repo = _Repo()
+        get_c, pf, bs, ms = _capabilities(repo)
+        rt = _RetryGraphRuntime(
+            get_context=get_c,
+            compare_profiles=pf,
+            get_baseline_summary=bs,
+            assess_missingness=ms,
+            budget=_budget(max_runtime_seconds=10, max_tool_calls=8, max_loop_iterations=2),
+            app_name=DEFAULT_APP_NAME,
+        )
+        result = rt.execute(_command())
+        assert rt.graph_calls == 2  # the transient graph exception was retried
+        assert result.outcome is InvestigationExecutionOutcome.READY_FOR_DOWNSTREAM
+        assert result.joined_investigation is not None
+        assert result.joined_investigation.ready_for_downstream is True
+        assert result.metadata is not None
+        # Attempt 1 raised before any handler, so only attempt 2 consumed slots;
+        # the run budget survived the retryable ADK_RUNTIME_EXCEPTION attempt.
+        assert result.metadata.tool_calls == 4
+        assert result.metadata.model_calls == 0
+
+    def test_retryable_result_preserves_run_budget(self) -> None:
+        repo = _Repo()
+        cap = _capabilities(repo)
+        good = cap[1]
+        calls = 0
+        lock = threading.Lock()
+
+        def handler(query: CompareProfilesQuery) -> ProfileComparisonResult:
+            nonlocal calls
+            with lock:
+                calls += 1
+            if calls == 1:
+                raise RuntimeError("transient branch failure")
+            return good.execute(query)
+
+        rt = _runtime(
+            repo=repo,
+            compare_profiles=handler,
+            budget=_budget(max_runtime_seconds=10, max_tool_calls=8, max_loop_iterations=2),
+        )
+        result = rt.execute(_command())
+        assert result.outcome is InvestigationExecutionOutcome.READY_FOR_DOWNSTREAM
+        assert result.metadata is not None
+        assert result.metadata.tool_calls == 8
+        assert result.metadata.model_calls == 0
+
+    def test_zero_graph_attempt_budget_is_rejected(self) -> None:
+        with pytest.raises(ValueError):
+            InvestigationRuntimeBudget(
+                max_runtime_seconds=30.0,
+                max_model_calls=0,
+                max_tool_calls=4,
+                max_loop_iterations=0,
+                max_repair_attempts=0,
+            )

@@ -194,12 +194,21 @@ class InvestigationRuntimeBudget:
                 f"Invalid max runtime seconds {self.max_runtime_seconds!r}; "
                 "expected a finite positive number"
             )
-        for name in ("max_model_calls", "max_tool_calls", "max_loop_iterations"):
+        for name in ("max_model_calls", "max_tool_calls"):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
                 raise ValueError(
                     f"Invalid {name} {value!r}; expected a non-negative integer"
                 )
+        if (
+            isinstance(self.max_loop_iterations, bool)
+            or not isinstance(self.max_loop_iterations, int)
+            or self.max_loop_iterations < 1
+        ):
+            raise ValueError(
+                f"Invalid max_loop_iterations {self.max_loop_iterations!r}; "
+                "expected a positive integer (>=1 logical graph attempt)"
+            )
         if (
             isinstance(self.max_repair_attempts, bool)
             or not isinstance(self.max_repair_attempts, int)
