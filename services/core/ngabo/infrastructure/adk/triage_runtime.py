@@ -127,6 +127,16 @@ class TriageBudget:
             or self.max_runtime_seconds <= 0
         ):
             raise ValueError("max_runtime_seconds must be a finite positive number")
+        if (
+            isinstance(self.max_query_terms, bool)
+            or not isinstance(self.max_query_terms, int)
+            or self.max_query_terms < 1
+        ):
+            raise ValueError("max_query_terms must be a positive integer (>=1)")
+        if self.max_query_terms > MAX_QUERY_TERMS:
+            raise ValueError(
+                f"max_query_terms cannot exceed the absolute safety maximum {MAX_QUERY_TERMS}"
+            )
 
 
 def _recover_model_text(events: list[Event]) -> str | None:
@@ -247,6 +257,21 @@ class BoundedTriageRuntime:
                 execution_id=execution_id,
             )
 
+        if len(proposal.query_terms) > self._budget.max_query_terms:
+            # A proposal exceeding the configured query-term budget is a typed
+            # deterministic rejection; no evidence retrieval runs and no terms
+            # are silently truncated.
+            return TriageResult(
+                outcome=TriageOutcome.BLOCKED,
+                proposal=proposal,
+                evidence_result=None,
+                model_calls=model_calls,
+                duration_ms=_duration_ms(start),
+                model_version=model_version,
+                error_code=TriageErrorCode.QUERY_TERM_LIMIT_EXCEEDED,
+                execution_id=execution_id,
+            )
+
         if not approved_sources_for(proposal.evidence_intent):
             # The intent is allow-listed but has no approved source; retrieval
             # cannot invent one, so the result is an explicit no-evidence state.
@@ -286,13 +311,15 @@ class BoundedTriageRuntime:
         profile_finding = None
         if profile is not None and getattr(profile, "finding", None) is not None:
             profile_finding = getattr(profile.finding, "output_value", None)
-        organism_code = getattr(baseline, "organism_code", None) if baseline is not None else None
         return {
             "incident_id": safe.get("incident_id"),
             "incident_version": safe.get("incident_version"),
-            "organism_code": organism_code,
+            "organism_code": (
+                getattr(baseline, "organism_code", None) if baseline is not None else None
+            ),
             "profile_finding": profile_finding,
             "baseline_outcome": safe.get("baseline_outcome"),
+            "baseline_evaluation": _summarize_baseline(baseline),
             "missingness_outcome": safe.get("missingness_outcome"),
             "has_material_missingness": safe.get("has_material_missingness"),
             "ready_for_downstream": safe.get("ready_for_downstream"),
@@ -331,16 +358,27 @@ class BoundedTriageRuntime:
                 collected.append(event)
             return collected
 
+        before_model_calls = int(getattr(self._model, "call_count", 0))
         try:
             events = await asyncio.wait_for(
                 _stream(), timeout=self._budget.max_runtime_seconds
             )
         except TimeoutError:
-            return 1, None, None, TriageErrorCode.MODEL_TIMEOUT
+            return (
+                self._invocation_model_calls(before_model_calls),
+                None,
+                None,
+                TriageErrorCode.MODEL_TIMEOUT,
+            )
         except Exception as exc:  # noqa: BLE001
-            return 1, None, None, _classify_model_exception(exc)
+            return (
+                self._invocation_model_calls(before_model_calls),
+                None,
+                None,
+                _classify_model_exception(exc),
+            )
 
-        model_calls = int(getattr(self._model, "call_count", 1))
+        model_calls = self._invocation_model_calls(before_model_calls)
         if model_calls > self._budget.max_model_calls:
             return model_calls, None, None, TriageErrorCode.MODEL_BUDGET_EXCEEDED
         raw_text = _recover_model_text(events)
@@ -361,6 +399,11 @@ class BoundedTriageRuntime:
             return model_calls, None, None, TriageErrorCode.SCHEMA_VIOLATION
         output = schema
         return model_calls, output, _model_version(events), None
+
+    def _invocation_model_calls(self, before: int) -> int:
+        """Return the number of model calls made by the CURRENT invocation only."""
+        after = int(getattr(self._model, "call_count", before + 1))
+        return max(0, after - before)
 
     def _validate_proposal(
         self, raw_output: object, execution_id: str
@@ -453,6 +496,42 @@ def _contains_url(schema: object) -> bool:
         if value is not None and _URL_RE.search(value):
             return True
     return any(_URL_RE.search(term) for term in schema.query_terms)
+
+
+def _summarize_baseline(baseline: object) -> dict[str, object]:
+    """Return a bounded, deterministic subset of the baseline signal evaluation.
+
+    Only already-computed deterministic values are exposed; Gemini never
+    recomputes science and never receives isolate dumps, private chain-of-
+    thought, or mutable canonical authority. Values are read-only copies.
+    """
+    evaluation = getattr(baseline, "signal_evaluation", None)
+    if evaluation is None:
+        return {"outcome": getattr(baseline, "outcome", None)}
+    summary: dict[str, object] = {
+        "status": getattr(evaluation, "status", None),
+        "reason": getattr(evaluation, "reason", None),
+        "signal_score": getattr(evaluation, "signal_score", None),
+        "ward_organism_count": getattr(evaluation, "ward_organism_count", None),
+        "organism_code": getattr(evaluation, "organism_code", None),
+        "facility_id": getattr(evaluation, "facility_id", None),
+        "ward": getattr(evaluation, "ward", None),
+    }
+    window_start = getattr(evaluation, "window_start", None)
+    window_end = getattr(evaluation, "window_end", None)
+    if window_start is not None:
+        summary["window_start"] = str(window_start)
+    if window_end is not None:
+        summary["window_end"] = str(window_end)
+    components = getattr(evaluation, "components", None)
+    if components is not None:
+        summary["components"] = {
+            "c_phenotype": getattr(components, "c_phenotype", None),
+            "c_location": getattr(components, "c_location", None),
+            "c_temporal": getattr(components, "c_temporal", None),
+            "c_baseline": getattr(components, "c_baseline", None),
+        }
+    return summary
 
 
 def _model_version(events: list[Event]) -> str | None:
