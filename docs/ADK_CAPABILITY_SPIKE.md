@@ -380,3 +380,98 @@ Primary API verification was performed first-hand against the installed
 edge parsing, `FunctionNode` parameter binding, `Runner.run_async`) and by
 running an executable `Workflow` probe with a `JoinNode` and an `Agent` with a
 controllable `BaseLlm` fake.
+
+---
+
+## 11. Production event-invoked outer adapter (Issue #53 — 2026-08-31)
+
+Issue #49 proved the capability spike. Issue #53 ships the
+**production outer ADK execution boundary** that later orchestration (#54+)
+plugs into. It does NOT implement the #54 fan-out/join or any synthesis.
+
+### Production adapter entry point
+
+`services/core/ngabo/infrastructure/adk/investigation_runtime.py`:
+
+- `EventInvestigationRuntime` — DI composition root. A backend/event-shaped
+  `EventInvestigationCommand` is accepted and run through the real pinned ADK
+  `Runner`/`Workflow`/`FunctionNode` path with NO interactive chat, `adk web`,
+  or user prompt.
+- framework-free inbound command/result/telemetry contracts live in
+  `services/core/ngabo/application/value_objects/investigation_execution.py`
+  and the two enums under `application/enums/`.
+
+### Pinned ADK path reused
+
+- actual installed runtime: `google-adk==2.8.0`, `google-genai==2.20.0`,
+  Python 3.11 (verified via `importlib.metadata`, asserted in tests).
+- all-deterministic single-node `Workflow(edges=[("START", FunctionNode)])`.
+  **No `Agent`, no model call** — the #53 deterministic path uses
+  `model_calls == 0`.
+- the thin `FunctionNode` is `async def`; the injected sync inward capability
+  is awaited via `asyncio.to_thread` so a slow deterministic fetch never blocks
+  the event loop and the outer `asyncio.wait_for` deadline can preempt it
+  (fail closed).
+
+### Session strategy
+
+`InMemorySessionService` + `auto_create_session=True` per invocation is an
+**execution-runtime adapter choice** for this boundary. It is explicitly NOT
+canonical incident state. ADK session state ≠ Ngabo canonical incident state; a
+future durable-repository issue owns persistence. No Firestore/PubSub/Cloud
+Storage adapter was introduced.
+
+### Invocation identifiers
+
+One `InvestigationExecutionId` (`RUN-<32 hex>`), `session_id`
+(`ngabo-session-<hex>`), and `invocation_id` (`ngabo-invocation-<hex>`) are
+generated once at the adapter boundary and propagated into the machine envelope
+and ADK. ADK `user_id` is only an ADK runtime namespace
+(`ngabo-service`); it is never patient/clinician identity or an authorization
+principal.
+
+### Budget enforcement owners
+
+- `max_runtime_seconds`: enforced by `asyncio.wait_for` around `Runner` (fail
+  closed on `EXECUTION_TIMEOUT`).
+- `max_tool_calls`: enforced inside the thin wrapper before invoking the inward
+  capability (fail closed on `EXECUTION_BUDGET_EXCEEDED`).
+- `max_model_calls`: no model call on the deterministic path; observed 0.
+- `max_loop_iterations` / `max_repair_attempts`: no loop/repair stage exists in
+  this boundary; recorded as configuration only (not claimed as enforced).
+
+### Zero-chat backend invocation proof
+
+`tests/test_investigation_runtime.py` runs the real ADK 2.8 runtime with an
+in-memory deterministic inward capability and asserts:
+
+- event-shaped command -> adapter -> ADK `Runner` -> thin wrapper -> typed
+  `InvestigationContextResult` -> structured `EventInvocationResult`;
+- `run_id`/`session_id`/`invocation_id` are emitted and internally consistent
+  (the wrapper reads the real ADK `ctx.session.id` /
+  `ctx.get_invocation_context().invocation_id` and the runtime cross-checks);
+- missing incident / stale version / inward failure / wrapper exception /
+  timeout / budget-exceeded all produce stable non-success outcomes;
+- `model_calls == 0` on the deterministic path;
+- replay is safe (no side effects, no action authority);
+- the outcome vocabulary contains NO `PACKAGE_COMPLETED` / `VERIFIED` /
+  `ACTION_READY` state, so a failure can never be mislabeled as package success.
+
+Machine-readable success + failure trace fixtures are committed under
+`services/core/tests/fixtures/`.
+
+### Explicit #53 / #54 boundary
+
+#53 owns the OUTER event/ADK seam only. It does NOT implement the #54
+production three-branch fan-out/join semantics, concurrent-branch retry/timeout,
+required-branch-blocking-synthesis, evidence retrieval wiring, package
+synthesis, claim verification, repair loop, or any external action.
+
+### Residual limitations
+
+- `InMemorySessionService` is not durable/restart-safe (canonical state must
+  stay application-owned; deferred persistence).
+- `max_loop_iterations` / `max_repair_attempts` are configured but not enforced
+  in this boundary.
+- The run generates fresh opaque identifiers per invocation (freshness policy is
+  explicitly out of #53); replay/idempotency identity is a #54/later concern.
