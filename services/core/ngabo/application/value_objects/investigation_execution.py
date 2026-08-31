@@ -34,6 +34,10 @@ from ngabo.application.enums.investigation_execution_error_code import (
 from ngabo.application.enums.investigation_execution_outcome import (
     InvestigationExecutionOutcome,
 )
+from ngabo.application.value_objects.deterministic_investigation import (
+    BranchRunRecord,
+    JoinedInvestigationContext,
+)
 from ngabo.application.value_objects.investigation_context import (
     InvestigationContextResult,
 )
@@ -190,12 +194,21 @@ class InvestigationRuntimeBudget:
                 f"Invalid max runtime seconds {self.max_runtime_seconds!r}; "
                 "expected a finite positive number"
             )
-        for name in ("max_model_calls", "max_tool_calls", "max_loop_iterations"):
+        for name in ("max_model_calls", "max_tool_calls"):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
                 raise ValueError(
                     f"Invalid {name} {value!r}; expected a non-negative integer"
                 )
+        if (
+            isinstance(self.max_loop_iterations, bool)
+            or not isinstance(self.max_loop_iterations, int)
+            or self.max_loop_iterations < 1
+        ):
+            raise ValueError(
+                f"Invalid max_loop_iterations {self.max_loop_iterations!r}; "
+                "expected a positive integer (>=1 logical graph attempt)"
+            )
         if (
             isinstance(self.max_repair_attempts, bool)
             or not isinstance(self.max_repair_attempts, int)
@@ -308,6 +321,8 @@ class EventInvocationResult:
     metadata: ADKExecutionMetadata | None
     capability_result: InvestigationContextResult | None
     failure_code: InvestigationExecutionErrorCode | None
+    joined_investigation: JoinedInvestigationContext | None = None
+    branch_records: tuple[BranchRunRecord, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.outcome, InvestigationExecutionOutcome):
@@ -324,6 +339,17 @@ class EventInvocationResult:
             self.failure_code, InvestigationExecutionErrorCode
         ):
             raise ValueError("failure_code must be an InvestigationExecutionErrorCode or None")
+        if self.joined_investigation is not None and not isinstance(
+            self.joined_investigation, JoinedInvestigationContext
+        ):
+            raise ValueError(
+                "joined_investigation must be a JoinedInvestigationContext or None"
+            )
+        if not isinstance(self.branch_records, tuple):
+            raise ValueError("branch_records must be a tuple")
+        for record in self.branch_records:
+            if not isinstance(record, BranchRunRecord):
+                raise ValueError("branch_records must contain only BranchRunRecord entries")
         if self.outcome.is_success and self.failure_code is not None:
             raise ValueError(
                 "a successful outcome cannot carry a failure_code; "
@@ -344,11 +370,19 @@ class EventInvocationResult:
         outcome/error code.
         """
         metadata = self.metadata.to_primitive() if self.metadata is not None else None
+        joined = (
+            self.joined_investigation.to_safe_summary()
+            if self.joined_investigation is not None
+            else None
+        )
+        branch_records = [record.to_primitive() for record in self.branch_records]
         return {
             "outcome": self.outcome.value,
             "is_success": self.outcome.is_success,
             "execution_id": self.execution_id.value,
             "metadata": metadata,
+            "joined_investigation": joined,
+            "branch_records": branch_records,
             "capability_outcome": (
                 self.capability_result.outcome.value if self.capability_result is not None else None
             ),

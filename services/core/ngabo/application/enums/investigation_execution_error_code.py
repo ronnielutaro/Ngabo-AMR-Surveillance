@@ -27,6 +27,34 @@ class InvestigationExecutionErrorCode(StrEnum):
     SOURCE_WATERMARK_MISMATCH = "SOURCE_WATERMARK_MISMATCH"
     """The event's source watermark does not match the canonical source watermark."""
 
+    REQUIRED_INPUT_UNAVAILABLE = "REQUIRED_INPUT_UNAVAILABLE"
+    """The deterministic fan-out input could not be derived unambiguously
+    (e.g. an incident that does not contain exactly the required comparison
+    pair, or a non-homogeneous cohort)."""
+
+    REQUIRED_BRANCH_FAILED = "REQUIRED_BRANCH_FAILED"
+    """A required deterministic branch did not complete with SUCCESS."""
+
+    BRANCH_BINDING_MISMATCH = "BRANCH_BINDING_MISMATCH"
+    """A branch reported SUCCESS but returned a different incident id, incident
+    version, or source watermark than the canonical fan-out input."""
+
+    INCOMPLETE_BRANCH_RESULT = "INCOMPLETE_BRANCH_RESULT"
+    """A successful branch DTO is missing a required deterministic scientific
+    output (e.g. a profile result without a finding/finding_reference, or a
+    baseline result without a signal_evaluation)."""
+
+    NEEDS_INFORMATION = "NEEDS_INFORMATION"
+    """The investigation has a material data absence that must block downstream
+    reasoning (missing-data abstention; no action and zero model calls)."""
+
+    GRAPH_RETRY_EXHAUSTED = "GRAPH_RETRY_EXHAUSTED"
+    """A retryable graph attempt failed repeatedly and the hard attempt budget
+    was exhausted."""
+
+    GRAPH_CANCELLED = "GRAPH_CANCELLED"
+    """The deterministic graph invocation was cancelled before completion."""
+
     MISSING_INPUT = "MISSING_INPUT"
     """The inward capability reported a required input was unavailable."""
 

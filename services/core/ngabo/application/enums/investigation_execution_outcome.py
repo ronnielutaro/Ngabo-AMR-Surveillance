@@ -32,6 +32,15 @@ class InvestigationExecutionOutcome(StrEnum):
     configured bounded adapter workflow. This is a narrow, truthful success
     semantic: no incident package was synthesized and no action was taken."""
 
+    READY_FOR_DOWNSTREAM = "READY_FOR_DOWNSTREAM"
+    """The deterministic investigation graph completed: the canonical context
+    was successfully fetched and bound, and every required deterministic branch
+    (profile comparison, baseline summary, material missingness) executed and
+    joined into one canonical snapshot. This is a narrow, truthful success
+    semantic for the fan-out/join stage only: it is ready for #55 bounded
+    Gemini triage/synthesis, but no package was synthesized and no action was
+    taken."""
+
     FAILED = "FAILED"
     """The run did not complete successfully. Reserved for runtime/execution
     machinery failures (malformed command, timeout, budget exceeded, wrapper
@@ -44,5 +53,8 @@ class InvestigationExecutionOutcome(StrEnum):
 
     @property
     def is_success(self) -> bool:
-        """True only for the narrow ``COMPLETED_CURRENT_STAGE`` success value."""
-        return self is InvestigationExecutionOutcome.COMPLETED_CURRENT_STAGE
+        """True only for the narrow success values."""
+        return self in (
+            InvestigationExecutionOutcome.COMPLETED_CURRENT_STAGE,
+            InvestigationExecutionOutcome.READY_FOR_DOWNSTREAM,
+        )

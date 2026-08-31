@@ -29,6 +29,15 @@ from ngabo.application.enums.investigation_execution_error_code import (
 from ngabo.application.enums.investigation_execution_outcome import (
     InvestigationExecutionOutcome,
 )
+from ngabo.application.use_cases.assess_material_missingness import (
+    AssessMaterialMissingness,
+)
+from ngabo.application.use_cases.compare_resistance_profiles import (
+    CompareResistanceProfiles,
+)
+from ngabo.application.use_cases.get_baseline_summary import (
+    GetBaselineSummary,
+)
 from ngabo.application.use_cases.get_investigation_context import (
     GetInvestigationContext,
 )
@@ -100,7 +109,9 @@ def _make_context(incident_id: IncidentId, *, version: IncidentVersion) -> Store
         incident_id=incident_id,
         incident_version=version,
         source_watermark=WATERMARK,
-        isolates=tuple(_make_isolate(i) for i in ("ISO-001", "ISO-002", "ISO-003", "ISO-004")),
+        # The #53/#54 fixture incident contains exactly the intended comparison
+        # pair so the deterministic fan-out input is unambiguous.
+        isolates=tuple(_make_isolate(i) for i in ("ISO-001", "ISO-002")),
         signal_config=SignalConfig(),
         window_end=WINDOW_END,
     )
@@ -150,11 +161,18 @@ def _budget(**overrides: object) -> InvestigationRuntimeBudget:
 def _runtime(
     *,
     get_context: object | None = None,
+    compare_profiles: object | None = None,
+    get_baseline_summary: object | None = None,
+    assess_missingness: object | None = None,
     budget: InvestigationRuntimeBudget | None = None,
 ) -> EventInvestigationRuntime:
     handler = get_context if get_context is not None else GetInvestigationContext(_repo())
+    repo = _repo()
     return EventInvestigationRuntime(
         get_context=handler,  # type: ignore[arg-type]
+        compare_profiles=compare_profiles or CompareResistanceProfiles(repo),  # type: ignore[arg-type]
+        get_baseline_summary=get_baseline_summary or GetBaselineSummary(repo),  # type: ignore[arg-type]
+        assess_missingness=assess_missingness or AssessMaterialMissingness(repo),  # type: ignore[arg-type]
         budget=budget or _budget(),
         app_name=DEFAULT_APP_NAME,
     )
@@ -201,7 +219,7 @@ class TestBackendInvocation:
     def test_event_command_invokes_real_adk_runtime_with_no_chat(self) -> None:
         runtime = _runtime()
         result = runtime.execute(_command(incident_id=INCIDENT_1, version=VERSION_1))
-        assert result.outcome is InvestigationExecutionOutcome.COMPLETED_CURRENT_STAGE
+        assert result.outcome is InvestigationExecutionOutcome.READY_FOR_DOWNSTREAM
         assert result.failure_code is None
         assert result.is_success() is True
         assert result.metadata is not None
@@ -221,7 +239,7 @@ class TestBackendInvocation:
         result = _runtime(get_context=spy).execute(
             _command(incident_id=INCIDENT_1, version=VERSION_1)
         )
-        assert result.outcome is InvestigationExecutionOutcome.COMPLETED_CURRENT_STAGE
+        assert result.outcome is InvestigationExecutionOutcome.READY_FOR_DOWNSTREAM
         assert len(calls) == 1
         assert calls[0].incident_id == INCIDENT_1
         assert calls[0].requested_version == VERSION_1
@@ -250,8 +268,8 @@ class TestBackendInvocation:
         result = _runtime().execute(_command(incident_id=INCIDENT_1, version=VERSION_1))
         assert result.metadata is not None
         assert result.metadata.model_calls == 0
-        assert result.metadata.wrapper_calls == 1
-        assert result.metadata.tool_calls == 1
+        assert result.metadata.wrapper_calls == 5
+        assert result.metadata.tool_calls == 4
 
     def test_primitive_event_payload_invokes_adapter(self) -> None:
         runtime = _runtime()
@@ -264,7 +282,7 @@ class TestBackendInvocation:
             "correlation_id": "corr-synth-0001",
         }
         result = runtime.execute_primitive(payload)
-        assert result.outcome is InvestigationExecutionOutcome.COMPLETED_CURRENT_STAGE
+        assert result.outcome is InvestigationExecutionOutcome.READY_FOR_DOWNSTREAM
         assert result.metadata is not None
         assert result.metadata.incident_id == INCIDENT_1
 
@@ -386,7 +404,7 @@ class TestAuthorityBoundary:
         assert result.outcome.is_success
         with pytest.raises(ValueError):
             EventInvocationResult(
-                outcome=InvestigationExecutionOutcome.COMPLETED_CURRENT_STAGE,
+                outcome=InvestigationExecutionOutcome.READY_FOR_DOWNSTREAM,
                 execution_id=result.execution_id,
                 metadata=result.metadata,
                 capability_result=result.capability_result,
@@ -398,8 +416,8 @@ class TestAuthorityBoundary:
         command = _command(incident_id=INCIDENT_1, version=VERSION_1)
         first = runtime.execute(command)
         second = runtime.execute(command)
-        assert first.outcome is InvestigationExecutionOutcome.COMPLETED_CURRENT_STAGE
-        assert second.outcome is InvestigationExecutionOutcome.COMPLETED_CURRENT_STAGE
+        assert first.outcome is InvestigationExecutionOutcome.READY_FOR_DOWNSTREAM
+        assert second.outcome is InvestigationExecutionOutcome.READY_FOR_DOWNSTREAM
         # No authority/send state is ever produced; distinct runs get distinct IDs.
         assert first.execution_id != second.execution_id
         assert first.is_success() and second.is_success()
@@ -418,7 +436,7 @@ class TestMetadataAndImmutability:
         result = runtime.execute(_command(incident_id=INCIDENT_1, version=VERSION_1))
         safe = cast(dict[str, Any], result.to_safe_primitive())
         assert safe["is_success"] is True
-        assert safe["outcome"] == "COMPLETED_CURRENT_STAGE"
+        assert safe["outcome"] == "READY_FOR_DOWNSTREAM"
         assert safe["execution_id"].startswith("RUN-")
         # No isolate records / patient tokens / free-form authority leak.
         serialized = str(safe)
@@ -447,12 +465,12 @@ class TestBackendInvocationTrace:
         assert metadata["execution_id"].startswith("RUN-")
         assert metadata["session_id"].startswith("ngabo-session-")
         assert metadata["invocation_id"].startswith("ngabo-invocation-")
-        assert metadata["wrapper_calls"] == 1
+        assert metadata["wrapper_calls"] == 5
         assert metadata["model_calls"] == 0
-        assert metadata["tool_calls"] == 1
+        assert metadata["tool_calls"] == 4
         assert metadata["duration_ms"] >= 0
         assert "max_runtime_seconds" in metadata["budget"]
-        assert trace["outcome"] == "COMPLETED_CURRENT_STAGE"
+        assert trace["outcome"] == "READY_FOR_DOWNSTREAM"
         assert trace["is_success"] is True
         assert trace["failure_code"] is None
 
@@ -473,7 +491,7 @@ class TestBackendInvocationTrace:
         fixtures = Path(__file__).resolve().parent / "fixtures"
         success = json.loads((fixtures / "event_investigation_trace_success.json").read_text())
         failure = json.loads((fixtures / "event_investigation_trace_failure.json").read_text())
-        assert success["outcome"] == "COMPLETED_CURRENT_STAGE"
+        assert success["outcome"] == "READY_FOR_DOWNSTREAM"
         assert success["is_success"] is True
         assert success["failure_code"] is None
         assert success["capability_outcome"] == "SUCCESS"
@@ -511,7 +529,7 @@ class TestSourceWatermarkBinding:
     def test_matching_event_and_canonical_watermark_completes(self) -> None:
         runtime = _runtime()
         result = runtime.execute(_command(incident_id=INCIDENT_1, version=VERSION_1))
-        assert result.outcome is InvestigationExecutionOutcome.COMPLETED_CURRENT_STAGE
+        assert result.outcome is InvestigationExecutionOutcome.READY_FOR_DOWNSTREAM
         assert result.is_success() is True
         assert result.failure_code is None
 
@@ -549,7 +567,7 @@ class TestSourceWatermarkBinding:
         )
         assert result.is_success() is False
 
-    def test_watermark_mismatch_never_completed_current_stage(self) -> None:
+    def test_watermark_mismatch_never_ready_for_downstream(self) -> None:
         forged = SourceWatermark("ngabo-source-v9:sha256:forged9")
         result = _runtime().execute(
             EventInvestigationCommand(
@@ -560,12 +578,12 @@ class TestSourceWatermarkBinding:
                 correlation_id="corr-synth-0001",
             )
         )
-        assert result.outcome != InvestigationExecutionOutcome.COMPLETED_CURRENT_STAGE
+        assert result.outcome != InvestigationExecutionOutcome.READY_FOR_DOWNSTREAM
 
     def test_success_metadata_watermark_equals_canonical_capability_watermark(self) -> None:
         runtime = _runtime()
         result = runtime.execute(_command(incident_id=INCIDENT_1, version=VERSION_1))
-        assert result.outcome is InvestigationExecutionOutcome.COMPLETED_CURRENT_STAGE
+        assert result.outcome is InvestigationExecutionOutcome.READY_FOR_DOWNSTREAM
         assert result.metadata is not None
         assert result.capability_result is not None
         assert result.metadata.source_watermark == result.capability_result.source_watermark
@@ -605,7 +623,7 @@ class TestSyncDeadline:
             incident_id=INCIDENT_1,
             incident_version=VERSION_1,
             source_watermark=WATERMARK,
-            isolates=(),
+            isolates=tuple(_make_isolate(i) for i in ("ISO-001", "ISO-002")),
             signal_config=None,
             window_end=None,
             requested_version=query.requested_version,
@@ -692,7 +710,7 @@ class TestSyncDeadline:
         # deadline MUST wake the loop instead of waiting for the timeout timer.
         # This proves the daemon-thread completion is delivered thread-safely and
         # does not become a false EXECUTION_TIMEOUT.
-        assert result.outcome is InvestigationExecutionOutcome.COMPLETED_CURRENT_STAGE
+        assert result.outcome is InvestigationExecutionOutcome.READY_FOR_DOWNSTREAM
         assert result.failure_code is None
         assert result.is_success() is True
         assert elapsed < 1.5, f"delayed success waited {elapsed:.2f}s; false timeout?"
@@ -702,8 +720,8 @@ class TestSyncDeadline:
         assert result.capability_result.outcome is CapabilityOutcome.SUCCESS
         assert metadata.source_watermark == result.capability_result.source_watermark
         assert metadata.source_watermark == WATERMARK
-        assert metadata.wrapper_calls == 1
-        assert metadata.tool_calls == 1
+        assert metadata.wrapper_calls == 5
+        assert metadata.tool_calls == 4
         assert metadata.model_calls == 0
         assert metadata.duration_ms < 2000
 
@@ -728,7 +746,7 @@ class TestSyncDeadline:
         # asyncio debug mode surfaces non-thread-safe Future/loop scheduling
         # mistakes. The delayed success must still complete (no false timeout).
         result = asyncio.run(main(), debug=True)
-        assert result.outcome is InvestigationExecutionOutcome.COMPLETED_CURRENT_STAGE
+        assert result.outcome is InvestigationExecutionOutcome.READY_FOR_DOWNSTREAM
         assert result.failure_code is None
         assert result.is_success() is True
 
