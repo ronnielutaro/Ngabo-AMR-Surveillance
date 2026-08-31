@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from collections.abc import AsyncGenerator
 from datetime import date
 from pathlib import Path
@@ -40,6 +41,7 @@ from ngabo.application.value_objects.deterministic_investigation import (
     JoinedInvestigationContext,
 )
 from ngabo.application.value_objects.evidence_search import (
+    EvidenceSearchHit,
     EvidenceSearchResult,
 )
 from ngabo.application.value_objects.investigation_context import StoredIncidentContext
@@ -57,11 +59,13 @@ from ngabo.application.value_objects.profile_comparison import (
     CompareProfilesQuery,
     ProfileComparisonResult,
 )
+from ngabo.application.value_objects.triage_result import TriageResult
 from ngabo.domain.entities.ast_observation import AstObservation
 from ngabo.domain.entities.canonical_isolate import CanonicalIsolate
 from ngabo.domain.enums.interpretation import Interpretation
 from ngabo.domain.enums.signal_status import SignalReason, SignalStatus
 from ngabo.domain.services.signal_detection import SignalEvaluationResult
+from ngabo.domain.value_objects.evidence_reference import EvidenceReferenceId, EvidenceSourceId
 from ngabo.domain.value_objects.incident_id import IncidentId
 from ngabo.domain.value_objects.incident_version import IncidentVersion
 from ngabo.domain.value_objects.investigation_priority_signal import SignalComponents
@@ -644,7 +648,7 @@ class TestModelCallAccounting:
 
 class TestQueryTermsBudget:
     def test_max_query_terms_one_accepts_one_term(self) -> None:
-        one_term = _schema_json(query_terms=["infection"])
+        one_term = _schema_json(query_terms=["infection"], resistance_concept=None)
         runtime = _triage_runtime(
             [one_term],
             budget=TriageBudget(
@@ -692,3 +696,184 @@ class TestQueryTermsBudget:
         assert result.outcome is TriageOutcome.BLOCKED
         assert result.error_code is TriageErrorCode.QUERY_TERM_LIMIT_EXCEEDED
         assert spy.calls == 0
+
+
+def _approved_hit() -> EvidenceSearchHit:
+    return EvidenceSearchHit(
+        reference_id=EvidenceReferenceId("WHO-AMR-001::ipc-principle-01"),
+        source_id=EvidenceSourceId("WHO-AMR-001"),
+        publisher="World Health Organization",
+        source_title="WHO IPC guidance",
+        canonical_url="https://www.who.int/publications/i/item/9789241550178",
+        publication_date="2017-11-01",
+        source_version="1",
+        attribution_required=True,
+        content="Contact precautions and hand hygiene.",
+        chunk_tags=("infection prevention and control", "ipc"),
+        score=4,
+    )
+
+
+class _DelayedLlm(SpikeFakeLlm):
+    def __init__(self, responses: list[str], delay: float) -> None:
+        super().__init__(responses)
+        self._delay = delay
+
+    async def generate_content_async(
+        self, llm_request: LlmRequest, stream: bool = False
+    ) -> AsyncGenerator[LlmResponse, None]:
+        await asyncio.sleep(self._delay)
+        async for response in super().generate_content_async(llm_request, stream):
+            yield response
+
+
+class _SlowEvidenceSearch:
+    def __init__(self, delay: float) -> None:
+        self.delay = delay
+        self.calls = 0
+
+    def search(self, query: object) -> object:
+        self.calls += 1
+        del query
+        import time as _time
+
+        _time.sleep(self.delay)
+        return EvidenceSearchResult(outcome=EvidenceSearchOutcome.SUCCESS, hits=(_approved_hit(),))
+
+
+class _FixedEvidenceSearch:
+    def __init__(self, result: EvidenceSearchResult) -> None:
+        self.result = result
+        self.calls = 0
+
+    def search(self, query: object) -> object:
+        self.calls += 1
+        del query
+        return self.result
+
+
+class TestConcurrentModelCalls:
+    def test_overlapping_invocations_each_report_one_model_call(self) -> None:
+        fake = SpikeFakeLlm(
+            [_schema_json(), _schema_json(intent="SURVEILLANCE_INTERPRETATION")]
+        )
+        runtime = BoundedTriageRuntime(
+            model=fake,
+            evidence_search=_evidence_search(),
+            budget=TriageBudget(max_model_calls=1, max_runtime_seconds=10.0),
+            app_name=DEFAULT_APP_NAME,
+        )
+        # Build READY #54 results BEFORE entering the event loop; the #54
+        # runtime uses asyncio.run internally and cannot run inside a loop.
+        first_ready = _ready_result()
+        second_ready = _ready_result()
+
+        async def run() -> tuple[TriageResult, TriageResult]:
+            a = asyncio.create_task(runtime.triage_async(first_ready))
+            b = asyncio.create_task(runtime.triage_async(second_ready))
+            return await asyncio.gather(a, b)
+
+        first, second = asyncio.run(run())
+        assert first.model_calls == 1
+        assert second.model_calls == 1
+        assert first.outcome is TriageOutcome.EVIDENCE_RETRIEVED
+        assert second.outcome is TriageOutcome.EVIDENCE_RETRIEVED
+        assert first.error_code is None
+        assert second.error_code is None
+
+
+class TestFullStageDeadline:
+    def test_slow_evidence_exceeds_total_runtime(self) -> None:
+        slow = _SlowEvidenceSearch(delay=2.0)
+        runtime = BoundedTriageRuntime(
+            model=SpikeFakeLlm([_schema_json()]),
+            evidence_search=slow,  # type: ignore[arg-type]
+            budget=TriageBudget(max_model_calls=1, max_runtime_seconds=0.3),
+            app_name=DEFAULT_APP_NAME,
+        )
+        result = runtime.triage(_ready_result())
+        assert result.outcome is TriageOutcome.FAILED
+        assert result.error_code is TriageErrorCode.EVIDENCE_RETRIEVAL_TIMEOUT
+        assert result.evidence_result is None
+        assert slow.calls == 1
+
+    def test_total_stage_cannot_exceed_budget(self) -> None:
+        # Model uses ~0.6s of a 1.0s budget; the remaining ~0.4s is given to
+        # evidence, which takes ~0.6s -> typed timeout, and total < ~1.0s + tol.
+        slow = _SlowEvidenceSearch(delay=0.6)
+        runtime = BoundedTriageRuntime(
+            model=_DelayedLlm([_schema_json()], 0.6),
+            evidence_search=slow,  # type: ignore[arg-type]
+            budget=TriageBudget(max_model_calls=1, max_runtime_seconds=1.0),
+            app_name=DEFAULT_APP_NAME,
+        )
+        start = time.monotonic()
+        result = runtime.triage(_ready_result())
+        elapsed = time.monotonic() - start
+        assert result.error_code is TriageErrorCode.EVIDENCE_RETRIEVAL_TIMEOUT
+        assert elapsed < 1.5
+
+
+class TestCompleteQueryFacets:
+    def test_resistance_concept_counts_against_budget(self) -> None:
+        payload = _schema_json(
+            query_terms=["carbapenem"], resistance_concept="CRE"
+        )
+        spy = _SpyEvidenceSearch()
+        runtime = BoundedTriageRuntime(
+            model=SpikeFakeLlm([payload]),
+            evidence_search=spy,  # type: ignore[arg-type]
+            budget=TriageBudget(max_model_calls=1, max_runtime_seconds=10.0, max_query_terms=1),
+            app_name=DEFAULT_APP_NAME,
+        )
+        result = runtime.triage(_ready_result())
+        assert result.outcome is TriageOutcome.BLOCKED
+        assert result.error_code is TriageErrorCode.QUERY_TERM_LIMIT_EXCEEDED
+        assert spy.calls == 0
+
+    def test_identical_facet_is_not_double_counted(self) -> None:
+        payload = _schema_json(
+            query_terms=["CRE"], resistance_concept="cre"
+        )
+        runtime = _triage_runtime(
+            [payload],
+            budget=TriageBudget(max_model_calls=1, max_runtime_seconds=10.0, max_query_terms=1),
+        )
+        result = runtime.triage(_ready_result())
+        # "CRE" and "cre" normalize identically -> a single facet -> accepted.
+        assert result.outcome in (TriageOutcome.EVIDENCE_RETRIEVED, TriageOutcome.NO_EVIDENCE)
+        assert result.error_code is not TriageErrorCode.QUERY_TERM_LIMIT_EXCEEDED
+
+
+class TestEmptyEvidenceSuccess:
+    def test_success_with_hit_is_retrieved(self) -> None:
+        fixed = _FixedEvidenceSearch(
+            EvidenceSearchResult(outcome=EvidenceSearchOutcome.SUCCESS, hits=(_approved_hit(),))
+        )
+        runtime = BoundedTriageRuntime(
+            model=SpikeFakeLlm([_schema_json()]),
+            evidence_search=fixed,  # type: ignore[arg-type]
+            budget=TriageBudget(max_model_calls=1, max_runtime_seconds=10.0),
+            app_name=DEFAULT_APP_NAME,
+        )
+        result = runtime.triage(_ready_result())
+        assert result.outcome is TriageOutcome.EVIDENCE_RETRIEVED
+        assert result.evidence_result is not None
+        assert len(result.evidence_result.hits) == 1
+
+    def test_empty_success_is_not_retrieved(self) -> None:
+        fixed = _FixedEvidenceSearch(
+            EvidenceSearchResult(outcome=EvidenceSearchOutcome.SUCCESS, hits=())
+        )
+        runtime = BoundedTriageRuntime(
+            model=SpikeFakeLlm([_schema_json()]),
+            evidence_search=fixed,  # type: ignore[arg-type]
+            budget=TriageBudget(max_model_calls=1, max_runtime_seconds=10.0),
+            app_name=DEFAULT_APP_NAME,
+        )
+        result = runtime.triage(_ready_result())
+        assert result.outcome is TriageOutcome.NO_EVIDENCE
+        assert result.error_code is TriageErrorCode.NO_APPROVED_EVIDENCE
+        assert result.evidence_result is not None
+        assert len(result.evidence_result.hits) == 0
+        assert result.is_success() is False

@@ -38,6 +38,7 @@ from ngabo.application.ports.evidence_search_port import EvidenceSearchPort
 from ngabo.application.services.evidence_intent_mapping import (
     approved_sources_for,
     build_evidence_search_query,
+    complete_query_facets,
 )
 from ngabo.application.value_objects.evidence_intent_proposal import (
     MAX_QUERY_TERMS,
@@ -196,6 +197,10 @@ class BoundedTriageRuntime:
         self._budget = budget
         self._app_name = app_name
         self._user_id = user_id
+        # Serializes the model-call before/observation/invocation critical
+        # section so a shared cumulative `call_count` never leaks across
+        # concurrent invocations (per-invocation budget accounting).
+        self._model_lock = asyncio.Lock()
 
     def triage(self, investigation_result: EventInvocationResult) -> TriageResult:
         return asyncio.run(self.triage_async(investigation_result))
@@ -220,8 +225,12 @@ class BoundedTriageRuntime:
                 execution_id=execution_id,
             )
 
+        deadline = start + self._budget.max_runtime_seconds
         triage_input = self._build_triage_input(investigation_result.joined_investigation)
-        model_calls, raw_output, model_version, failure = await self._invoke_triage(triage_input)
+        remaining = max(0.0, deadline - time.monotonic())
+        model_calls, raw_output, model_version, failure = await self._invoke_triage(
+            triage_input, timeout=remaining
+        )
         if failure is not None:
             outcome = TriageOutcome.FAILED if failure in (
                 TriageErrorCode.MALFORMED_MODEL_OUTPUT,
@@ -257,10 +266,10 @@ class BoundedTriageRuntime:
                 execution_id=execution_id,
             )
 
-        if len(proposal.query_terms) > self._budget.max_query_terms:
-            # A proposal exceeding the configured query-term budget is a typed
-            # deterministic rejection; no evidence retrieval runs and no terms
-            # are silently truncated.
+        if len(complete_query_facets(proposal)) > self._budget.max_query_terms:
+            # The COMPLETE set of model-controlled retrieval facets (query_terms
+            # + optional resistance_concept) must not exceed the configured
+            # budget; no facet is appended after validation.
             return TriageResult(
                 outcome=TriageOutcome.BLOCKED,
                 proposal=proposal,
@@ -287,8 +296,23 @@ class BoundedTriageRuntime:
             )
 
         query = build_evidence_search_query(proposal)
+        remaining = max(0.0, deadline - time.monotonic())
+        if remaining <= 0:
+            return self._stage_timeout(
+                proposal, model_calls, model_version, start, execution_id
+            )
         try:
-            evidence_result = self._evidence_search.search(query)
+            # Run the synchronous approved-evidence port on a worker thread and
+            # bound it by the REMAINING stage deadline (never a second full
+            # budget window), so the event loop is not blocked.
+            evidence_result = await asyncio.wait_for(
+                asyncio.to_thread(self._evidence_search.search, query),
+                timeout=remaining,
+            )
+        except TimeoutError:
+            return self._stage_timeout(
+                proposal, model_calls, model_version, start, execution_id
+            )
         except Exception:
             return TriageResult(
                 outcome=TriageOutcome.FAILED,
@@ -302,6 +326,25 @@ class BoundedTriageRuntime:
             )
         return self._resolve_evidence_outcome(
             proposal, evidence_result, model_calls, model_version, start, execution_id
+        )
+
+    def _stage_timeout(
+        self,
+        proposal: object,
+        model_calls: int,
+        model_version: str | None,
+        start: float,
+        execution_id: str,
+    ) -> TriageResult:
+        return TriageResult(
+            outcome=TriageOutcome.FAILED,
+            proposal=proposal,  # type: ignore[arg-type]
+            evidence_result=None,
+            model_calls=model_calls,
+            duration_ms=_duration_ms(start),
+            model_version=model_version,
+            error_code=TriageErrorCode.EVIDENCE_RETRIEVAL_TIMEOUT,
+            execution_id=execution_id,
         )
 
     def _build_triage_input(self, joined: object) -> dict[str, object]:
@@ -326,7 +369,7 @@ class BoundedTriageRuntime:
         }
 
     async def _invoke_triage(
-        self, triage_input: dict[str, object]
+        self, triage_input: dict[str, object], *, timeout: float
     ) -> tuple[int, object | None, str | None, TriageErrorCode | None]:
         agent = Agent(
             name="bounded_triage",
@@ -358,27 +401,28 @@ class BoundedTriageRuntime:
                 collected.append(event)
             return collected
 
-        before_model_calls = int(getattr(self._model, "call_count", 0))
-        try:
-            events = await asyncio.wait_for(
-                _stream(), timeout=self._budget.max_runtime_seconds
-            )
-        except TimeoutError:
-            return (
-                self._invocation_model_calls(before_model_calls),
-                None,
-                None,
-                TriageErrorCode.MODEL_TIMEOUT,
-            )
-        except Exception as exc:  # noqa: BLE001
-            return (
-                self._invocation_model_calls(before_model_calls),
-                None,
-                None,
-                _classify_model_exception(exc),
-            )
-
-        model_calls = self._invocation_model_calls(before_model_calls)
+        # Serialize the before->invoke->after observation around the model call
+        # so a shared cumulative `call_count` never leaks across concurrent
+        # invocations; each invocation's delta is its own.
+        async with self._model_lock:
+            before_model_calls = int(getattr(self._model, "call_count", 0))
+            try:
+                events = await asyncio.wait_for(_stream(), timeout=timeout)
+            except TimeoutError:
+                return (
+                    self._invocation_model_calls(before_model_calls),
+                    None,
+                    None,
+                    TriageErrorCode.MODEL_TIMEOUT,
+                )
+            except Exception as exc:  # noqa: BLE001
+                return (
+                    self._invocation_model_calls(before_model_calls),
+                    None,
+                    None,
+                    _classify_model_exception(exc),
+                )
+            model_calls = self._invocation_model_calls(before_model_calls)
         if model_calls > self._budget.max_model_calls:
             return model_calls, None, None, TriageErrorCode.MODEL_BUDGET_EXCEEDED
         raw_text = _recover_model_text(events)
@@ -437,7 +481,10 @@ class BoundedTriageRuntime:
     ) -> TriageResult:
         from ngabo.application.enums.evidence_search_outcome import EvidenceSearchOutcome
 
-        if evidence_result.outcome is EvidenceSearchOutcome.SUCCESS:
+        if (
+            evidence_result.outcome is EvidenceSearchOutcome.SUCCESS
+            and evidence_result.hits
+        ):
             return TriageResult(
                 outcome=TriageOutcome.EVIDENCE_RETRIEVED,
                 proposal=proposal,
@@ -446,6 +493,19 @@ class BoundedTriageRuntime:
                 duration_ms=_duration_ms(start),
                 model_version=model_version,
                 error_code=None,
+                execution_id=execution_id,
+            )
+        if evidence_result.outcome is EvidenceSearchOutcome.SUCCESS and not evidence_result.hits:
+            # A SUCCESS outcome with zero approved hits is NOT evidence success;
+            # do not let synthesis begin under a false evidence-prepared state.
+            return TriageResult(
+                outcome=TriageOutcome.NO_EVIDENCE,
+                proposal=proposal,
+                evidence_result=evidence_result,
+                model_calls=model_calls,
+                duration_ms=_duration_ms(start),
+                model_version=model_version,
+                error_code=TriageErrorCode.NO_APPROVED_EVIDENCE,
                 execution_id=execution_id,
             )
         if evidence_result.outcome is EvidenceSearchOutcome.NO_MATCH:

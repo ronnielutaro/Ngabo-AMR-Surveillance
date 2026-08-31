@@ -7,6 +7,8 @@ URL, domain, or arbitrary source scope is ever accepted here.
 
 from __future__ import annotations
 
+import unicodedata
+
 from ngabo.application.enums.evidence_intent import EvidenceIntent
 from ngabo.application.value_objects.evidence_intent_proposal import (
     EvidenceIntentProposal,
@@ -42,6 +44,34 @@ def approved_sources_for(intent: EvidenceIntent) -> tuple[EvidenceSourceId, ...]
     return EVIDENCE_INTENT_TO_APPROVED_SOURCES[intent]
 
 
+def _facet_key(text: str) -> str:
+    """Deterministic normalization key for query facets (NFKC + lower + space-collapse)."""
+    return " ".join(unicodedata.normalize("NFKC", text).lower().split())
+
+
+def complete_query_facets(proposal: EvidenceIntentProposal) -> tuple[str, ...]:
+    """Return the COMPLETE set of model-controlled retrieval facets.
+
+    This is the single source of truth for the query-term budget: it combines
+    ``query_terms`` and the optional ``resistance_concept``, deterministically
+    de-duplicating facets that are identical under normalization. The budget
+    check and the rendered ``EvidenceSearchQuery`` both consume this exact list,
+    so no model-controlled facet can be appended after validation.
+    """
+    if not isinstance(proposal, EvidenceIntentProposal):
+        raise TypeError("proposal must be an EvidenceIntentProposal")
+    facets: list[str] = []
+    seen: set[str] = set()
+    for term in list(proposal.query_terms) + (
+        [proposal.resistance_concept] if proposal.resistance_concept is not None else []
+    ):
+        key = _facet_key(term)
+        if key not in seen:
+            seen.add(key)
+            facets.append(term)
+    return tuple(facets)
+
+
 def build_evidence_search_query(proposal: EvidenceIntentProposal) -> EvidenceSearchQuery:
     """Build a framework-free approved-evidence query from a validated proposal.
 
@@ -51,9 +81,7 @@ def build_evidence_search_query(proposal: EvidenceIntentProposal) -> EvidenceSea
     """
     if not isinstance(proposal, EvidenceIntentProposal):
         raise TypeError("proposal must be an EvidenceIntentProposal")
-    terms = list(proposal.query_terms)
-    if proposal.resistance_concept is not None and proposal.resistance_concept not in terms:
-        terms.append(proposal.resistance_concept)
+    terms = list(complete_query_facets(proposal))
     query_text = " ".join(terms).strip()
     if not query_text:
         # Fall back to the deterministic intent vocabulary so retrieval is never
