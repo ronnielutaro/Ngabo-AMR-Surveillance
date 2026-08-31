@@ -11,6 +11,8 @@ Config via env:  NGABO_INTAKE_URL, NGABO_LAB_ID, NGABO_SOURCE_ID, NGABO_HMAC_SEC
 from __future__ import annotations
 
 import os
+import shutil
+import subprocess
 import sys
 import threading
 import time
@@ -18,13 +20,19 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, ttk
 from urllib import request
+from urllib.parse import urlsplit
+
+DEFAULT_INTAKE_URL = "https://ngabo-core-2zhvmdaotq-uc.a.run.app/connect/batches"
+DEFAULT_INVOKER_SERVICE_ACCOUNT = (
+    "ngabo-connect-demo@ngabo-amr-2026.iam.gserviceaccount.com"
+)
 
 _SERVICE_CORE = Path(__file__).resolve().parents[1] / "services" / "core"
 sys.path.insert(0, str(_SERVICE_CORE))
 
-from ngabo.infrastructure.connect.connect_queue import ConnectQueue
-from ngabo.infrastructure.connect.edge import file_sha256, stable_size_mtime
-from ngabo.infrastructure.connect.hmac_auth import compute_signature
+from ngabo.infrastructure.connect.connect_queue import ConnectQueue  # noqa: E402
+from ngabo.infrastructure.connect.edge import file_sha256, stable_size_mtime  # noqa: E402
+from ngabo.infrastructure.connect.hmac_auth import compute_signature  # noqa: E402
 
 
 class ConnectApp(tk.Tk):
@@ -94,20 +102,19 @@ class ConnectApp(tk.Tk):
         threading.Thread(target=self._watch_loop, daemon=True).start()
 
     def _watch_loop(self) -> None:
-        intake_url = os.environ.get("NGABO_INTAKE_URL", "http://127.0.0.1:8099/connect/batches")
+        intake_url = os.environ.get("NGABO_INTAKE_URL", DEFAULT_INTAKE_URL)
         lab_id = os.environ.get("NGABO_LAB_ID", "synthetic-lab-gulu")
         source_id = os.environ.get("NGABO_SOURCE_ID", "whonet-demo")
         secret = os.environ.get("NGABO_HMAC_SECRET", "demo-secret").encode("utf-8")
-        filename = "export.csv"
         while self.running and self.queue is not None:
             try:
-                self._scan_and_upload(intake_url, lab_id, source_id, secret, filename)
+                self._scan_and_upload(intake_url, lab_id, source_id, secret)
             except Exception as exc:  # noqa: BLE001
                 self.after(0, self._log, f"loop error: {exc}")
             time.sleep(1.0)
 
     def _scan_and_upload(
-        self, intake_url: str, lab_id: str, source_id: str, secret: bytes, filename: str
+        self, intake_url: str, lab_id: str, source_id: str, secret: bytes
     ) -> None:
         assert self.watch_dir is not None and self.queue is not None
         for path in sorted(self.watch_dir.glob("*.csv")):
@@ -115,7 +122,7 @@ class ConnectApp(tk.Tk):
                 continue
             sha = file_sha256(path)
             self.after(0, self._log, f"DETECTED {path.name} sha256={sha[:12]}…")
-            item_id = self.queue.add(
+            self.queue.add(
                 file_path=str(path), file_sha256=sha, lab_id=lab_id, source_id=source_id
             )
             while True:
@@ -123,34 +130,77 @@ class ConnectApp(tk.Tk):
                 if item is None:
                     break
                 self.queue.mark_syncing(item["id"])
-                body = path.read_bytes()
+                queued_path = Path(str(item["file_path"]))
+                body = queued_path.read_bytes()
+                queued_sha = str(item["file_sha256"])
+                filename = queued_path.name
                 ts = str(int(time.time()))
-                signature = compute_signature(secret, lab_id, source_id, ts, sha, filename, body)
+                signature = compute_signature(
+                    secret, lab_id, source_id, ts, queued_sha, filename, body
+                )
+                token = _identity_token(intake_url)
+                headers = {
+                    "Content-Type": "text/csv",
+                    "X-Ngabo-Lab-Id": lab_id,
+                    "X-Ngabo-Source-Id": source_id,
+                    "X-Ngabo-Timestamp": ts,
+                    "X-Ngabo-Content-SHA256": queued_sha,
+                    "X-Ngabo-Signature": signature,
+                    "X-Ngabo-Filename": filename,
+                }
+                if token:
+                    headers["Authorization"] = f"Bearer {token}"
                 req = request.Request(
                     intake_url,
                     data=body,
                     method="POST",
-                    headers={
-                        "Content-Type": "text/csv",
-                        "X-Ngabo-Lab-Id": lab_id,
-                        "X-Ngabo-Source-Id": source_id,
-                        "X-Ngabo-Timestamp": ts,
-                        "X-Ngabo-Content-SHA256": sha,
-                        "X-Ngabo-Signature": signature,
-                        "X-Ngabo-Filename": filename,
-                    },
+                    headers=headers,
                 )
                 try:
-                    with request.urlopen(req, timeout=15) as response:
+                    with request.urlopen(req, timeout=180) as response:
                         if 200 <= response.status < 300:
                             self.queue.mark_acknowledged(item["id"], "batch-ack")
-                            self.after(0, self._log, f"ACKNOWLEDGED {path.name}")
+                            self.after(0, self.status_var.set, "● Connected")
+                            self.after(0, self._log, f"ACKNOWLEDGED {queued_path.name}")
                         else:
                             self.queue.mark_retry(item["id"], f"HTTP {response.status}")
-                            self.after(0, self._log, f"RETRYING {path.name}")
+                            self.after(0, self._log, f"RETRYING {queued_path.name}")
                 except Exception as exc:  # noqa: BLE001
                     self.queue.mark_retry(item["id"], str(exc))
-                    self.after(0, self._log, f"RETRYING {path.name}: {exc}")
+                    self.after(0, self._log, f"RETRYING {queued_path.name}: {exc}")
+
+
+def _identity_token(intake_url: str) -> str | None:
+    """Return an audience-bound token for the private demo core.
+
+    Local intake needs no token. Cloud Run uses a narrowly scoped demo invoker
+    service account and the signed-in gcloud user's impersonation permission.
+    """
+    configured = os.environ.get("NGABO_ID_TOKEN", "").strip()
+    if configured:
+        return configured
+    parsed = urlsplit(intake_url)
+    if parsed.hostname in {"127.0.0.1", "localhost"}:
+        return None
+    audience = f"{parsed.scheme}://{parsed.netloc}"
+    gcloud = shutil.which("gcloud") or shutil.which("gcloud.cmd")
+    if gcloud is None:
+        raise RuntimeError("gcloud is required to authenticate Ngabo Connect")
+    service_account = os.environ.get(
+        "NGABO_CONNECT_SERVICE_ACCOUNT", DEFAULT_INVOKER_SERVICE_ACCOUNT
+    )
+    return subprocess.check_output(
+        [
+            gcloud,
+            "auth",
+            "print-identity-token",
+            f"--impersonate-service-account={service_account}",
+            f"--audiences={audience}",
+        ],
+        stderr=subprocess.DEVNULL,
+        text=True,
+        timeout=30,
+    ).strip()
 
 
 if __name__ == "__main__":
