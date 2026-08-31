@@ -6,8 +6,11 @@
 
 Ngabo is an **open-source, event-driven antimicrobial resistance surveillance and incident-response system** that transforms AMR surveillance signals into structured, evidence-backed investigations and coordinated response workflows.
 
+Its product direction is an **always-on AMR surveillance and coordination layer**: **Connect → Watch → Investigate → Coordinate**. It is designed to meet governed laboratory data where it already exists, keep surveillance state current, investigate meaningful signals automatically, and complete only permitted coordination with machine-verifiable proof.
+
 > **Current release status:** `v0.1.0` hackathon MVP in development.  
 > **Data:** Synthetic demonstration data only in the public v0.1 release.  
+> **Integration:** No production ALIS, WHONET, LIS/LIMS, instrument, or hospital connector is currently claimed.<br>
 > **Safety:** Ngabo is not a clinical diagnostic or prescribing system and does not autonomously confirm outbreaks.
 
 ## Hackathon Target
@@ -130,15 +133,22 @@ See [`docs/BYOF_FRICTION.md`](./docs/BYOF_FRICTION.md) and [`docs/OPERATIONAL_UT
 
 Ngabo enters an active AMR technology landscape. WHONET, AMASS, laboratory information systems, national platforms and commercial surveillance products already support data management, analysis, reporting, alerts and parts of infection-management workflows. Ngabo does not position itself as their replacement.
 
-Its intended wedge begins after a usable signal exists:
+The broader product wedge is the recurring surveillance operating loop:
 
-> **Turn a suspicious AMR signal into a proof-verified investigation package and one authorized, acknowledged safe-coordination action.**
+> **Connect governed laboratory data → continuously watch deterministic surveillance state → investigate meaningful signals → complete one permitted coordination step with acknowledgement.**
+
+The public v0.1 release is designed to prove a narrower, complete slice using a committed synthetic WHONET-style source:
+
+> **Synthetic source → deterministic surveillance signal → proof-verified investigation package → one authorized, acknowledged safe-coordination action.**
+
+Production source adapters remain a post-v0.1 product-hardening direction. Existing laboratory and surveillance systems remain the upstream systems of record; Ngabo does not claim to replace them.
 
 The current product-strategy documents are:
 
 - [`docs/LEAN_CANVAS.md`](./docs/LEAN_CANVAS.md) — problem, customer, solution, channels, sustainability, costs, metrics, advantage and validation assumptions;
 - [`docs/COMPETITOR_ANALYSIS.md`](./docs/COMPETITOR_ANALYSIS.md) — public and commercial alternatives, Uganda-specific context, qualitative practitioner pain signals, capability matrices and competitive claim guardrails;
-- [`docs/VALUE_PROPOSITION_CANVAS.md`](./docs/VALUE_PROPOSITION_CANVAS.md) — separate value propositions for the primary surveillance practitioner, institutional adopter/governor and upstream platform or implementation partner.
+- [`docs/VALUE_PROPOSITION_CANVAS.md`](./docs/VALUE_PROPOSITION_CANVAS.md) — separate value propositions for the primary surveillance practitioner, institutional adopter/governor and upstream platform or implementation partner;
+- [`docs/USER_PERSONAS.md`](./docs/USER_PERSONAS.md) — prioritized operational personas, workflow pains, adoption roles, anti-personas and validation questions.
 
 These documents distinguish research-supported problems from unvalidated product, customer, adoption and partnership hypotheses. They do not establish clinical validation, product-market fit, institutional adoption or market superiority.
 

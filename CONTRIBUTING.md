@@ -13,12 +13,13 @@ Before contributing, read:
 5. `docs/LEAN_CANVAS.md`
 6. `docs/COMPETITOR_ANALYSIS.md`
 7. `docs/VALUE_PROPOSITION_CANVAS.md`
-8. `docs/SYSTEM_DESIGN.md`
-9. `docs/AGENT_ARCHITECTURE.md`
-10. `docs/DATA_SAFETY_EVALUATION.md`
-11. `docs/UI_UX_SPEC.md`
+8. `docs/USER_PERSONAS.md`
+9. `docs/SYSTEM_DESIGN.md`
+10. `docs/AGENT_ARCHITECTURE.md`
+11. `docs/DATA_SAFETY_EVALUATION.md`
+12. `docs/UI_UX_SPEC.md`
 
-The product-strategy documents explain whom Ngabo is intended to serve, which alternatives already exist, where Ngabo aims to differentiate and which assumptions still require validation. They guide scope and messaging but do not supersede the active issue, safety contracts, Clean Architecture or evidence requirements.
+The product-strategy documents, including the user personas, explain whom Ngabo is intended to serve, which alternatives already exist, where Ngabo aims to differentiate and which assumptions still require validation. They guide scope and messaging but do not supersede the active issue, safety contracts, Clean Architecture or evidence requirements.
 
 ---
 

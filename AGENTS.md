@@ -10,6 +10,8 @@ Read `CLAUDE.md` first. It is the root implementation contract.
 
 Build Ngabo as a safe, event-driven AMR surveillance and incident-response system whose **canonical Taskmaster hero workflow completes with zero human intervention** while keeping clinical/official public-health decisions outside the autonomous v0.1 action envelope.
 
+The longer-term product direction is an always-on **Connect → Watch → Investigate → Coordinate** operating loop. That positioning does not expand the active v0.1 issue scope or imply a production ALIS, WHONET, LIS/LIMS, instrument, or hospital connector; the public v0.1 certified source remains the committed synthetic WHONET-style fixture.
+
 Optimize for:
 
 - asynchronous event-driven autonomy;
@@ -55,32 +57,33 @@ Work is driven by GitHub issues. The active issue is the **task-specific impleme
 5. `docs/LEAN_CANVAS.md`
 6. `docs/COMPETITOR_ANALYSIS.md`
 7. `docs/VALUE_PROPOSITION_CANVAS.md`
-8. `docs/TECH_STACK.md`
-9. `docs/CLEAN_ARCHITECTURE.md`
-10. `docs/HACKATHON_ALIGNMENT.md`
-11. `docs/TASKMASTER_ZERO_HUMAN_AUTONOMY.md`
-12. `docs/BYOF_FRICTION.md`
-13. `docs/ADK_CAPABILITY_SPIKE.md`
-14. `docs/ADK_RUNTIME.md`
-15. `docs/ORCHESTRATION_PATTERNS.md`
-16. `docs/PROOF_CARRYING_REASONING.md`
-17. `docs/LONG_RUNNING_AGENT.md`
-18. `docs/AUTONOMOUS_EFFECT_OUTBOX.md`
-19. `docs/SYSTEM_DESIGN.md`
-20. `docs/AGENT_ARCHITECTURE.md`
-21. `docs/DATA_SAFETY_EVALUATION.md`
-22. `docs/OPERATIONAL_UTILITY_EVALUATION.md`
-23. `docs/UI_UX_SPEC.md`
-24. `docs/UI_UX_HACKATHON_ADDENDUM.md`
-25. `docs/ARCHITECTURE_DIAGRAM.md`
-26. `docs/THIRD_PARTY_PROVENANCE.md`
-27. `docs/SUBMISSION_EVIDENCE.md`
-28. `docs/SUBMISSION_FREEZE.md`
-29. `docs/HACKATHON_RISK_REGISTER.md`
-30. `docs/IMPLEMENTATION_PLAN.md`
-31. relevant ADRs, especially 0005–0009.
+8. `docs/USER_PERSONAS.md`
+9. `docs/TECH_STACK.md`
+10. `docs/CLEAN_ARCHITECTURE.md`
+11. `docs/HACKATHON_ALIGNMENT.md`
+12. `docs/TASKMASTER_ZERO_HUMAN_AUTONOMY.md`
+13. `docs/BYOF_FRICTION.md`
+14. `docs/ADK_CAPABILITY_SPIKE.md`
+15. `docs/ADK_RUNTIME.md`
+16. `docs/ORCHESTRATION_PATTERNS.md`
+17. `docs/PROOF_CARRYING_REASONING.md`
+18. `docs/LONG_RUNNING_AGENT.md`
+19. `docs/AUTONOMOUS_EFFECT_OUTBOX.md`
+20. `docs/SYSTEM_DESIGN.md`
+21. `docs/AGENT_ARCHITECTURE.md`
+22. `docs/DATA_SAFETY_EVALUATION.md`
+23. `docs/OPERATIONAL_UTILITY_EVALUATION.md`
+24. `docs/UI_UX_SPEC.md`
+25. `docs/UI_UX_HACKATHON_ADDENDUM.md`
+26. `docs/ARCHITECTURE_DIAGRAM.md`
+27. `docs/THIRD_PARTY_PROVENANCE.md`
+28. `docs/SUBMISSION_EVIDENCE.md`
+29. `docs/SUBMISSION_FREEZE.md`
+30. `docs/HACKATHON_RISK_REGISTER.md`
+31. `docs/IMPLEMENTATION_PLAN.md`
+32. relevant ADRs, especially 0005–0009.
 
-The Lean Canvas, competitor analysis and value proposition canvases define product positioning, user and adopter hypotheses, alternatives, differentiation and validation priorities. They do not override the PRD, safety/data constraints, architecture contracts, active issue scope or runtime evidence requirements. Treat every unvalidated customer, partner, adoption and market statement in those documents as a hypothesis rather than an implemented capability or established fact.
+The Lean Canvas, competitor analysis, value proposition canvases and user personas define product positioning, user and adopter hypotheses, alternatives, differentiation and validation priorities. They do not override the PRD, safety/data constraints, architecture contracts, active issue scope or runtime evidence requirements. Treat every unvalidated customer, partner, adoption and market statement in those documents as a hypothesis rather than an implemented capability or established fact.
 
 If older documents still mention mandatory human approval/clarification in the v0.1 hero, `docs/TASKMASTER_ZERO_HUMAN_AUTONOMY.md` and `CLAUDE.md` supersede that wording for the safe A1 hero lane.
 

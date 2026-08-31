@@ -1,10 +1,10 @@
 # Ngabo — Lean Canvas
 
-**Project:** Ngabo — Autonomous Antimicrobial Resistance Surveillance & Incident Response  
-**Positioning:** Open-source, event-driven AMR investigation and safe-coordination layer with proof-verified autonomy  
+**Project:** Ngabo — Always-On Antimicrobial Resistance Surveillance & Coordination  
+**Positioning:** Open-source, always-on AMR surveillance and coordination layer with proof-verified autonomy  
 **Initial context:** Uganda and African health systems  
-**Version:** 0.2  
-**Date:** 2026-08-29
+**Version:** 0.3  
+**Date:** 2026-08-31
 
 ---
 
@@ -12,24 +12,51 @@
 
 ### Core problems
 
-1. **AMR surveillance signals do not reliably become coordinated action.** Microbiology and antimicrobial-susceptibility testing (AST) data may already exist in WHONET, laboratory information systems, spreadsheets, or national surveillance infrastructure. Turning a suspicious signal into an investigation-ready package and a coordinated next step still requires many disconnected activities across people and systems.
-2. **Suspicious resistance patterns are difficult to triage consistently.** Surveillance professionals must compare organisms, resistance phenotypes, locations, dates, specimen sources, historical baselines, missingness, and guidance before deciding whether a signal warrants further investigation.
-3. **Evidence assembly and coordination are fragmented.** Teams must gather context, retrieve approved guidance, distinguish observations from hypotheses, prepare a brief, route it appropriately, track acknowledgement, and preserve an auditable record.
-4. **General-purpose AI cannot safely bridge this gap by itself.** Fluent output is not enough. Action-relevant claims must be grounded in canonical records, deterministic findings, or approved retrieved evidence and must be verified before they can influence an autonomous action.
+1. **Routine microbiology data exists, but people remain the integration layer.** Laboratory and antimicrobial-susceptibility testing (AST) results may live in ALIS, WHONET, LIMS/LIS platforms, instrument exports, spreadsheets, or paper-assisted workflows. Surveillance teams still spend recurring effort extracting, transcribing, converting, cleaning, reconciling, deduplicating, and preparing data before useful surveillance work can begin.
+2. **Surveillance is often periodic and operator-driven instead of continuously maintained.** Even where structured data exists, someone must remember to import it, refresh analyses, inspect trends, construct line lists or antibiograms, and notice when a resistance pattern deserves attention.
+3. **A suspicious signal is only the beginning of the work.** Once something unusual appears, professionals still have to identify implicated isolates, compare resistance profiles, inspect temporal/location/baseline context, assess missingness, retrieve trusted guidance, distinguish facts from hypotheses, assemble an investigation-ready brief, route it, and follow up.
+4. **Coordination is fragmented across tools and people.** Investigation outputs may move through Excel, WHONET reports, email, paper, messaging groups, committee materials, and national reporting channels with limited end-to-end acknowledgement or audit continuity.
+5. **General-purpose AI cannot safely bridge this workflow by itself.** Fluent model output is not canonical truth. Action-relevant claims must remain grounded in laboratory records, deterministic findings, or approved retrieved evidence and must pass deterministic verification and policy before autonomous action.
 
 ### Existing alternatives
 
-- WHONET analysis, alerts, and reporting
-- Laboratory information systems and national or interoperable surveillance platforms
+- WHONET analysis, alerts, antibiograms, line lists, and reporting
+- ALIS, LIMS/LIS platforms, laboratory instruments, and national/interoperable surveillance systems
+- BacLink and other export/conversion workflows
 - Spreadsheets and custom analytical scripts
+- Manual extraction, transcription, mapping, cleaning, deduplication, and periodic analysis
 - Email, paper reports, phone calls, and messaging groups
-- Manual review and coordination by microbiologists, AMR surveillance officers, IPC teams, epidemiologists, and AMR focal persons
+- Manual investigation and coordination by microbiologists, AMR surveillance officers, IPC/AMS teams, epidemiologists, biostatisticians, and AMR focal persons
 
 ### Ngabo's wedge
 
-Ngabo does **not** aim to replace WHONET, laboratory systems, or national surveillance infrastructure. It focuses on the workflow after structured data and surveillance signals exist:
+Ngabo does **not** aim to replace microbiology instruments, ALIS, WHONET, LIMS/LIS platforms, or national surveillance infrastructure. It aims to remove the human glue between those systems and the recurring surveillance-to-coordination job.
 
-> **Turning a suspicious AMR signal into a proof-verified investigation package and an authorized, acknowledged safe-coordination action.**
+> **Ngabo is designed to become an always-on AMR surveillance and coordination layer that connects through governed adapters to the laboratory systems already in use, continuously turns microbiology data into surveillance intelligence, automatically investigates meaningful signals, and completes the next permitted coordination step with machine-verifiable proof.**
+
+The product loop is:
+
+```text
+CONNECT
+routine microbiology / AST data
+        ↓
+WATCH
+continuous deterministic surveillance
+        ↓
+INVESTIGATE
+bounded reasoning + proof verification
+        ↓
+COORDINATE
+deterministic policy + safe action + acknowledgement
+```
+
+### Current implementation boundary versus product direction
+
+The v0.1 hackathon release does **not** yet claim a production ALIS, WHONET, LIS, instrument, or hospital connector. Its certified source is a committed synthetic WHONET-style dataset that exercises the deterministic ingestion and surveillance contracts.
+
+The product direction is to replace that fixture boundary with governed source adapters while preserving the same canonical import, provenance, deduplication, surveillance, proof, and safety contracts.
+
+In this document, **always-on** describes an operating loop that responds automatically to authorized data arrival or scheduled ingestion. It does not require permanently running compute and does not change the Cloud Run scale-to-zero policy.
 
 ---
 
@@ -37,141 +64,177 @@ Ngabo does **not** aim to replace WHONET, laboratory systems, or national survei
 
 ### Primary user
 
-> **A microbiology or AMR surveillance professional responsible for translating structured AST data into an investigation-ready package and coordinating the next safe step.**
+> **A microbiology or AMR surveillance professional responsible for keeping facility surveillance current and ensuring meaningful resistance signals become defensible, coordinated investigations.**
 
-The initial user is most likely an AMR surveillance analyst, AMR focal person, or microbiology data manager in a facility that already produces structured microbiology data but still performs substantial manual investigation and coordination.
+Likely first users include:
+
+- AMR surveillance analysts and AMR focal persons
+- Microbiology data managers
+- Clinical laboratory scientists or microbiologists with surveillance responsibilities
+- Hospital biostatisticians/data officers supporting AMR surveillance
+- Hospital epidemiology analysts
+
+The strongest user is not someone looking for another dashboard. It is someone already performing recurring data preparation, surveillance refresh, investigation assembly, reporting, or coordination work across several systems.
 
 ### Workflow stakeholders and information recipients
 
-- Hospital microbiologists and clinical laboratory scientists
 - Infection Prevention and Control (IPC) teams
-- Hospital epidemiologists and surveillance officers
 - Antimicrobial Stewardship (AMS) teams and clinical pharmacists
+- Medicines and Therapeutics Committees
+- Hospital epidemiologists and surveillance officers
+- Laboratory directors and microbiology leads
 - Regional and national AMR surveillance teams
 - Public-health and reference laboratories
 - AMR researchers and epidemiologists
 
-These stakeholders may review, receive, govern, or act on Ngabo's outputs. They are not all assumed to be the first daily operator.
+These stakeholders may govern, review, receive, or act on Ngabo's outputs. They are not all assumed to be daily operators.
 
 ### Potential institutional adopters, buyers, or funders
 
-- Hospitals and hospital networks
+- National and regional referral hospitals
+- AMR sentinel surveillance sites and hospital networks
 - Ministries of Health and public-health agencies
+- National/reference laboratory networks and AMR programmes
 - Universities and research programmes
 - Global-health NGOs and implementing partners
 - Donor-funded AMR and digital-health programmes
 - Innovation and public-sector technology funders
 
-These are **market hypotheses**, not confirmed customers or partners.
+These remain **market hypotheses**, not confirmed customers or partnerships.
 
 ### Early-adopter conditions
 
-- Structured or exportable microbiology/AST data already exists
-- Investigation and escalation still involve repeated manual work
-- An active AMR, IPC, microbiology, or stewardship function exists
-- The institution can begin with synthetic, de-identified, or controlled data
-- A domain professional can critique the investigation logic and workflow fit
-- The institution is willing to evaluate an open, auditable coordination layer rather than replace its surveillance system
+The strongest initial environment should have:
+
+- routine bacterial culture and AST;
+- structured or exportable microbiology data;
+- recurring ALIS/WHONET/LIS/Excel surveillance work;
+- an active microbiology, AMR, IPC, or stewardship function;
+- enough testing volume for surveillance state to require regular maintenance;
+- a willingness to begin with synthetic, de-identified, controlled, or shadow-mode evaluation;
+- a domain professional able to challenge Ngabo's assumptions and outputs;
+- an authorized low-consequence coordination target for testing the A1 lane.
+
+Small facilities with very low microbiology volume, no structured data, or no surveillance function may experience Ngabo as a vitamin rather than a painkiller and are not the preferred first segment.
 
 ---
 
 ## 3. Unique Value Proposition
 
-> **From AMR signal to proof-verified investigation and safe coordination automatically, without replacing existing surveillance systems.**
+> **Your laboratory keeps doing its normal work. Ngabo keeps the AMR surveillance job done.**
 
-Ngabo detects a suspicious AMR signal, performs deterministic investigation stages, uses Gemini only for bounded evidence-grounded synthesis, verifies every material action-relevant claim, and executes one authorized safe-coordination action with machine acknowledgement.
+Ngabo continuously receives or consumes authorized microbiology data, validates and normalizes it, updates surveillance state, detects meaningful investigation-priority signals, automatically assembles the investigation, retrieves approved evidence, separates facts from hypotheses, verifies model-supported claims, applies deterministic action policy, and tracks permitted coordination through machine acknowledgement.
+
+### Product promise
+
+> **From routine lab data to safe surveillance action without somebody repeatedly extracting, cleaning, analyzing, assembling, sending, and chasing the workflow.**
 
 ### High-level concept
 
-**An autonomous AMR investigation and safe-coordination agent with machine-verifiable claims.**
+**An always-on AMR surveillance operating loop: Connect → Watch → Investigate → Coordinate.**
 
 ### Differentiating principle
 
-> **LLM proposes; deterministic machinery verifies whatever can be verified before a claim may influence autonomous action.**
+> **High system autonomy, low model authority. LLM proposes; deterministic machinery verifies; deterministic policy authorizes; the system executes; external acknowledgement confirms completion.**
 
-Ngabo calls this design **Proof-Carrying Autonomy**. Model fluency, confidence, hidden reasoning, or consensus never substitutes for canonical evidence or deterministic authorization.
+Ngabo calls this design **Proof-Carrying Autonomy**. Gemini contributes bounded intelligence, but model fluency, confidence, hidden reasoning, or self-assessment never creates canonical facts, verification, policy eligibility, authorization, delivery, or acknowledgement.
 
 ---
 
 ## 4. Solution
 
-### Canonical v0.1 workflow
+### Product operating loop
 
-1. **Ingest and normalize**
-   - Parse representative synthetic WHONET-style microbiology/AST data
-   - Validate and normalize organism, specimen, location, date, and AST fields deterministically
-   - Reject malformed records and represent missingness explicitly
+#### 1. Connect — governed data acquisition
 
-2. **Detect**
-   - Run transparent statistical and rule-based surveillance logic
-   - Compare resistance profiles, time windows, locations, and historical baselines
-   - Emit a suspicious investigation-candidate event when governed criteria pass
+Target production behaviour:
 
-3. **Start automatically**
-   - Publish the signal through Pub/Sub
-   - Start the Google ADK workflow without a manual prompt
-   - Load current canonical incident context
+- Meet the data where the laboratory already produces it rather than requiring a new parallel workflow.
+- Support governed adapters for sources such as ALIS, WHONET/BacLink outputs, LIMS/LIS exports, watched folders, scheduled files, instrument exports, and future standards-based interfaces.
+- Preserve source identity, provenance, authorization, and replay semantics.
+- Keep manual file upload as a fallback, not the ideal primary experience.
 
-4. **Investigate through deterministic fan-out and join**
-   - Run resistance-profile comparison, baseline analysis, and missing-field assessment in parallel
-   - Use deterministic routing, branch requirements, failure semantics, and join behaviour
-   - Treat canonical application state as truth; use ADK session state only for execution continuity
+**v0.1 truth:** the hackathon hero currently uses a committed synthetic WHONET-style source; live production connectors remain a deployment frontier, not a shipped claim.
 
-5. **Reason with approved evidence**
-   - Use Gemini only for bounded ambiguity, evidence-grounded synthesis, labelled hypotheses, and drafting
-   - Retrieve from an approved, provenance-carrying evidence corpus
-   - Separate observed facts, derived findings, evidence statements, hypotheses, uncertainties, and action justification
+#### 2. Watch — continuous deterministic surveillance
 
-6. **Verify and repair**
-   - Require material model claims to reference canonical records, deterministic findings, or retrieved approved sources
-   - Verify claim types, references, prohibited semantics, package structure, and evidence integrity deterministically
-   - Return structured errors for bounded automatic repair
-   - Abstain if verification cannot pass within the repair budget
+- Parse, validate, normalize, hash, deduplicate, and reconcile incoming microbiology/AST data deterministically.
+- Update canonical surveillance state whenever authorized data changes.
+- Recompute relevant resistance-profile, temporal/location, concentration, and baseline findings through deterministic scientific owners.
+- Stay quiet when there is no meaningful signal.
+- Emit a referenceable investigation-priority event when governed criteria pass.
 
-7. **Authorize only safe coordination**
-   - Apply deterministic A0/A1/A2/A3 action policy
-   - Permit only authorized, allow-listed A1 safe external coordination in the v0.1 autonomous hero
-   - Block A2 operational escalation and A3 clinical or official public-health decisions from autonomous execution
-   - Recheck freshness immediately before action
+#### 3. Investigate — autonomous evidence-grounded workflow
 
-8. **Execute and close the loop**
-   - Commit one durable `ActionIntent` with a stable idempotency key
-   - Send the investigation-candidate payload through a real authorized test, sandbox, or internal integration
-   - Receive a machine acknowledgement
-   - Preserve a complete auditable incident and effect timeline
+- Start the workflow from the surveillance event without chat, clarification, approval, or manual continuation.
+- Run mandatory deterministic investigation branches such as resistance-profile comparison, baseline analysis, and material-missingness assessment.
+- Use Gemini only where bounded judgment is useful.
+- Retrieve only approved provenance-carrying evidence.
+- Generate typed proposals that distinguish observed facts, deterministic findings, evidence statements, hypotheses, uncertainty, and action justification.
+- Require material claims to carry machine-checkable support.
+- Verify claims and package boundaries deterministically.
+- Allow bounded model repair only under verifier control; otherwise abstain.
+
+#### 4. Coordinate — deterministic safe action and closure
+
+- Require current verified-package eligibility before action policy.
+- Apply deterministic A0/A1/A2/A3 classification and authorization.
+- Permit only authorized, allow-listed A1 coordination in the public v0.1 autonomous lane.
+- Recheck freshness immediately before action.
+- Commit one durable `ActionIntent` with a stable idempotency key.
+- Execute one authorized external effect.
+- Receive and preserve machine acknowledgement.
+
+### Three nested autonomous loops
+
+```text
+DATA READINESS LOOP
+new authorized lab data
+→ acquire
+→ validate
+→ normalize
+→ deduplicate
+→ canonical state
+
+SURVEILLANCE LOOP
+canonical state change
+→ update findings/baseline
+→ evaluate signal
+→ quiet OR incident
+
+INVESTIGATION / RESPONSE LOOP
+incident
+→ investigate
+→ evidence
+→ Gemini proposal
+→ deterministic verification
+→ deterministic policy
+→ effect
+→ acknowledgement
+```
 
 ### Missing-data behaviour
 
 Ngabo does not ask a human a question merely to keep the canonical hero moving:
 
 ```text
-material fact missing    → NEEDS_INFORMATION → no external action
+material fact missing    → NEEDS_INFORMATION / BLOCK → no external action
 optional fact missing    → preserve UNKNOWN; continue only if policy permits
-recoverable fact missing → fetch from an authorized canonical source when deterministically linked
+recoverable fact missing → fetch only from an authorized deterministically linked source
 ```
 
-The complete synthetic hero fixture contains the material facts required for safe A1 completion. Ngabo never invents a clinical fact to preserve autonomy.
+Ngabo never invents a clinical or laboratory fact to preserve autonomy.
 
 ### Action envelope
 
 | Class | Meaning | Public v0.1 behaviour |
 |---|---|---|
 | A0 | Internal state and audit effects | Autonomous |
-| A1 | Safe, allow-listed external coordination | Autonomous after all deterministic gates pass |
+| A1 | Safe, allow-listed external coordination | Autonomous after deterministic gates |
 | A2 | Real operational escalation | Not autonomous by default |
 | A3 | Clinical or official public-health decision | Never autonomous |
 
-Ngabo does not diagnose, prescribe, confirm an outbreak, or claim official authority. Future consequential workflows require appropriate institutional governance and human authority.
-
-### Stretch capabilities after the core hero is reliable
-
-- Standards-based LIMS, DHIS2, and national-platform connectors
-- Facility-specific baselines informed by validated outcomes
-- Embedding-based evidence retrieval when it demonstrates measured value
-- Genomic AMR evidence and genotype–phenotype concordance
-- Cross-facility and One Health intelligence
-
-These capabilities are outside the v0.1 core unless implemented and evaluated without threatening hero reliability.
+Ngabo does not diagnose, prescribe, confirm an outbreak, or claim official authority.
 
 ---
 
@@ -180,52 +243,54 @@ These capabilities are outside the v0.1 core unless implemented and evaluated wi
 ### Initial discovery and validation channels
 
 - Direct workflow interviews and controlled demonstrations with microbiology and AMR surveillance professionals
+- Referral hospitals and established AMR sentinel sites
 - University and research collaborations
-- AMR, IPC, microbiology, and public-health professional networks
+- AMR, IPC, microbiology, stewardship, biostatistics, and public-health professional networks
 - Open-source GitHub distribution and technical documentation
 - Hackathons, research showcases, and responsible public demonstrations
 
 ### Potential adoption channels
 
-- Controlled pilots with research laboratories, university hospitals, or referral hospitals
-- Ministry of Health and public-health partnerships
+- Controlled shadow-mode pilots with referral hospitals or research laboratories
+- Ministry of Health and national AMR surveillance programmes
+- Public-health/reference laboratory networks
 - Digital-health and AMR implementing partners
 - Donor-funded AMR and surveillance programmes
-- Standards-based integration partners
-
-These channels require validation. Participation in an ecosystem does not itself prove access, partnership, or adoption.
+- ALIS/LIMS/WHONET/interoperability implementation partners
 
 ### Trust-building channels
 
 - Transparent software benchmarks and reproducible evaluations
 - Public architecture, safety contracts, and limitations
-- Auditable evidence and claim-verification trails
-- Domain-expert review of scenarios and outputs
+- Auditable data provenance, evidence, verification, policy, delivery, and acknowledgement trails
+- Domain-expert workflow review
+- Clean integration contracts that complement rather than replace upstream systems
 - Peer-reviewed or preprint validation studies when sufficient evidence exists
 
 ---
 
 ## 6. Revenue and Support Streams
 
-Ngabo can remain open source at its core while sustainable deployment, validation, integration, and support are funded separately.
+Ngabo can remain open source at its core while sustainable deployment, integration, validation, and support are funded separately.
 
 ### Near-term hypotheses
 
 - Research and innovation grants
 - Public-health R&D funding
-- Sponsored validation studies or controlled pilots
+- Sponsored workflow-validation studies or controlled pilots
 - University and research collaborations
 - Hackathon or innovation awards
 
 ### Longer-term hypotheses
 
 - Managed or hosted deployments
-- Paid implementation and systems integration
-- Custom connectors and institutional configuration
+- Paid source-system integration and connector implementation
+- Institutional configuration and surveillance-policy setup
 - Enterprise support, maintenance, security, and governance services
+- Multi-site/network deployment support
 - Training and institutional capacity building
 
-The immediate goal is to validate the problem and workflow, not to imply that these revenue streams or customers already exist.
+The immediate objective is to prove workflow utility and integration fit, not to imply established willingness to pay.
 
 ---
 
@@ -233,32 +298,57 @@ The immediate goal is to validate the problem and workflow, not to imply that th
 
 ### Product and engineering
 
-- Google Cloud compute, storage, networking, and event infrastructure
+- Google Cloud compute, storage, networking, event infrastructure, and observability
 - Gemini inference and approved-evidence retrieval
-- External notification or coordination integrations
-- Observability, security, backups, and audit logging
-- Data engineering and interoperability work
+- Source adapters, interoperability, watched-folder/scheduled ingestion, and mapping maintenance
+- External notification/coordination integrations
+- Security, backups, audit logging, and reliability engineering
 
 ### Domain and evaluation
 
-- Microbiology, epidemiology, IPC, and AMS expert review
-- Synthetic dataset design and scenario curation
-- Deterministic detector and proof-verifier evaluation
-- User workflow research and controlled usability testing
-- Future clinical, operational, or implementation research
+- Microbiology, epidemiology, IPC, AMS, and surveillance expert review
+- Representative synthetic and controlled datasets
+- Deterministic ingestion/detector and proof-verifier evaluation
+- Workflow research and usability testing
+- Future retrospective/shadow-mode validation
 
 ### Deployment and governance
 
 - Institutional integration and configuration
+- Security, privacy, retention, and data-protection assessment
+- Data-source authorization and mapping
 - Training and change management
-- Security, privacy, and data-protection assessment
 - Field testing and implementation support
 - Ongoing maintenance and open-source governance
-- Potential regulatory or clinical-safety work if future product claims require it
+- Potential regulatory/clinical-safety work if future product claims require it
 
 ---
 
 ## 8. Key Metrics
+
+### Data-loop utility
+
+- `manual_export_steps_eliminated`
+- `manual_transcription_steps_eliminated`
+- `manual_file_uploads_required`
+- `source_to_canonical_latency`
+- `source_replay_dedup_accuracy`
+- percentage of accepted imports requiring manual correction
+- percentage of source updates automatically incorporated into surveillance state
+- data-freshness age by facility/source
+
+For the mature production direction, the target user experience is that routine data arrival does not require a human to initiate surveillance processing.
+
+### Surveillance utility
+
+- time from authorized data arrival to updated surveillance state
+- time from data arrival to investigation-priority signal
+- percentage of surveillance refreshes requiring human initiation
+- detector reproducibility across equivalent runs
+- false-positive rate on committed normal/noisy scenarios
+- sensitivity on committed seeded suspicious scenarios
+
+These remain software-evaluation metrics until validated under an appropriate real-world study design.
 
 ### Canonical hero autonomy
 
@@ -268,18 +358,19 @@ human_intervention_count      = 0
 human_active_steps            = 0
 clarification_count           = 0
 approval_click_count          = 0
+manual_continuation_count     = 0
 external_effect_count         = 1
 machine_acknowledgement_count = 1
 ```
 
 - Three consecutive successful deployed hero runs before submission freeze
-- Event-to-signal, signal-to-package, package-to-action, and action-to-acknowledgement latency
-- Successful recovery from restart or redelivery without human intervention
+- Signal-to-package, package-to-action, and action-to-acknowledgement latency
+- Successful recovery from restart/redelivery without human intervention
 
 ### Proof and safety integrity
 
 - Claim-verification pass rate
-- Invalid-reference and fabricated-reference rejection rate
+- Invalid/fabricated-reference rejection rate
 - Unsupported-claim rate
 - Repair success and repair-budget exhaustion rate
 - Percentage of unverified packages reaching A1 policy: target `0`
@@ -287,31 +378,23 @@ machine_acknowledgement_count = 1
 - Non-allow-listed action execution count: target `0`
 - `unsafe_claim_escape_rate`: target `0` on the committed adversarial software suite
 
-The `unsafe_claim_escape_rate` target is a software-suite result, not clinical validation or a universal guarantee that hallucinations are eliminated.
-
-### Deterministic surveillance performance
-
-- Time from data arrival to suspicious signal
-- Detector precision or positive predictive value on seeded scenarios
-- False-positive rate on committed normal/noisy scenarios
-- Sensitivity on committed seeded suspicious scenarios
-- Deterministic result reproducibility across repeated runs
-
-These are offline software-evaluation metrics until validated with appropriate real-world study design. They must not be presented as clinical performance.
-
 ### Workflow utility
 
-- Reference human steps compared with Ngabo hero steps
-- Reference human elapsed time compared with automated elapsed time
-- Manual data-gathering and coordination steps eliminated
+- Reference human active steps versus Ngabo active human steps
+- Reference human elapsed time versus automated elapsed time
+- Manual extraction, cleaning, investigation, drafting, routing, and follow-up steps eliminated
+- Result-to-surveillance latency reduction
+- Signal-to-investigation latency reduction
+- Signal-to-coordination latency reduction
 - Percentage of incidents with complete traceable evidence packages
 - Percentage of external effects with durable intent, delivery result, and machine acknowledgement
 
 ### Adoption and ecosystem, when pilots begin
 
-- Qualified workflow interviews and demonstrations completed
+- Qualified workflow interviews and demonstrations
+- Number and type of source systems successfully mapped in controlled environments
 - Domain-professional contradictions and workflow gaps documented
-- Controlled pilots or research collaborations established
+- Controlled pilots/research collaborations established
 - Repeated usage in an approved evaluation environment
 - Validated integrations and external open-source contributions
 
@@ -319,27 +402,29 @@ These are offline software-evaluation metrics until validated with appropriate r
 
 ## 9. Advantage
 
-Ngabo's defensibility should come from verifiable architecture, workflow depth, evaluation evidence, and trusted integration rather than merely wrapping an LLM.
+Ngabo's defensibility should come from owning the end-to-end surveillance operating loop while preserving existing laboratory infrastructure, not from merely wrapping an LLM or cloning an established AMR dashboard.
 
 ### Tangible advantages being built
 
-- **Proof-Carrying Autonomy:** material model claims carry machine-checkable references and must pass deterministic verification before influencing action
-- **Deterministic/agentic separation:** code owns scientific calculations, routing, verification, authorization, freshness, and idempotency; Gemini handles only bounded ambiguity and synthesis
-- **Closed-loop autonomy:** the target proof covers event, investigation, external effect, and machine acknowledgement with zero human intervention
-- **Safe abstention:** incomplete, stale, unauthorized, or unverifiable cases stop instead of fabricating completion
-- **Open and auditable design:** architecture, safety policy, evaluations, synthetic fixtures, and limitations can be inspected
-- **Non-replacement positioning:** Ngabo operates above existing laboratory and surveillance systems rather than demanding wholesale replacement
+- **Continuous-loop architecture:** ingestion, surveillance, investigation, proof, policy, effect, and acknowledgement are designed as one traceable workflow rather than disconnected tools.
+- **Proof-Carrying Autonomy:** material model claims carry machine-checkable references and must pass deterministic verification before influencing action.
+- **High system autonomy / low model authority:** Ngabo owns workflow progression; Gemini contributes bounded proposals but cannot create canonical truth or action authority.
+- **Deterministic/agentic separation:** code owns scientific calculations, mandatory routing, verification, authorization, freshness, and idempotency.
+- **Replay-safe ingestion foundation:** source identity, hashing, deterministic normalization, deduplication, and canonical provenance reduce the risk that always-on ingestion creates duplicate or inconsistent work.
+- **Closed-loop autonomy:** the target proof covers event, investigation, safe external effect, and machine acknowledgement with zero human continuation.
+- **Safe abstention:** incomplete, stale, unauthorized, or unverifiable cases stop instead of fabricating completion.
+- **Non-replacement integration strategy:** Ngabo is intended to complement ALIS, WHONET, LIS/LIMS, and national platforms rather than force wholesale replacement.
 
 ### Advantages to validate or develop
 
-- Uganda- and Africa-specific workflow knowledge grounded in documented research and partnerships
+- Production-grade governed adapters for ALIS, WHONET/BacLink, LIS/LIMS, watched-folder, instrument-export, and standards-based sources
+- Uganda- and Africa-specific workflow knowledge grounded in direct practitioner validation
 - Institutional trust and integration relationships
-- Validated AMR investigation scenarios and evaluation datasets
-- Facility-specific operational knowledge learned under appropriate governance
-- Standards-based connectors that lower deployment friction
-- Published evidence that Ngabo improves surveillance-to-coordination workflow performance
+- Facility/network-specific operational knowledge learned under governance
+- Multi-site surveillance operations without creating ungoverned cross-facility claims
+- Published evidence that Ngabo reduces recurring surveillance labor and latency
 
-Future advantages must remain hypotheses until supported by implementation, evaluation, partnerships, or measured deployment evidence.
+Future advantages remain hypotheses until supported by implementation, evaluation, partnerships, or measured deployment evidence.
 
 ---
 
@@ -347,18 +432,22 @@ Future advantages must remain hypotheses until supported by implementation, eval
 
 The strongest first user is likely:
 
-> **An AMR surveillance analyst, AMR focal person, or microbiology data manager at a facility that already produces structured AST data but still performs substantial manual work when investigating and coordinating unusual resistance patterns.**
+> **An AMR surveillance focal person, microbiology data manager, microbiologist, or hospital data professional at a referral/sentinel facility that already generates routine AST data but still relies on recurring extraction, conversion, Excel/WHONET preparation, manual surveillance refresh, investigation assembly, and coordination.**
 
 The strongest first institutional environment should have:
 
-- Routine bacterial culture and AST
-- WHONET or another exportable structured microbiology dataset
-- An active microbiology, AMR, IPC, or stewardship function
-- A willingness to begin with synthetic, de-identified, controlled, or shadow-mode evaluation
-- A domain professional able to challenge Ngabo's assumptions, investigation logic, and usefulness
-- An authorized low-consequence integration target for testing safe coordination
+- routine bacterial culture and AST;
+- ALIS, WHONET, LIS/LIMS, BacLink-compatible export, or another structured data source;
+- enough microbiology volume for recurring surveillance work;
+- an active AMR, IPC, AMS, microbiology, or surveillance function;
+- repeated reporting/committee/coordination obligations;
+- a willingness to evaluate an integration layer rather than replace existing systems;
+- controlled/de-identified/shadow-mode data available for validation;
+- an authorized low-consequence coordination target.
 
-This remains a hypothesis until direct user research and controlled evaluation confirm it.
+A second high-value institutional hypothesis is the **AMR surveillance network/programme** rather than one hospital: multi-site data collection compounds extraction, reconciliation, quality, surveillance, and coordination workload and may therefore increase Ngabo's operating frequency and value.
+
+This remains a hypothesis until direct workflow research and controlled evaluation confirm it.
 
 ---
 
@@ -366,86 +455,92 @@ This remains a hypothesis until direct user research and controlled evaluation c
 
 ### Product assumptions to validate
 
-- Surveillance-to-coordination is a meaningful bottleneck after existing tools surface AMR signals
-- Users value an investigation and coordination layer more than another dashboard
-- Available laboratory data contains enough context for useful automated investigation or safe abstention
-- Proof-verified packages are understandable and useful to surveillance professionals
-- A safe A1 autonomous lane removes meaningful manual friction without crossing clinical or official authority boundaries
-- Institutions are willing to evaluate an open-source tool alongside existing workflows
+- Recurring data acquisition/preparation is a meaningful operational burden at target facilities or surveillance programmes.
+- Users prefer an always-on integration/surveillance layer to another dashboard they must operate.
+- Existing ALIS/WHONET/LIS/export workflows provide a practical governed source seam.
+- Continuous surveillance reduces work without creating unacceptable alert fatigue.
+- Enough laboratory context exists for useful automated investigation or safe abstention.
+- Proof-verified packages are understandable and useful to surveillance professionals.
+- Safe A1 automation removes meaningful coordination friction without crossing clinical or official authority boundaries.
+- Institutions are willing to authorize background ingestion and automation under explicit governance.
 
 ### Major risks
 
-- Poor, incomplete, or inconsistent laboratory data
+- Poor, incomplete, delayed, or inconsistent laboratory data
+- Source-system heterogeneity and mapping/configuration burden
+- Offline or poorly connected facilities
+- Manual upstream workflows that cannot yet produce reliable machine-readable data
 - False-positive signals and alert fatigue
 - Fabricated, unsupported, stale, or misclassified model claims
-- Confusion between an investigation candidate and a confirmed outbreak
-- Integration complexity across heterogeneous systems
-- Patient privacy, data-protection, and health-data governance constraints
-- Lack of trust or insufficient workflow utility
-- Ngabo duplicating established local or national functionality
+- Confusion between investigation candidates and confirmed outbreaks
+- Patient privacy, data protection, retention, and data-residency constraints
+- Integration/security resistance from institutional system owners
+- Ngabo duplicating functionality already solved locally
+- Lack of measurable labor/latency savings
 - Insufficient domain, operational, or clinical validation
-- A demo that documents architecture without proving the deployed runtime outcome
+- Submission/demo wording that implies live hospital connectors or clinical validation that do not exist
 
 ### Safety principles
 
-- Deterministic systems own parsing, scientific calculations, routing, verification, action classification, authorization, freshness, and idempotency
-- Gemini cannot promote A2/A3 actions into the A1 autonomous lane
-- Material model claims remain typed, evidence-linked, uncertainty-aware, and machine-verifiable
-- Missing material facts cause safe abstention; they are never invented to preserve autonomy
-- Only authorized A1 safe coordination can auto-execute in the public v0.1 hero
-- Clinical, treatment, official outbreak, and other consequential decisions remain outside autonomous v0.1
-- No real identifiable patient data appears in public repositories, evaluations, or hackathon demonstrations
-- Software evaluation is not represented as clinical validation or regulatory approval
+- Data acquisition must be authorized, source-linked, replay-safe, and privacy governed.
+- Deterministic systems own parsing, scientific calculations, mandatory routing, verification, action classification, authorization, freshness, and idempotency.
+- Gemini cannot create canonical facts, verify itself, promote A2/A3 actions, or produce terminal success authority.
+- Material model claims remain typed, evidence-linked, uncertainty-aware, and machine-verifiable.
+- Missing material facts cause safe abstention; they are never invented to preserve autonomy.
+- Only authorized A1 safe coordination can auto-execute in the public v0.1 hero.
+- Clinical, treatment, official outbreak, and other consequential decisions remain outside autonomous v0.1.
+- No real identifiable patient data appears in public repositories, evaluations, or hackathon demonstrations.
+- Software evaluation is not represented as clinical validation or regulatory approval.
 
 ---
 
 ## 12. Validation Plan
 
-### Phase 0 — Domain and workflow grounding
+### Phase 0 — Workflow and source-system grounding
 
-- Study WHONET workflows, AST interpretation boundaries, AMR surveillance, outbreak investigation, and the relevant Uganda context
-- Interview domain professionals about the actual signal-to-investigation-to-coordination workflow
-- Document existing-system capabilities to prevent unnecessary duplication
-- Separate verified workflow evidence from assumptions and builder interpretations
+- Interview microbiology, AMR surveillance, biostatistics/data, IPC, and AMS professionals about the actual data-to-surveillance-to-coordination workflow.
+- Observe or document where ALIS, WHONET, LIS/LIMS, BacLink, Excel, paper, email, and committee workflows enter the process.
+- Measure recurring extraction, transcription, conversion, cleaning, deduplication, analysis, investigation, and follow-up steps.
+- Identify the highest-frequency safe integration seam rather than assuming one universal hospital architecture.
+- Keep public claims separated into supported evidence, partial support, and hypotheses.
 
-### Phase 1 — Deterministic signal foundation
+### Phase 1 — Deterministic ingestion/signal foundation
 
-- Build representative synthetic WHONET-style fixtures
-- Implement deterministic ingestion, normalization, validation, profile comparison, baselines, windows, and signal logic
-- Certify normal, noisy, malformed, missing, and suspicious seeded scenarios offline
-- Preserve deterministic provenance for every action-relevant finding
+- Maintain representative synthetic WHONET-style fixtures.
+- Preserve deterministic parsing, validation, normalization, hashing, deduplication, canonical import, profile comparison, baselines, windows, and signal logic.
+- Certify normal, noisy, malformed, missing, replay, duplicate, changed-source, and suspicious scenarios offline.
 
-### Phase 2 — Proof-carrying autonomous workflow
+### Phase 2 — Production source-adapter discovery and shadow ingestion
 
-- Prove the selected Google ADK version supports the required structured workflow and verifier-repair loop
-- Implement event-driven fan-out/join orchestration
-- Retrieve only approved provenance-carrying evidence
-- Generate typed proof-carrying packages with explicit uncertainty
-- Verify claims deterministically and repair within a hard budget or abstain
-- Authorize only A1 actions after proof, policy, and freshness gates
-- Execute through a durable idempotent outbox and receive machine acknowledgement
+After the hackathon core is stable:
 
-### Phase 3 — Safety, reliability, and utility evaluation
+- Prototype the smallest real governed adapter path, preferably one that fits existing practice rather than requiring a new hospital workflow.
+- Candidate progression: manual governed export → watched-folder ingestion → scheduled source connector → event/API integration.
+- Compare source-adapter outputs against the existing canonical import boundary.
+- Measure manual steps removed and data-freshness improvement.
+- Do not let integration work bypass canonical validation, source-watermark, deduplication, or privacy boundaries.
 
-- Test A2/A3 blocking, missing-data abstention, unauthorized targets, prompt injection, fabricated references, forbidden claim escalation, stale state, branch failure, restart, and duplicate events
-- Target zero unsafe claim escapes on the committed adversarial software suite
-- Compare the builder's documented reference workflow with the zero-human hero
-- Run three consecutive deployed hero E2Es
-- Record measured outcomes, limitations, and failed scenarios without converting them into stronger claims
+### Phase 3 — Proof-carrying autonomous workflow
 
-### Phase 4 — Professional validation
+- Implement and certify event-driven deterministic fan-out/join.
+- Retrieve only approved provenance-carrying evidence.
+- Generate typed model proposals with explicit uncertainty.
+- Verify claims deterministically and repair under verifier control or abstain.
+- Authorize only A1 action after proof, policy, and freshness gates.
+- Execute through durable idempotent intent/outbox and receive machine acknowledgement.
 
-- Demonstrate Ngabo to qualified microbiology, AMR surveillance, epidemiology, IPC, or AMS professionals
-- Test whether the problem, investigation package, uncertainty, and coordination workflow reflect real practice
-- Document contradictions and workflow gaps instead of defending the prototype
-- Refine the product around validated workflow pain and safe institutional boundaries
+### Phase 4 — Safety, reliability, and operational-utility evaluation
 
-### Phase 5 — Controlled pilot pathway
+- Test A2/A3 blocking, missing-data abstention, unauthorized targets, prompt injection, fabricated references, stale state, branch failure, restart, duplicate events, source replay, and source change.
+- Compare the builder's documented reference workflow with the zero-human hero for hackathon evidence.
+- For later pilots, compare existing facility workflow against Ngabo on recurring manual steps, result-to-surveillance latency, signal-to-investigation latency, and coordination completion.
 
-- Identify a research or institutional partner willing to evaluate de-identified, controlled, or shadow-mode data
-- Define governance, authorization, data protection, success metrics, and stop conditions before integration
-- Compare Ngabo's workflow quality, elapsed time, and manual steps with the existing process
-- Keep real clinical and official public-health decisions under appropriate human and institutional authority
+### Phase 5 — Professional validation and controlled pilot pathway
+
+- Demonstrate Ngabo to qualified microbiology/AMR/data/IPC/AMS professionals.
+- Validate whether recurring data preparation and surveillance maintenance are painful enough to justify adoption.
+- Identify a research/institutional partner willing to evaluate de-identified, controlled, or shadow-mode feeds.
+- Define data governance, intended use, authorization, success metrics, and stop conditions before any live integration.
 
 The implementation roadmap and GitHub issues track delivery status. This canvas records the product hypotheses and evidence required to validate them.
 
@@ -453,57 +548,108 @@ The implementation roadmap and GitHub issues track delivery status. This canvas 
 
 ## 13. MVP Boundary
 
-### Ngabo v0.1 should prove one thing
+### Ngabo v0.1 should prove one complete autonomous operating slice
 
-> **A suspicious synthetic AMR signal can automatically complete event → proof-verified investigation → authorized A1 external action → machine acknowledgement with zero human intervention, while unsafe, incomplete, unverifiable, A2, and A3 cases are blocked or safely abstain.**
+> **A synthetic WHONET-style microbiology source can deterministically produce a surveillance signal that automatically completes event → proof-carrying investigation proposal → deterministic verification → authorized A1 external action → machine acknowledgement with zero human intervention, while unsafe, incomplete, unverifiable, A2, and A3 cases block or safely abstain.**
 
-### In scope
+### In scope for the hackathon release
 
-- Representative synthetic WHONET-style input
-- Deterministic validation, normalization, surveillance, and missingness assessment
-- Pub/Sub-triggered Google ADK workflow
+- Representative synthetic WHONET-style source
+- Deterministic parsing, validation, normalization, source hashing, replay/deduplication, surveillance, and missingness assessment
+- Event-triggered Google ADK workflow without chat/prompt
 - Deterministic parallel investigation and join semantics
 - Bounded Gemini reasoning and approved evidence retrieval
-- Typed proof-carrying claims and deterministic verification
-- Bounded automatic repair or safe abstention
+- Typed proof-carrying model proposals and deterministic verification
+- Bounded automatic repair under verifier control or safe abstention
 - Deterministic A1 action policy and allow-list authorization
 - Freshness validation
-- Durable `ActionIntent`, outbox, and stable idempotency key
-- Real authorized external test, sandbox, or internal coordination action
+- Durable `ActionIntent`, outbox, and stable idempotency
+- Real authorized external test/sandbox/internal coordination action
 - Machine acknowledgement
-- Observable UI timeline and zero-human metrics
-- Audit trail and committed safety/reliability evaluation
+- Incident/autonomy console and zero-human metrics
+- Audit trail and safety/reliability evaluation
 
-### Explicitly out of scope for v0.1
+### Explicitly out of scope for the hackathon release unless separately implemented and certified
 
+- Claiming direct production connection to ALIS, WHONET, a hospital LIS/LIMS, or laboratory instrument
+- Real patient/hospital data acquisition
+- Nationwide or multi-site operational deployment
 - Autonomous diagnosis or treatment selection
 - Autonomous outbreak confirmation or official declaration
 - Autonomous A2 real operational escalation
-- Contacting real patients, hospitals, or persons without explicit authorization
-- Replacing WHONET, LIMS, or national surveillance infrastructure
-- Nationwide deployment
-- Real identifiable patient data
-- Full genomic, multimodal, or cross-facility surveillance
-- Dynamic multi-agent specialist fleets or an additional orchestration framework
-- Production medical-device claims, clinical validation claims, or regulatory approval claims
+- Contacting real patients/hospitals/persons without explicit authorization
+- Replacing ALIS, WHONET, LIMS/LIS, or national surveillance infrastructure
+- Full genomic, multimodal, or cross-facility epidemiological surveillance
+- Dynamic multi-agent specialist fleets or a second orchestration framework
+- Clinical-validation, medical-device, or regulatory-approval claims
+
+### Post-v0.1 product hardening frontier
+
+The highest-value next product frontier is the **live acquisition seam**:
+
+```text
+CURRENT
+synthetic WHONET-style source
+→ canonical import
+→ surveillance
+→ investigation
+→ coordination
+
+TARGET
+ALIS / WHONET / LIS / BacLink / authorized export
+→ governed automatic acquisition
+→ canonical import
+→ continuously refreshed surveillance
+→ automatic investigation
+→ safe coordination
+```
+
+The connector must adapt to Ngabo's canonical boundary; it must not weaken the deterministic import contract to fit upstream source inconsistencies.
 
 ---
 
 ## 14. Strategic Thesis
 
-Ngabo is most compelling as **open-source public-health infrastructure with a DeepTech trajectory**, not as a disposable hackathon application.
+Ngabo is most compelling as **always-on public-health surveillance infrastructure with a DeepTech trajectory**, not as another AMR dashboard, reporting tool, AI assistant, or disposable hackathon agent.
 
-The near-term project proves a narrow but complete autonomous workflow: a synthetic surveillance signal triggers a bounded investigation, machine-verifiable claims, deterministic safety policy, one safe external coordination effect, and a machine acknowledgement. It demonstrates operational autonomy without claiming clinical or official authority.
-
-The longer-term opportunity is to make the broader AMR surveillance-to-response chain faster, more structured, more auditable, and less dependent on manually joining partially automated activities:
+The painkiller thesis is not simply that Ngabo produces better insight. It is that recurring human work disappears:
 
 ```text
-AMR data
-→ surveillance signal
-→ proof-verified investigation
-→ safe coordination
-→ appropriately governed human or institutional decision for consequential actions
-→ documented response and learning
+extract / transcribe / upload
+→ clean / map / deduplicate
+→ refresh surveillance
+→ inspect what matters
+→ reconstruct context
+→ find evidence
+→ draft and validate
+→ route
+→ follow up
 ```
 
-Ngabo v0.1 autonomously proves only the safe A1 coordination lane. A2 operational escalation and A3 clinical or official decisions remain governed by authorized people and institutions.
+becomes:
+
+```text
+routine laboratory work
+        ↓
+authorized data arrives
+        ↓
+Ngabo keeps surveillance current
+        ↓
+no material signal → quiet
+        ↓
+meaningful signal → autonomous investigation
+        ↓
+proof verification
+        ↓
+safe coordination
+        ↓
+acknowledgement
+```
+
+The long-term product thesis is:
+
+> **Ngabo keeps the AMR surveillance job done continuously — from routine laboratory data entering the system through detection, investigation, proof verification, safe coordination, and acknowledgement.**
+
+The v0.1 hackathon release proves a narrow but complete autonomous slice using synthetic data. It should be presented truthfully as the architectural and operational proof for this broader direction, not as evidence that production hospital ingestion or clinical effectiveness already exists.
+
+A2 operational escalation and A3 clinical or official decisions remain governed by authorized people and institutions.

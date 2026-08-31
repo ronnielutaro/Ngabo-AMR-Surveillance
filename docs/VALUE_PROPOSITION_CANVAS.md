@@ -1,7 +1,7 @@
 # Ngabo — Value Proposition Canvases
 
-**Product:** Ngabo — Autonomous Antimicrobial Resistance Surveillance & Incident Response  
-**Positioning:** Open-source, event-driven AMR investigation and safe-coordination layer with proof-verified autonomy  
+**Product:** Ngabo — Always-On Antimicrobial Resistance Surveillance & Coordination<br>
+**Positioning:** Product direction: Connect → Watch → Investigate → Coordinate; v0.1 target: synthetic source → proof-verified A1 action → acknowledgement<br>
 **Version:** 0.1  
 **Date:** 2026-08-29  
 **Status:** Product hypothesis and validation guide; not evidence of clinical validation, adoption, or customer demand
@@ -10,15 +10,19 @@
 
 ## Executive Decision
 
-Ngabo has one core value proposition, expressed differently for three participants in the adoption system:
+Ngabo has one product-direction value proposition, expressed differently for three participants in the adoption system:
 
-> **Ngabo turns a suspicious AMR signal into a proof-verified investigation package and one authorized, acknowledged safe-coordination action without replacing the systems that produced the signal.**
+> **Ngabo is designed to remove recurring human glue from governed laboratory data acquisition through deterministic surveillance, automatic investigation, and permitted coordination without replacing the systems that produce or govern the data.**
+
+The current v0.1 target is narrower:
+
+> **The v0.1 target is for a committed synthetic WHONET-style source to produce a deterministic surveillance signal that Ngabo turns into a proof-verified investigation package and one authorized, acknowledged safe-coordination action. Delivery must be supported by runtime evidence; no production laboratory-system connector is claimed.**
 
 The three canvases are:
 
-1. **Primary user:** the microbiology or AMR surveillance professional who must translate a signal into an investigation-ready package and coordinate the next safe step.
+1. **Primary user:** the microbiology or AMR surveillance professional who repeatedly prepares or reviews surveillance data, translates meaningful signals into investigation-ready packages, and coordinates the next safe step.
 2. **Institutional adopter and governor:** the laboratory, hospital, surveillance-programme, research, or public-health leader responsible for workflow performance, safety, accountability, and deployment.
-3. **Platform or implementation partner:** the owner or implementer of WHONET, LIMS, ALIS, LDR, NIAMR, or another governed data platform that may provide signals to Ngabo or receive its verified outputs.
+3. **Platform or implementation partner:** the owner or implementer of WHONET, LIMS, ALIS, LDR, NIAMR, or another governed data platform that may provide authorized exports, records, or signals to Ngabo or receive its verified outputs.
 
 These are related but not interchangeable. A practitioner may use the output, an institution may authorize and fund the deployment, and a platform owner may control integration. Treating them as one generic “AMR user” would hide different jobs, risks, and adoption barriers.
 
@@ -42,6 +46,7 @@ These canvases synthesize:
 
 - [Lean Canvas](LEAN_CANVAS.md);
 - [Competitor and Alternatives Analysis](COMPETITOR_ANALYSIS.md);
+- [User Personas](USER_PERSONAS.md);
 - [BYOF Friction](BYOF_FRICTION.md);
 - [Operational Utility Evaluation](OPERATIONAL_UTILITY_EVALUATION.md);
 - [Product Requirements](PRD.md);
@@ -55,19 +60,30 @@ The competitor research intentionally included complaint-oriented public discuss
 
 ## 2. Shared Product Boundary
 
-### Ngabo starts after a usable signal exists
+### Product direction and v0.1 proof boundary
 
 ```text
-WHONET / LIMS / ALIS / LDR / NIAMR / governed import
-                         ↓
-              suspicious AMR signal
-                         ↓
-                       Ngabo
-                         ↓
-proof-verified investigation package + safe coordination + acknowledgement
+PRODUCT DIRECTION
+ALIS / WHONET / LIS/LIMS / governed export
+→ governed source adapter
+→ canonical surveillance state
+→ deterministic watch / signal
+→ proof-verified investigation
+→ permitted coordination
+→ machine acknowledgement
+
+CURRENT v0.1 CERTIFIED SLICE
+committed synthetic WHONET-style source
+→ deterministic ingestion / surveillance signal
+→ event-driven investigation
+→ proof verification / A1 policy
+→ authorized safe coordination
+→ machine acknowledgement
 ```
 
-Ngabo does not need to replace laboratory data entry, breakpoint management, national aggregation, or existing reporting systems to create value. Its v0.1 wedge is the fragmented work between a suspicious signal and a safe, traceable next step.
+Ngabo does not need to replace laboratory data entry, breakpoint management, national aggregation, or existing reporting systems to create value. Its product direction is the recurring surveillance-to-coordination operating loop. The v0.1 hackathon target uses a synthetic source to demonstrate a bounded complete slice; completion must not be claimed without the required runtime evidence, and no production ALIS, WHONET, LIS/LIMS, instrument, or hospital connector is claimed.
+
+In these canvases, **always-on** means automatically responding to authorized data arrival or scheduled ingestion. It does not imply permanently running compute.
 
 ### Ngabo's value is constrained autonomy
 
@@ -166,7 +182,7 @@ The first user is assumed to work where structured or exportable microbiology da
 
 | Pain | Ngabo response | v0.1 proof required |
 |---|---|---|
-| Fragmented repeated work | Orchestrate the post-signal sequence from event through acknowledgement | Three deployed event-to-ack runs |
+| Fragmented repeated work | Orchestrate the qualifying surveillance event through acknowledgement in v0.1 | Three deployed event-to-ack runs |
 | Manual comparison and context assembly | Run deterministic investigation capabilities and join their typed findings | Value-level detector and graph evidence |
 | Unclear support for conclusions | Attach machine-checkable record, finding, and evidence references | Claim/reference verification suite |
 | Unsafe or fabricated AI output | Fail closed, repair within a fixed budget, or abstain | Adversarial fabricated/forbidden claim tests |
@@ -185,7 +201,7 @@ The first user is assumed to work where structured or exportable microbiology da
 
 ### Fit statement
 
-> **For AMR surveillance professionals who already receive structured laboratory data or suspicious signals, Ngabo assembles a traceable investigation package and completes the next authorized coordination step automatically. Unlike a dashboard or general-purpose AI assistant, it machine-verifies action-relevant claims and applies deterministic safety, freshness, and idempotency gates before acting.**
+> **For AMR surveillance professionals who repeatedly prepare or review structured laboratory surveillance data, Ngabo is designed to keep the surveillance-to-coordination loop moving automatically. The v0.1 target assembles a traceable investigation package after a deterministic signal and completes the next authorized coordination step, while machine-verifying action-relevant claims and applying deterministic safety, freshness, and idempotency gates before acting.**
 
 ### Current alternatives
 
@@ -265,7 +281,7 @@ Possible roles include a laboratory director, AMR programme lead, IPC or AMS lea
 | Uncontrolled action scope | A0/A1/A2/A3 policy keeps A2/A3 outside autonomous v0.1 |
 | Opaque claims | Typed references and verification reports expose support and failure reasons |
 | Duplicate external effects | Durable intent plus idempotent execution and acknowledgement |
-| Replacement risk | Adapter-based post-signal layer complements upstream systems |
+| Replacement risk | Governed adapter and canonical-boundary design complement upstream systems |
 | Demo-to-production confusion | Explicit release ladder from synthetic MVP to shadow-mode and validation |
 | Cloud governance risk | Keyless identity, bounded spend, immutable artifacts, promotion, and rollback |
 
@@ -279,7 +295,7 @@ Possible roles include a laboratory director, AMR programme lead, IPC or AMS lea
 
 ### Fit statement
 
-> **For institutions that want to test autonomous AMR workflow coordination without surrendering clinical or public-health authority, Ngabo provides an open, auditable post-signal layer whose model claims, action eligibility, freshness, and external effects are deterministically governed. It can begin with synthetic or controlled data and mature through evidence-gated evaluation rather than premature production claims.**
+> **For institutions that want to test an always-on AMR surveillance and coordination loop without surrendering clinical or public-health authority, Ngabo provides an open, auditable architecture whose model claims, action eligibility, freshness, and external effects are deterministically governed. Its v0.1 evaluation begins with a bounded synthetic target and can mature toward governed source adapters only through evidence-gated evaluation.**
 
 ### Adoption conditions
 
@@ -326,7 +342,7 @@ Potential contexts include WHONET-based programmes, LIMS or ALIS implementers, U
 
 ### Desired gains
 
-- A complementary post-signal component rather than a replacement data platform.
+- A complementary surveillance-to-coordination component rather than a replacement data platform.
 - Explicit contracts for canonical records, findings, approved evidence, packages, events, and acknowledgements.
 - Traceable provenance from upstream source through downstream claim and action.
 - Deterministic policy preventing a model from converting platform data into unauthorized authority.
@@ -349,7 +365,7 @@ Potential contexts include WHONET-based programmes, LIMS or ALIS implementers, U
 | Partner pain | Ngabo response |
 |---|---|
 | Conflicting source of truth | Canonical references identify ownership, version, and current state |
-| Replacement concern | Ngabo begins from an upstream signal and avoids reproducing full LIMS/WHONET/platform scope |
+| Replacement concern | Ngabo can begin from a governed export or upstream signal and avoids reproducing full LIMS/WHONET/platform scope |
 | Uncontrolled AI interpretation | Approved-source boundary and deterministic claim verification |
 | Weak downstream traceability | Correlation IDs connect event, package, intent, delivery, and acknowledgement |
 | Brittle side effects | Stable ports, durable intent, idempotency, and retry semantics |
@@ -365,7 +381,7 @@ Potential contexts include WHONET-based programmes, LIMS or ALIS implementers, U
 
 ### Fit statement
 
-> **For AMR data and surveillance platforms that already detect or expose suspicious signals, Ngabo provides a modular downstream investigation and safe-coordination layer. It preserves upstream data ownership, verifies model claims against governed references, and returns traceable delivery and acknowledgement evidence without asking the platform to become an autonomous agent.**
+> **For AMR data and surveillance platforms that expose governed exports, records, or suspicious signals, Ngabo is designed to provide a modular surveillance, investigation, and safe-coordination layer. It preserves upstream data ownership, verifies model claims against governed references, and returns traceable delivery and acknowledgement evidence without asking the platform to become an autonomous agent. Production integration remains a hypothesis beyond the synthetic v0.1 target.**
 
 ### Partnership posture
 
@@ -430,7 +446,7 @@ This proves a bounded software workflow over synthetic data. It does not prove t
 
 | Proposition | Current confidence | Why | Next evidence needed |
 |---|---|---|---|
-| Post-signal AMR investigation involves fragmented manual work | Medium | Uganda workflow research and wider practitioner evidence support the direction | Observe and map at least five relevant workflows |
+| The recurring AMR surveillance-to-coordination loop involves fragmented manual work | Medium | Uganda workflow research and wider practitioner evidence support the direction | Observe and map at least five relevant workflows |
 | Existing surveillance tools should be complemented rather than replaced | High | Competitor landscape contains mature free, national, and commercial systems | Confirm integration boundaries with platform owners |
 | A traceable review-ready package would be useful | Medium-low | Logical response to documented friction, but package shape is unvalidated | Package concept test with practitioners |
 | Proof-carrying claims increase trust and actionability | Low-medium | Strong technical rationale; direct user demand is unproven | Compare ordinary AI summary with verified package in interviews/usability tests |
@@ -447,7 +463,7 @@ Ngabo currently has a **clear problem hypothesis and differentiated solution arc
 
 ## 8. Highest-Risk Assumptions and Tests
 
-### Assumption 1 — The package solves a real post-signal job
+### Assumption 1 — The operating loop and package solve a real recurring job
 
 **Risk:** Ngabo may produce a technically impressive artifact that does not match how practitioners decide, communicate, or coordinate.
 
@@ -533,7 +549,7 @@ Ngabo currently has a **clear problem hypothesis and differentiated solution arc
 
 ### Platform partner
 
-> **Ngabo adds a governed post-signal investigation and coordination layer while preserving the upstream platform as canonical data owner.**
+> **Ngabo is designed to add a governed surveillance, investigation, and coordination layer while preserving the upstream platform as canonical data owner. The v0.1 target uses only a synthetic source.**
 
 ### Hackathon judge
 
@@ -545,7 +561,8 @@ Ngabo currently has a **clear problem hypothesis and differentiated solution arc
 
 ### Defensible positioning
 
-- Ngabo focuses on the post-signal investigation and safe-coordination workflow.
+- Ngabo's product direction spans governed connection, deterministic surveillance, investigation, and safe coordination.
+- The public v0.1 target remains a synthetic, bounded source-to-signal-to-ack proof with no production source-system connector; completion requires runtime evidence.
 - Proof-Carrying Autonomy makes action-relevant model claims explicit and machine-checkable where deterministic support exists.
 - Existing laboratory, surveillance, and national platforms are potential upstream systems and partners.
 - The public v0.1 hero is synthetic, bounded, non-clinical, and A1-only.
@@ -587,7 +604,7 @@ Ngabo currently has a **clear problem hypothesis and differentiated solution arc
 
 ### Product-discovery measures
 
-- percentage of interviewed practitioners who recognize the post-signal workflow;
+- percentage of interviewed practitioners who recognize the recurring data-to-surveillance-to-coordination workflow;
 - jobs and pains ranked by observed frequency, severity, and risk;
 - package comprehension and evidence-finding performance;
 - candidate A1 actions accepted or rejected by policy owners;
@@ -623,4 +640,4 @@ documented problem evidence
 
 ## 15. Final Value Proposition
 
-> **Ngabo complements existing AMR surveillance systems by completing the difficult work after a suspicious signal appears. It autonomously assembles deterministic findings and approved evidence into a typed investigation package, machine-verifies every material claim that can affect action, applies institution-governed safety and freshness policy, and completes one authorized coordination effect with acknowledgement. Its immediate promise is a transparent, bounded, reproducible software workflow—not autonomous clinical authority.**
+> **Ngabo is designed to complement existing laboratory and AMR surveillance systems with an always-on operating loop: connect through governed adapters, watch deterministic surveillance state, investigate meaningful signals, and complete only permitted coordination with acknowledgement. Its v0.1 target is narrower: a committed synthetic WHONET-style source should drive a transparent, bounded, reproducible source-to-signal-to-action workflow with proof-verified model claims and no autonomous clinical authority. Completion must be supported by runtime evidence.**
