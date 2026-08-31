@@ -2,9 +2,9 @@
 //
 // Server component: reads the ngabo-core readiness/version payload at request
 // time through the approved API boundary (CORE_API_URL) and renders an
-// honest IN DEVELOPMENT / SYNTHETIC status panel. It must never imply AMR
-// detection, proof verification, autonomous action, or clinical validation
-// exists — the hero workflow is not implemented.
+// honest IN DEVELOPMENT / SYNTHETIC status panel. The Connect timeline renders
+// only persisted workflow events and the current server-reported active stage;
+// it never invents progress or implies clinical validation.
 //
 // State handling is explicit and honest:
 //   - missing config (no CORE_API_URL)  -> MISSING_CONFIG
@@ -81,6 +81,8 @@ type ConnectStatus =
       signalId: string;
       events: ConnectEvent[];
       outcome: string;
+      activeStage?: string;
+      workflowState: string;
       deliveryId?: string;
       ackId?: string;
     };
@@ -97,6 +99,21 @@ const EVENT_LABELS: Record<string, string> = {
   WORKFLOW_HERO_COMPLETED: "Evidence verified and coordination acknowledged",
   WORKFLOW_BLOCKED: "Workflow stopped safely",
 };
+
+const WORKFLOW_STAGES = [
+  { event: "LAB_BATCH_SYNCED", active: "Receiving the laboratory export" },
+  { event: "CLEANING_STARTED", active: "Cleaning the laboratory records" },
+  { event: "VALIDATION_COMPLETED", active: "Validating required surveillance fields" },
+  { event: "NORMALIZATION_COMPLETED", active: "Standardizing accepted records" },
+  { event: "QUARANTINE_COMPLETED", active: "Separating records that need review" },
+  { event: "SURVEILLANCE_REFRESHED", active: "Refreshing canonical surveillance state" },
+  { event: "SIGNAL_DETECTED", active: "Evaluating resistance signals" },
+  { event: "INVESTIGATION_STARTED", active: "Loading the governed investigation context" },
+  {
+    event: "WORKFLOW_HERO_COMPLETED",
+    active: "Grounding evidence, verifying claims and coordinating safely",
+  },
+] as const;
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
@@ -280,12 +297,15 @@ function parseConnectStatus(value: unknown): ConnectStatus {
   const receivedCount = asNumber(record.received_count);
   const acceptedCount = asNumber(record.accepted_count);
   const quarantinedCount = asNumber(record.quarantined_count);
+  const activeStage = isNonEmptyString(record.active_stage)
+    ? record.active_stage
+    : undefined;
   if (
     !isNonEmptyString(record.lab_id) ||
     receivedCount === null ||
     acceptedCount === null ||
     quarantinedCount === null ||
-    events.length === 0
+    (events.length === 0 && activeStage === undefined)
   ) {
     return { kind: "DEGRADED", detail: "incomplete /connect/status payload" };
   }
@@ -300,6 +320,10 @@ function parseConnectStatus(value: unknown): ConnectStatus {
     outcome: isNonEmptyString(heroRecord.outcome)
       ? heroRecord.outcome
       : "IN_PROGRESS",
+    ...(activeStage ? { activeStage } : {}),
+    workflowState: isNonEmptyString(record.workflow_state)
+      ? record.workflow_state
+      : "RUNNING",
     ...(isNonEmptyString(heroRecord.delivery_id)
       ? { deliveryId: heroRecord.delivery_id }
       : {}),
@@ -452,6 +476,15 @@ function ConnectTimeline({ status }: { status: ConnectStatus }) {
     );
   }
   const completed = status.outcome === "HERO_COMPLETED";
+  const completedEvents = new Set(status.events.map((event) => event.event));
+  const completedStages = WORKFLOW_STAGES.filter((stage) =>
+    completedEvents.has(stage.event),
+  ).length;
+  const progress = Math.round(
+    ((completedStages + (status.activeStage ? 0.5 : 0)) /
+      WORKFLOW_STAGES.length) *
+      100,
+  );
   return (
     <section className="mx-auto max-w-4xl rounded-2xl border border-zinc-200 bg-white p-7 text-left shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -471,16 +504,66 @@ function ConnectTimeline({ status }: { status: ConnectStatus }) {
         <Metric label="accepted" value={status.acceptedCount} />
         <Metric label="quarantined" value={status.quarantinedCount} />
       </div>
+      <div className="mt-7">
+        <div className="mb-2 flex items-center justify-between text-xs font-medium text-zinc-500">
+          <span>{completed ? "Workflow complete" : "Autonomous workflow in progress"}</span>
+          <span>{Math.min(progress, 100)}%</span>
+        </div>
+        <div className="h-2 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
+          <div
+            className={`h-full rounded-full transition-all duration-700 ${completed ? "bg-emerald-500" : "bg-violet-600"}`}
+            style={{ width: `${Math.min(progress, 100)}%` }}
+          />
+        </div>
+      </div>
       <ol className="mt-7 space-y-3">
-        {status.events.map((event, index) => (
-          <li key={`${event.event}-${index}`} className="flex items-center gap-3 rounded-xl bg-zinc-50 px-4 py-3 dark:bg-zinc-900">
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-sm font-bold text-white">✓</span>
-            <div>
-              <p className="font-medium">{EVENT_LABELS[event.event] ?? event.event}</p>
-              <p className="font-mono text-[11px] text-zinc-500">{event.event}</p>
-            </div>
-          </li>
-        ))}
+        {WORKFLOW_STAGES.map((stage, index) => {
+          const isDone = completedEvents.has(stage.event);
+          const isActive = status.activeStage === stage.event;
+          return (
+            <li
+              key={stage.event}
+              className={`relative overflow-hidden rounded-xl border px-4 py-3 transition-all duration-500 ${
+                isDone
+                  ? "border-emerald-200 bg-emerald-50/70 dark:border-emerald-900 dark:bg-emerald-950/20"
+                  : isActive
+                    ? "border-violet-400 bg-violet-50 shadow-md shadow-violet-100 dark:bg-violet-950/30 dark:shadow-none"
+                    : "border-zinc-200 bg-zinc-50 opacity-55 dark:border-zinc-800 dark:bg-zinc-900"
+              }`}
+            >
+              {isActive ? (
+                <div className="absolute inset-x-0 bottom-0 h-1 overflow-hidden bg-violet-100 dark:bg-violet-950">
+                  <div className="h-full w-1/2 animate-pulse rounded-full bg-violet-600" />
+                </div>
+              ) : null}
+              <div className="flex items-center gap-3">
+                {isDone ? (
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-sm font-bold text-white">✓</span>
+                ) : isActive ? (
+                  <span
+                    aria-label={`${stage.event} in progress`}
+                    className="h-8 w-8 shrink-0 animate-spin rounded-full border-4 border-violet-200 border-t-violet-600"
+                  />
+                ) : (
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-zinc-300 text-xs font-semibold text-zinc-400">
+                    {index + 1}
+                  </span>
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="font-medium">
+                      {isActive ? stage.active : EVENT_LABELS[stage.event]}
+                    </p>
+                    <span className={`text-[10px] font-semibold uppercase tracking-wider ${isDone ? "text-emerald-700" : isActive ? "text-violet-700" : "text-zinc-400"}`}>
+                      {isDone ? "Complete" : isActive ? "Working" : "Pending"}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 font-mono text-[11px] text-zinc-500">{stage.event}</p>
+                </div>
+              </div>
+            </li>
+          );
+        })}
       </ol>
       {completed && status.deliveryId && status.ackId ? (
         <div className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
