@@ -31,6 +31,7 @@ from ngabo.application.use_cases.compare_resistance_profiles import (
 )
 from ngabo.application.use_cases.get_baseline_summary import GetBaselineSummary
 from ngabo.application.use_cases.get_investigation_context import GetInvestigationContext
+from ngabo.application.value_objects.evidence_search import EvidenceSearchHit
 from ngabo.application.value_objects.incident_package import IncidentPackageCandidate
 from ngabo.application.value_objects.investigation_context import StoredIncidentContext
 from ngabo.application.value_objects.investigation_execution import (
@@ -196,9 +197,7 @@ def _three_isolate_hero_result() -> EventInvocationResult:
     return result
 
 
-def _approved_hit(content: str = "Contact precautions and hand hygiene.") -> object:
-    from ngabo.application.value_objects.evidence_search import EvidenceSearchHit
-
+def _approved_hit(content: str = "Contact precautions and hand hygiene.") -> EvidenceSearchHit:
     return EvidenceSearchHit(
         reference_id=EvidenceReferenceId("WHO-AMR-001::ipc-principle-01"),
         source_id=EvidenceSourceId("WHO-AMR-001"),
