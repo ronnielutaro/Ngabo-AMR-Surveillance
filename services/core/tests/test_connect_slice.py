@@ -11,6 +11,7 @@ from ngabo.application.connect.contracts import (
     QuarantinedRecord,
 )
 from ngabo.application.connect.source_profile import WHONET_DEMO_V1, clean_rows
+from ngabo.application.connect.processor import process_connect_csv
 from ngabo.infrastructure.connect.connect_queue import ConnectQueue
 from ngabo.infrastructure.connect.hmac_auth import compute_signature, verify_upload
 
@@ -58,7 +59,7 @@ def test_fixture_receives_accepts_and_quarantines_real_counts() -> None:
 
 def test_normalizer_maps_to_canonical_science() -> None:
     accepted, _, _ = clean_rows(_rows(), WHONET_DEMO_V1)
-    accept_031 = next(r for r in accepted if r.isolate_id == "WHN-031")
+    accept_031 = next(r for r in accepted if r.isolate_id == "ISO-031")
     assert accept_031.organism_code == "kle"
     assert accept_031.organism_name == "Klebsiella pneumoniae"
     assert accept_031.collection_date == "2026-08-31"
@@ -150,3 +151,32 @@ def test_hmac_auth_accepts_valid_and_rejects_tampered() -> None:
         now=1700000000.0,
     )
     assert ok is False and err == "sha256 mismatch"
+
+
+def test_connect_bridge_cleans_detects_signal_and_hands_off() -> None:
+    path = REPO_ROOT / "demo" / "connect" / "synthetic_gulu_surveillance_export.csv"
+    raw = path.read_bytes()
+    hero_commands: list[dict[str, object]] = []
+
+    def fake_hero(command: dict[str, object]) -> dict[str, object]:
+        hero_commands.append(command)
+        return {"outcome": "HERO_COMPLETED", "ack_verified": True}
+
+    result = process_connect_csv(
+        raw,
+        lab_id="synthetic-lab-gulu",
+        source_id="whonet-demo",
+        window_end_iso="2026-08-31",
+        execute_hero=fake_hero,
+    )
+    assert result["received_count"] == 4
+    assert result["accepted_count"] == 3
+    assert result["quarantined_count"] == 1
+    assert result["signal_count"] == 1
+    assert result["signal_id"]
+    assert len(hero_commands) == 1
+    assert hero_commands[0]["incident_version"] == 1
+    event_names = [e["event"] for e in result["events"]]
+    assert "SIGNAL_DETECTED" in event_names
+    assert "INVESTIGATION_STARTED" in event_names
+    assert "WORKFLOW_HERO_COMPLETED" in event_names
