@@ -157,6 +157,15 @@ def test_hmac_auth_accepts_valid_and_rejects_tampered() -> None:
         now=1700000000.0,
     )
     assert ok is True and err is None
+    ok, err = verify_upload(
+        headers={key.lower(): value for key, value in headers.items()},
+        body=body,
+        secret=secret,
+        configured_lab_ids={"synthetic-lab-gulu"},
+        configured_source_ids={"whonet-demo"},
+        now=1700000000.0,
+    )
+    assert ok is True and err is None
     # Tampered body -> sha256 mismatch.
     ok, err = verify_upload(
         headers=headers,
