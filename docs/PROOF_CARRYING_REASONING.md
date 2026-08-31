@@ -382,6 +382,18 @@ domain/
 
 Outer infrastructure may parse Gemini output into application DTOs, but the policy deciding whether references/claim types are valid must not depend on Gemini, ADK, Firestore or FastAPI classes.
 
+**Incident package contract (#52).** `IncidentPackageCandidate`
+(`application/value_objects/incident_package.py`) is the framework-free,
+versioned proposal contract that sits between the deterministic investigation
+capabilities + approved evidence retrieval + Gemini synthesis (upstream) and
+`VerifyReasoningClaims` (downstream). It reuses the #28 claim/reference types
+and carries package/incident/source-watermark identity plus descriptive policy
+and model metadata. It is a **candidate/proposal only**: it is structurally
+incapable of declaring itself verified, approved, or action-authorized, and no
+verification/report state (see §7) exists inside the proposed package.
+Verification and authorization outcomes are produced downstream — never by the
+model-proposed package.
+
 ---
 
 ## 12. Observability

@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ngabo.local/schemas/incident_package.schema.json",
+  "title": "Ngabo Incident Package Candidate",
+  "description": "Framework-free versioned proof-carrying incident package proposal (Issue #52). Strict allowlist; it is a candidate and carries no verified/authorized/executed state.",
+  "type": "object",
+  "required": [
+    "package_id",
+    "package_contract_version",
+    "incident_id",
+    "incident_version",
+    "source_watermark",
+    "metadata",
+    "claims"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "package_id": { "type": "string", "pattern": "^PKG-\\d+$" },
+    "package_contract_version": { "type": "string", "const": "1.0" },
+    "incident_id": { "type": "string", "pattern": "^INC-\\d+$" },
+    "incident_version": { "type": "integer", "minimum": 1 },
+    "source_watermark": { "type": "string", "minLength": 1 },
+    "metadata": { "$ref": "#/$defs/metadata" },
+    "claims": { "type": "array", "items": { "$ref": "#/$defs/claim" } },
+    "uncertainties": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "limitations": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "draft_coordination_message": {
+      "anyOf": [{ "$ref": "#/$defs/draft" }, { "type": "null" }]
+    }
+  },
+  "$defs": {
+    "metadata": {
+      "type": "object",
+      "required": [
+        "policy_config_version",
+        "model_identifier",
+        "model_version",
+        "evidence_binding"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "policy_config_version": { "type": "string", "minLength": 1 },
+        "model_identifier": { "type": "string", "minLength": 1 },
+        "model_version": { "type": "string", "minLength": 1 },
+        "generation_run_id": { "type": ["string", "null"], "minLength": 1 },
+        "evidence_binding": { "$ref": "#/$defs/evidence_binding" }
+      }
+    },
+    "evidence_binding": {
+      "type": "object",
+      "required": [
+        "corpus_id",
+        "manifest_version",
+        "corpus_digest",
+        "evidence_references"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "corpus_id": { "type": "string", "minLength": 1 },
+        "manifest_version": { "type": "string", "minLength": 1 },
+        "corpus_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "evidence_references": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9-]*::[A-Za-z0-9][A-Za-z0-9_-]*$"
+          }
+        }
+      }
+    },
+    "claim": {
+      "type": "object",
+      "required": ["claim_id", "claim_type", "statement"],
+      "additionalProperties": false,
+      "properties": {
+        "claim_id": { "type": "string", "pattern": "^claim-\\d+$" },
+        "claim_type": {
+          "type": "string",
+          "enum": [
+            "OBSERVED_FACT",
+            "DERIVED_FINDING",
+            "EVIDENCE_STATEMENT",
+            "HYPOTHESIS",
+            "ACTION_JUSTIFICATION"
+          ]
+        },
+        "statement": { "type": "string", "minLength": 1 },
+        "supporting_record_refs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/record_ref" }
+        },
+        "supporting_finding_refs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/finding_ref" }
+        },
+        "supporting_evidence_refs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/evidence_ref" }
+        },
+        "supporting_claim_ids": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^claim-\\d+$" }
+        },
+        "contradicting_claim_ids": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^claim-\\d+$" }
+        },
+        "uncertainties": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "confidence_label": { "type": ["string", "null"], "minLength": 1 },
+        "requested_action_class": {
+          "anyOf": [
+            { "type": "string", "enum": ["A0", "A1", "A2", "A3"] },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "record_ref": {
+      "type": "object",
+      "required": ["record_id", "field_path", "expected_value"],
+      "additionalProperties": false,
+      "properties": {
+        "record_id": { "type": "string", "minLength": 1 },
+        "field_path": { "type": "string", "minLength": 1 },
+        "expected_value": { "type": "string", "minLength": 1 }
+      }
+    },
+    "finding_ref": {
+      "type": "object",
+      "required": ["finding_id", "policy_version", "input_refs", "output_value"],
+      "additionalProperties": false,
+      "properties": {
+        "finding_id": { "type": "string", "minLength": 1 },
+        "policy_version": { "type": "string", "minLength": 1 },
+        "input_refs": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "output_value": { "type": "string", "minLength": 1 }
+      }
+    },
+    "evidence_ref": {
+      "type": "object",
+      "required": ["source_id", "provenance", "support"],
+      "additionalProperties": false,
+      "properties": {
+        "source_id": { "type": "string", "minLength": 1 },
+        "chunk_id": { "type": ["string", "null"], "minLength": 1 },
+        "provenance": { "type": "string", "minLength": 1 },
+        "support": { "type": "string", "minLength": 1 }
+      }
+    },
+    "draft": {
+      "type": "object",
+      "required": ["subject", "body", "intended_purpose", "candidate_recipient_role"],
+      "additionalProperties": false,
+      "properties": {
+        "subject": { "type": "string", "minLength": 1 },
+        "body": { "type": "string", "minLength": 1 },
+        "intended_purpose": { "type": "string", "minLength": 1 },
+        "candidate_recipient_role": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}
