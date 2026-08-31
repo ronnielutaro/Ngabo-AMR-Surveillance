@@ -19,7 +19,7 @@ contracts. The production entry point ``ngabo-http`` runs uvicorn bound to
 from __future__ import annotations
 
 import os
-from typing import Final
+from typing import Final, Protocol, runtime_checkable
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -27,7 +27,6 @@ from fastapi.responses import JSONResponse
 from ngabo.application.value_objects.investigation_execution import (
     EventInvestigationCommand,
 )
-from ngabo.bootstrap.hero import HeroComposition
 from ngabo.interfaces.health import health, readiness, runtime_identity
 
 SERVICE_NAME: Final[str] = "ngabo-core"
@@ -42,12 +41,25 @@ app = FastAPI(
     ),
 )
 
+
+@runtime_checkable
+class HeroCompositionProtocol(Protocol):
+    """The deployed hero application seam, injected by the bootstrap layer.
+
+    Defined here (never imported from bootstrap) so ``interfaces`` preserves the
+    Clean Architecture dependency direction: interfaces never import bootstrap.
+    """
+
+    def execute(self, command: EventInvestigationCommand) -> object:
+        ...
+
+
 # Composition seam: set at deploy (or in tests) to a concrete HeroComposition. If
 # unset, a real composition is built lazily on first /surveillance request.
-hero_composition: HeroComposition | None = None
+hero_composition: HeroCompositionProtocol | None = None
 
 
-def _hero() -> HeroComposition:
+def _hero() -> HeroCompositionProtocol:
     global hero_composition
     if hero_composition is None:
         # Deploy passes a real composition here; the default is deliberately null
