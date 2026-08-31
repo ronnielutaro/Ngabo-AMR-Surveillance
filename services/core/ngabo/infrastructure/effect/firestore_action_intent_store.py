@@ -38,7 +38,15 @@ class FirestoreActionIntentStore:
     def _doc_id(self, idempotency_key: str) -> str:
         return hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()
 
-    def reserve(self, intent: HeroActionIntent) -> IntentReservation:
+    def reserve(
+        self,
+        intent: HeroActionIntent,
+        *,
+        lease_ttl_seconds: float = 30.0,
+        max_retries: int = 2,
+        now: float | None = None,
+    ) -> IntentReservation:
+        del lease_ttl_seconds, max_retries, now
         from google.api_core.exceptions import (  # type: ignore[import-untyped]
             AlreadyExists,
         )

@@ -9,32 +9,9 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 from dataclasses import dataclass
 
-# Reject the prohibited authority concepts in ordinary spaced/inflected form
-# (not only internal enum-like tokens), scoped to the narrative payload so the
-# #56 false-positive bug is not recreated.
-# Reject the prohibited authority concepts in ordinary spaced/inflected form
-# (not only internal enum-like tokens), scoped to the narrative payload so the
-# #56 false-positive bug is not recreated. Stems match at a word boundary with no
-# trailing boundary; phrases match the whole phrase with a trailing boundary.
-_A1_FORBIDDEN_RE = re.compile(
-    r"(?:\b(?:diagnos|prescrib|treat|authoriz|approv|verif))"
-    r"|(?:\b(?:"
-    r"outbreak\s+(?:is\s+)?confirmed"
-    r"|confirm(?:ed)?\s+(?:(?:an?|the)\s+)?outbreak"
-    r"|declare[ds]?\s+(?:an?\s+)?outbreak"
-    r"|outbreak\s+declaration|outbreak_confirmed"
-    r"|mandatory\s+containment|containment\s+order|mandatory_containment"
-    r"|official\s+public\s+health\s+(?:declaration|declar)"
-    r"|public\s+health\s+declaration"
-    r"|notify\s+(?:the\s+)?(?:hospital|health\s+department|facility)"
-    r"|action_ready|acknowledged"
-    r"|send\s+samples\s+for\s+(?:treatment|testing)"
-    r")\b)",
-    re.I,
-)
+from ngabo.application.services.authority_guard import contains_forbidden_authority
 
 
 def _require_nonblank(value: object, label: str) -> str:
@@ -80,6 +57,6 @@ def validate_coordination_message(message: str) -> tuple[bool, str | None]:
         return False, "coordination message must be text"
     if not message.strip():
         return False, "coordination message must be non-blank"
-    if _A1_FORBIDDEN_RE.search(message):
+    if contains_forbidden_authority(message):
         return False, "coordination message contains forbidden authority wording"
     return True, None

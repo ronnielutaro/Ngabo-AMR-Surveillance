@@ -209,7 +209,9 @@ class HeroOrchestrator:
         try:
             delivery = self._effect_port.deliver(intent, payload)
         except Exception:
-            self._intent_store.record_state(intent, IntentState.FAILED)
+            # Transient delivery failure: mark RETRYABLE so a bounded redelivery
+            # can reacquire the SAME logical intent + idempotency key.
+            self._intent_store.record_state(intent, IntentState.RETRYABLE)
             return self._terminal(
                 HeroOutcome.FAILED,
                 events,

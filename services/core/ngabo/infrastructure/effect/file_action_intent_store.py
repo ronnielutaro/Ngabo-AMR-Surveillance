@@ -33,7 +33,15 @@ class FileActionIntentStore:
         digest = hashlib.sha256(key.encode("utf-8")).hexdigest()
         return self._root / f"{digest}.json"
 
-    def reserve(self, intent: HeroActionIntent) -> IntentReservation:
+    def reserve(
+        self,
+        intent: HeroActionIntent,
+        *,
+        lease_ttl_seconds: float = 30.0,
+        max_retries: int = 2,
+        now: float | None = None,
+    ) -> IntentReservation:
+        del lease_ttl_seconds, max_retries, now  # dev/offline store: no cross-run lease
         path = self._path(intent.idempotency_key)
         desired = _record(intent, IntentState.DISPATCHED, None)
         try:
