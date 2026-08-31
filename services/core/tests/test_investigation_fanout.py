@@ -1058,3 +1058,21 @@ class TestRunStateCleanup:
             result = runtime.execute(_command())
             assert result.outcome is InvestigationExecutionOutcome.BLOCKED
             self._assert_empty(runtime)
+
+    def test_timeout_terminal_cleans_run_scoped_state(self) -> None:
+        import time
+
+        def slow(query: GetBaselineSummaryQuery) -> BaselineSummaryResult:
+            del query
+            time.sleep(2.0)
+            raise AssertionError("should never return")
+
+        runtime = _runtime(
+            get_baseline_summary=slow,
+            budget=_budget(max_runtime_seconds=0.8),
+        )
+        for _ in range(5):
+            result = runtime.execute(_command())
+            assert result.outcome is InvestigationExecutionOutcome.FAILED
+            assert result.failure_code is InvestigationExecutionErrorCode.EXECUTION_TIMEOUT
+            self._assert_empty(runtime)
