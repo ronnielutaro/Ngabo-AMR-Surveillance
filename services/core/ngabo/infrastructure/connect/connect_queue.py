@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import sqlite3
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -33,17 +34,25 @@ CREATE TABLE IF NOT EXISTS connect_queue (
 class ConnectQueue:
     """Restart-safe SQLite-backed connect queue."""
 
-    def __init__(self, db_path: Path, *, max_attempts: int = 5, backoff_base: float = 2.0) -> None:
+    def __init__(
+        self,
+        db_path: Path,
+        *,
+        max_attempts: int = 5,
+        backoff_base: float = 2.0,
+        now: Callable[[], float] | None = None,
+    ) -> None:
         self._db = sqlite3.connect(str(db_path))
         self._db.row_factory = sqlite3.Row
         self._db.executescript(_SCHEMA)
         self._db.commit()
         self._max_attempts = max_attempts
         self._backoff_base = backoff_base
+        self._now = now if now is not None else time.time
 
     def add(self, *, file_path: str, file_sha256: str, lab_id: str, source_id: str) -> int:
         """Insert one logical upload; de-duplicate by SHA-256."""
-        now = time.time()
+        now = self._now()
         self._db.execute(
             "INSERT OR IGNORE INTO connect_queue "
             "(file_path, file_sha256, lab_id, source_id, status, attempt_count, "
@@ -60,7 +69,7 @@ class ConnectQueue:
         row = self._db.execute(
             "SELECT * FROM connect_queue WHERE status IN ('QUEUED','RETRYING') "
             "AND next_attempt_at <= ? ORDER BY id LIMIT 1",
-            (time.time(),),
+            (self._now(),),
         ).fetchone()
         return dict(row) if row is not None else None
 
@@ -74,7 +83,7 @@ class ConnectQueue:
         self._db.execute(
             "UPDATE connect_queue SET status='ACKNOWLEDGED', acknowledged_at=?, "
             "remote_batch_id=?, last_error=NULL WHERE id=?",
-            (time.time(), remote_batch_id, item_id),
+            (self._now(), remote_batch_id, item_id),
         )
         self._db.commit()
 
@@ -90,7 +99,7 @@ class ConnectQueue:
         self._db.execute(
             "UPDATE connect_queue SET status='RETRYING', attempt_count=attempt_count+1, "
             "next_attempt_at=?, last_error=? WHERE id=?",
-            (time.time() + delay, error, item_id),
+            (self._now() + delay, error, item_id),
         )
         self._db.commit()
 

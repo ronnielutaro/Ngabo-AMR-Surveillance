@@ -101,7 +101,20 @@ def test_queue_dedupes_and_acks(tmp_path: Path) -> None:
 
 
 def test_queue_bounded_retry(tmp_path: Path) -> None:
-    queue = ConnectQueue(tmp_path / "connect2.db", max_attempts=3, backoff_base=2.0)
+    class _Clock:
+        def __init__(self, start: float = 1000.0) -> None:
+            self.t = start
+
+        def __call__(self) -> float:
+            return self.t
+
+    clock = _Clock()
+    queue = ConnectQueue(
+        tmp_path / "connect2.db",
+        max_attempts=3,
+        backoff_base=2.0,
+        now=clock,
+    )
     queue.add(
         file_path=str(tmp_path / "c.csv"),
         file_sha256="b" * 64,
@@ -113,6 +126,8 @@ def test_queue_bounded_retry(tmp_path: Path) -> None:
         assert due is not None
         queue.mark_syncing(due["id"])
         queue.mark_retry(due["id"], "transport error")
+        # Advance past the exponential backoff so the item is due again.
+        clock.t += 3600.0
     assert queue.next_due() is None  # retry budget exhausted -> FAILED
     queue.close()
 
