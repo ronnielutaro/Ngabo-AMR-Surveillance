@@ -25,6 +25,9 @@ from __future__ import annotations
 import re
 
 from ngabo.application.enums.hero_error_code import HeroErrorCode
+from ngabo.application.services.authority_guard import (
+    asserts_forbidden_authority_or_completion,
+)
 from ngabo.application.value_objects.hero_support_context import HeroSupportContext
 from ngabo.application.value_objects.hero_verification import (
     HeroVerificationError,
@@ -36,31 +39,6 @@ from ngabo.domain.enums.claim_type import ClaimType
 from ngabo.domain.value_objects.reasoning_claim import ReasoningClaim
 
 URL_RE = re.compile(r"https?://|www\.|\b[a-z0-9.-]+\.(?:com|org|net|edu|gov|io)\b", re.I)
-
-FORBIDDEN_AUTHORITY_TOKENS = (
-    "VERIFIED",
-    "APPROVED",
-    "APPROVE",
-    "AUTHORIZED",
-    "AUTHORIZE",
-    "ACTION_READY",
-    "AUTO_EXECUTE_A1",
-    "OUTBREAK_CONFIRMED",
-    "DIAGNOSIS",
-    "PRESCRIPTION",
-    "MANDATORY_CONTAINMENT",
-    "OFFICIAL_PUBLIC_HEALTH_DECLARATION",
-    "PACKAGE_COMPLETED",
-    "INVESTIGATION_COMPLETE",
-    "DELIVERED",
-    "ACKNOWLEDGED",
-    "NO_ACTION_NEEDED",
-    "ESCALATE",
-)
-_FORBIDDEN_AUTHORITY_RE = re.compile(
-    r"\b(?:" + "|".join(re.escape(tok) for tok in FORBIDDEN_AUTHORITY_TOKENS) + r")\b",
-    re.I,
-)
 
 # Families an ACTION_JUSTIFICATION may build on. Justifications never support
 # further justifications, and hypotheses are provisional (not proof) so they
@@ -168,7 +146,7 @@ class VerifyHeroPackage:
                     claim_id,
                 )
             )
-        if _FORBIDDEN_AUTHORITY_RE.search(claim.statement):
+        if asserts_forbidden_authority_or_completion(claim.statement):
             errors.append(
                 HeroVerificationError(
                     HeroErrorCode.VERIFICATION_FAILED,
@@ -235,7 +213,68 @@ class VerifyHeroPackage:
         errors.extend(self._record_value_errors(claim, context))
         errors.extend(self._finding_value_errors(claim, context))
         errors.extend(self._evidence_value_errors(claim, context))
+        support_error = self._statement_support_error(claim)
+        if support_error is not None:
+            errors.append(support_error)
         return errors
+
+    def _statement_support_error(
+        self,
+        claim: ReasoningClaim,
+    ) -> HeroVerificationError | None:
+        """Ensure a claim statement is grounded in its support material.
+
+        The canonical hero must not let a free-text statement claim a fact that
+        its references do not support. We conservatively require the statement to
+        mention at least one of its support identifiers/values; if it cannot be
+        related to its proof, the verifier abstains. This is intentionally narrower
+        than full semantic proof resolution (#57+).
+        """
+        statement = claim.statement
+        family = claim.claim_type
+        if family is ClaimType.ACTION_JUSTIFICATION:
+            # Grounding is via the (verified) supporting claims, checked elsewhere.
+            return None
+        if family is ClaimType.OBSERVED_FACT:
+            for record_ref in claim.supporting_record_refs:
+                # The statement must assert the referenced field/value, not merely
+                # mention the record id, and must not smuggle a second independent
+                # clause (e.g. '...; ten isolates were collected in Ward Z') the
+                # reference does not support. Full structured proposition
+                # resolution is #57/#58.
+                if (
+                    record_ref.record_id in statement
+                    and record_ref.field_path in statement
+                    and record_ref.expected_value in statement
+                    and ";" not in statement
+                ):
+                    return None
+        elif family is ClaimType.DERIVED_FINDING:
+            for finding_ref in claim.supporting_finding_refs:
+                if (
+                    finding_ref.finding_id in statement
+                    and finding_ref.output_value in statement
+                ):
+                    return None
+        elif family is ClaimType.EVIDENCE_STATEMENT:
+            for evidence_ref in claim.supporting_evidence_refs:
+                if evidence_ref.source_id in statement and (
+                    evidence_ref.chunk_id is None or evidence_ref.chunk_id in statement
+                ):
+                    return None
+        else:  # HYPOTHESIS: supporting refs optional; if present must be grounded.
+            tokens = (
+                [record_ref.record_id for record_ref in claim.supporting_record_refs]
+                + [finding_ref.finding_id for finding_ref in claim.supporting_finding_refs]
+                + [evidence_ref.source_id for evidence_ref in claim.supporting_evidence_refs]
+            )
+            if not tokens or any(token and token in statement for token in tokens):
+                return None
+        return HeroVerificationError(
+            HeroErrorCode.VERIFICATION_FAILED,
+            "claim statement does not assert its referenced support material",
+            claim.claim_id.value,
+        )
 
     def _record_value_errors(
         self,

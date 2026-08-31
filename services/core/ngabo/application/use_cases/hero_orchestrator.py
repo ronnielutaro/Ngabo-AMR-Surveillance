@@ -205,11 +205,18 @@ class HeroOrchestrator:
                 decision=decision,
                 intent=intent,
             )
+        lease_token = reservation.lease_token
+        if lease_token is None:
+            raise RuntimeError("an owned reservation must carry a lease_token")
 
         try:
             delivery = self._effect_port.deliver(intent, payload)
         except Exception:
-            self._intent_store.record_state(intent, IntentState.FAILED)
+            # Transient delivery failure: mark RETRYABLE so a bounded redelivery
+            # can reacquire the SAME logical intent + idempotency key.
+            self._intent_store.record_state(
+                intent, IntentState.RETRYABLE, lease_token=lease_token
+            )
             return self._terminal(
                 HeroOutcome.FAILED,
                 events,
@@ -241,7 +248,12 @@ class HeroOrchestrator:
             )
         )
         if not ack_ok:
-            self._intent_store.record_state(intent, IntentState.FAILED, delivery)
+            self._intent_store.record_state(
+                intent,
+                IntentState.FAILED,
+                lease_token=lease_token,
+                delivery=delivery,
+            )
             return self._terminal(
                 HeroOutcome.FAILED,
                 events,
@@ -252,7 +264,26 @@ class HeroOrchestrator:
                 intent=intent,
                 delivery=delivery,
             )
-        self._intent_store.record_state(intent, IntentState.ACKNOWLEDGED, delivery)
+        ack_transitioned = self._intent_store.record_state(
+            intent,
+            IntentState.ACKNOWLEDGED,
+            lease_token=lease_token,
+            delivery=delivery,
+        )
+        if not ack_transitioned:
+            # A stale/conflicting worker may not reach HERO_COMPLETED: an already
+            # newer lease generation owns the intent, so this run must not claim
+            # completion over it.
+            return self._terminal(
+                HeroOutcome.FAILED,
+                events,
+                context,
+                error_code=HeroErrorCode.INTENT_ALREADY_ACQUIRED,
+                verification=verification,
+                decision=decision,
+                intent=intent,
+                delivery=delivery,
+            )
         events.append(
             self._event(
                 "HERO_COMPLETED",

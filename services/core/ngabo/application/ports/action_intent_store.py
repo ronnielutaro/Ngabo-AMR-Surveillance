@@ -20,13 +20,22 @@ from ngabo.application.value_objects.intent_reservation import IntentReservation
 class ActionIntentStore(Protocol):
     """Durable pre-effect intent/outbox boundary for the deadline hero."""
 
-    def reserve(self, intent: HeroActionIntent) -> IntentReservation:
+    def reserve(
+        self,
+        intent: HeroActionIntent,
+        *,
+        lease_ttl_seconds: float = 30.0,
+        max_retries: int = 2,
+        now: float | None = None,
+    ) -> IntentReservation:
         """Atomically create-or-get the logical intent and acquire dispatch lease.
 
         For the same logical idempotency key, repeated calls return the same
         record. ``owned`` is True only for the caller that transitions the record
-        from PENDING to DISPATCHED. A duplicate acquire does not create a second
-        logical intent and must not issue a second external effect.
+        from PENDING/RETRYABLE/expired-lease to DISPATCHED. A duplicate acquire
+        while a valid lease is held does not create a second logical intent and
+        must not issue a second external effect. A bounded retry reacquires the
+        SAME intent + idempotency key after a transient failure or lease expiry.
         """
         ...
 
@@ -34,7 +43,14 @@ class ActionIntentStore(Protocol):
         self,
         intent: HeroActionIntent,
         state: IntentState,
+        *,
+        lease_token: str,
         delivery: EffectDelivery | None = None,
-    ) -> None:
-        """Durably transition the intent to ``state`` (recording delivery if given)."""
+    ) -> bool:
+        """Durably transition the intent to ``state`` (recording delivery if given).
+
+        Only the CURRENT lease owner (``lease_token``) may mutate a dispatch-owned
+        intent; a stale worker must not overwrite a newer lease generation.
+        Returns True if applied, False if the token is stale (no mutation made).
+        """
         ...

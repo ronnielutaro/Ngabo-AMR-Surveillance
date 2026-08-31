@@ -18,12 +18,20 @@ contracts. The production entry point ``ngabo-http`` runs uvicorn bound to
 
 from __future__ import annotations
 
+import base64
+import binascii
+import json
 import os
-from typing import Final
+from typing import Final, Protocol, runtime_checkable
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from ngabo.application.enums.hero_error_code import HeroErrorCode
+from ngabo.application.enums.hero_outcome import HeroOutcome
+from ngabo.application.value_objects.investigation_execution import (
+    EventInvestigationCommand,
+)
 from ngabo.interfaces.health import health, readiness, runtime_identity
 
 SERVICE_NAME: Final[str] = "ngabo-core"
@@ -37,6 +45,38 @@ app = FastAPI(
         "readiness, and runtime/artifact identity endpoints."
     ),
 )
+
+
+@runtime_checkable
+class HeroCompositionProtocol(Protocol):
+    """The deployed hero application seam, injected by the bootstrap layer.
+
+    Defined here (never imported from bootstrap) so ``interfaces`` preserves the
+    Clean Architecture dependency direction: interfaces never import bootstrap.
+    """
+
+    def execute(self, command: EventInvestigationCommand) -> object:
+        ...
+
+
+# Composition seam: set at deploy (or in tests) to a concrete HeroComposition. If
+# unset, a real composition is built lazily on first /surveillance request.
+hero_composition: HeroCompositionProtocol | None = None
+
+
+def configure_hero_composition(composition: HeroCompositionProtocol | None) -> None:
+    """Set the deployed hero composition before serving requests (deploy/bootstrap)."""
+    global hero_composition
+    hero_composition = composition
+
+
+def _hero() -> HeroCompositionProtocol:
+    global hero_composition
+    if hero_composition is None:
+        # Deploy passes a real composition here; the default is deliberately null
+        # so a misconfigured deployment fails closed rather than fabricating a run.
+        raise RuntimeError("hero composition is not configured; deploy must inject it")
+    return hero_composition
 
 
 @app.get("/health", response_model=dict[str, str], summary="Liveness")
@@ -67,6 +107,117 @@ def get_version() -> dict[str, str]:
 def get_root() -> dict[str, str]:
     """Root alias for the liveness payload (Cloud Run startup probe friendly)."""
     return health()
+
+
+@app.post("/surveillance", summary="Run the canonical hero")
+def run_surveillance(payload: dict[str, object]) -> JSONResponse:
+    """Accept one governed synthetic surveillance event and run the canonical hero.
+
+    This is the deployed ingress seam: it builds an ``EventInvestigationCommand``
+    from the typed payload and invokes ``HeroComposition.execute``, which runs the
+    existing #54 -> #55 -> #56 -> #176 hero chain. It owns no scientific policy or
+    model authority and fails closed on any stage.
+
+    Pub/Sub push treats HTTP 2xx as an acknowledgement (no redelivery) and
+    non-2xx as a retryable failure (may redeliver). We therefore return a
+    non-2xx status for a RETRYABLE hero failure (so the same logical intent +
+    idempotency key is reacquired) and a 2xx status for a terminal outcome (so we
+    never create an infinite redelivery loop).
+    """
+    try:
+        command_data = _extract_command_data(payload)
+        command = EventInvestigationCommand.from_primitive(command_data)
+    except ValueError as exc:
+        # Malformed/non-retryable command: acknowledge (2xx) so Pub/Sub does not
+        # redeliver the same bad message forever.
+        return JSONResponse(
+            status_code=200,
+            content={
+                "outcome": "BLOCKED",
+                "is_success": False,
+                "status": "terminal",
+                "error": str(exc),
+            },
+        )
+    result = _hero().execute(command)
+    return JSONResponse(
+        status_code=_acknowledgement_status(result),
+        content=_sanitized_hero_result(result),
+    )
+
+
+def _acknowledgement_status(result: object) -> int:
+    """Map a hero outcome to Pub/Sub acknowledgement semantics.
+
+    Retryable (transient) failures return non-2xx so Pub/Sub may redeliver and
+    the SAME logical ActionIntent + idempotency key is reacquired. Everything
+    terminal (including verification/policy/authority blocks and successful
+    completion) returns 2xx so Pub/Sub acknowledges it and stops redelivering.
+    """
+    outcome = getattr(result, "outcome", None)
+    error_code = getattr(result, "error_code", None)
+    if outcome is HeroOutcome.HERO_COMPLETED:
+        return 200
+    if outcome is HeroOutcome.FAILED and error_code is HeroErrorCode.DELIVERY_FAILED:
+        # Transient effect failure: allow Pub/Sub redelivery -> reacquire same key.
+        return 503
+    # Terminal outcome (verification/policy/authority block, invalid ack, etc.).
+    return 200
+
+
+def _extract_command_data(payload: dict[str, object]) -> dict[str, object]:
+    """Decode a Google Pub/Sub push envelope (``message.data``) if present.
+
+    Pub/Sub push delivers ``{"message":{"data":"<base64>",...}, "subscription":...}``,
+    not a flat command object. The envelope is authenticated by Pub/Sub; here we
+    decode the payload and fail closed on malformed/absent data.
+    """
+    message = payload.get("message")
+    if isinstance(message, dict) and "data" in message:
+        encoded = message["data"]
+        if not isinstance(encoded, str) or not encoded:
+            raise ValueError("Pub/Sub envelope message.data is missing/invalid")
+        try:
+            decoded = base64.b64decode(encoded).decode("utf-8")
+            data = json.loads(decoded)
+        except (ValueError, UnicodeDecodeError, binascii.Error) as exc:
+            raise ValueError(f"Pub/Sub envelope data is not valid JSON: {exc}") from exc
+        if not isinstance(data, dict):
+            raise ValueError("Pub/Sub envelope data must decode to a JSON object")
+        return data
+    return payload
+
+
+def _sanitized_hero_result(result: object) -> dict[str, object]:
+    error_code = getattr(result, "error_code", None)
+    out: dict[str, object] = {
+        "outcome": getattr(result, "outcome", None),
+        "is_success": getattr(getattr(result, "outcome", None), "is_success", False),
+        "execution_id": getattr(result, "execution_id", None),
+        "error_code": (
+            error_code.value if error_code is not None else None
+        ),
+        "ack_verified": getattr(result, "ack_verified", False),
+        "zero_human": getattr(result, "zero_human", {}),
+        "events": tuple(
+            {
+                "event": evt.event_name,
+                "incident_id": evt.incident_id,
+                "execution_id": evt.execution_id,
+            }
+            for evt in getattr(result, "events", ())
+        ),
+    }
+    intent = getattr(result, "intent", None)
+    if intent is not None:
+        out["action_id"] = intent.action_id
+        out["payload_hash"] = getattr(intent, "payload_hash", None)
+        out["idempotency_key"] = intent.idempotency_key
+    delivery = getattr(result, "delivery", None)
+    if delivery is not None:
+        out["delivery_id"] = delivery.delivery_id
+        out["ack_id"] = delivery.ack_id
+    return out
 
 
 @app.exception_handler(404)

@@ -12,13 +12,16 @@ dependencies = [
     # behavior change); we pin to the exact resolved version we certified.
     "google-adk==2.8.0",
     "google-genai==2.20.0",
+    "google-cloud-firestore>=2.29.0",
 ]
 
 [project.scripts]
 ngabo-health = "ngabo.bootstrap.health:main"
 ngabo-certify-hero = "ngabo.bootstrap.certify_hero:main"
-# Issue #90: FastAPI HTTP adapter for Cloud Run (typed health/ready/version).
-ngabo-http = "ngabo.interfaces.http:main"
+# Issue #90 + #176: FastAPI HTTP adapter for Cloud Run. The production entry point
+# wires the hero composition BEFORE serving /surveillance and fails startup clearly
+# if required hero deployment configuration is absent.
+ngabo-http = "ngabo.bootstrap.hero_serve:main"
 # Issue #49: one-off, governed ADK/Gemini capability spike (not a public endpoint).
 ngabo-adk-spike = "ngabo.infrastructure.adk.live_capability:main"
 

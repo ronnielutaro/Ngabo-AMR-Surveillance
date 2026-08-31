@@ -19,6 +19,10 @@ class IntentState(StrEnum):
     DISPATCHED = "DISPATCHED"
     """A single dispatch owner acquired the lease and the effect was attempted."""
 
+    RETRYABLE = "RETRYABLE"
+    """The effect/delivery failed transiently; a bounded retry may reacquire the
+    SAME logical intent and idempotency key."""
+
     ACKNOWLEDGED = "ACKNOWLEDGED"
     """A machine-verifiable acknowledgement for the exact persisted action was
     received and verified. Only this may lead to HERO_COMPLETED."""
