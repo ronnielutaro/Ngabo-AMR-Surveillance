@@ -580,7 +580,9 @@ class EventInvestigationRuntime:
         if execution_id is not None:
             self._capability_results[execution_id] = context_result
 
-        mapping = self._map_context(context_result, requested_watermark)
+        mapping = self._map_context(
+            context_result, incident_id, requested_version, requested_watermark
+        )
         if mapping.outcome is not InvestigationExecutionOutcome.COMPLETED_CURRENT_STAGE:
             return self._context_blocked_payload(
                 envelope,
@@ -634,7 +636,15 @@ class EventInvestigationRuntime:
                 and result.isolate_id_a == inv.isolate_id_a
                 and result.isolate_id_b == inv.isolate_id_b
             ),
-            lambda result, inv: result.finding is not None and result.finding_reference is not None,
+            lambda result, inv: (
+                result.finding is not None
+                and result.finding_reference is not None
+                # The nested finding must describe exactly the requested canonical pair.
+                and result.finding.isolate_id_a == result.isolate_id_a
+                and result.finding.isolate_id_b == result.isolate_id_b
+                # The derived proof reference must cite the same pair.
+                and result.finding_reference.input_refs == result.finding.input_refs
+            ),
         )
 
     async def _run_baseline_node(self, node_input: object) -> dict[str, object]:
@@ -701,6 +711,7 @@ class EventInvestigationRuntime:
         state["started"] = True
         started_monotonic = time.monotonic()
         state["start_monotonic"] = started_monotonic
+        telemetry.wrapper_calls += 1
         telemetry.model_calls += 0
         budget = self._run_budget.get(execution_id) if execution_id is not None else None
 
@@ -838,6 +849,7 @@ class EventInvestigationRuntime:
             if execution_id is not None and execution_id in self._run_telemetry
             else _RunTelemetry()
         )
+        telemetry.wrapper_calls += 1
         telemetry.model_calls += 0
 
         investigation_input = reference.get("investigation_input") if reference else None
@@ -1083,6 +1095,8 @@ class EventInvestigationRuntime:
     def _map_context(
         self,
         result: InvestigationContextResult,
+        requested_incident_id: IncidentId,
+        requested_version: IncidentVersion,
         requested_watermark: SourceWatermark,
     ) -> _CapabilityMapping:
         if result.outcome is CapabilityOutcome.SUCCESS:
@@ -1090,6 +1104,14 @@ class EventInvestigationRuntime:
                 return _CapabilityMapping(
                     InvestigationExecutionOutcome.BLOCKED,
                     InvestigationExecutionErrorCode.SOURCE_WATERMARK_MISMATCH,
+                )
+            if (
+                result.incident_id != requested_incident_id
+                or result.incident_version != requested_version
+            ):
+                return _CapabilityMapping(
+                    InvestigationExecutionOutcome.BLOCKED,
+                    InvestigationExecutionErrorCode.BRANCH_BINDING_MISMATCH,
                 )
             return _CapabilityMapping(InvestigationExecutionOutcome.COMPLETED_CURRENT_STAGE, None)
         if result.outcome is CapabilityOutcome.INCIDENT_NOT_FOUND:

@@ -47,6 +47,8 @@ from ngabo.application.value_objects.deterministic_investigation import (
     JoinedInvestigationContext,
 )
 from ngabo.application.value_objects.investigation_context import (
+    GetInvestigationContextQuery,
+    InvestigationContextResult,
     StoredIncidentContext,
 )
 from ngabo.application.value_objects.investigation_execution import (
@@ -66,8 +68,10 @@ from ngabo.application.value_objects.profile_comparison import (
 from ngabo.domain.entities.ast_observation import AstObservation
 from ngabo.domain.entities.canonical_isolate import CanonicalIsolate
 from ngabo.domain.enums.interpretation import Interpretation
+from ngabo.domain.services.resistance_profile_similarity import compare_canonical_isolates
 from ngabo.domain.value_objects.incident_id import IncidentId
 from ngabo.domain.value_objects.incident_version import IncidentVersion
+from ngabo.domain.value_objects.proof_references import DeterministicFindingReference
 from ngabo.domain.value_objects.signal_config import SignalConfig
 from ngabo.domain.value_objects.source_watermark import SourceWatermark
 from ngabo.infrastructure.adk.investigation_runtime import (
@@ -1274,3 +1278,121 @@ class TestRetryGraphAndAttemptBudget:
                 max_loop_iterations=0,
                 max_repair_attempts=0,
             )
+
+
+class TestContextAndNestedBinding:
+    """Review: bind context success to requested identity and nested finding to the pair."""
+
+    def test_context_success_with_wrong_incident_id_blocks(self) -> None:
+        def bad_context(query: GetInvestigationContextQuery) -> InvestigationContextResult:
+            return InvestigationContextResult(
+                outcome=CapabilityOutcome.SUCCESS,
+                incident_id=IncidentId("INC-999"),
+                incident_version=VERSION,
+                source_watermark=WATERMARK,
+                isolates=tuple(_isolate(i) for i in ("ISO-001", "ISO-002")),
+                signal_config=None,
+                window_end=None,
+                requested_version=query.requested_version,
+            )
+
+        rt = _runtime(get_context=bad_context)
+        result = rt.execute(_command())
+        assert result.outcome is InvestigationExecutionOutcome.BLOCKED
+        assert result.failure_code is InvestigationExecutionErrorCode.BRANCH_BINDING_MISMATCH
+        assert result.is_success() is False
+        assert result.joined_investigation is None
+        assert result.metadata is not None
+        assert result.metadata.model_calls == 0
+
+    def test_context_success_with_wrong_version_blocks(self) -> None:
+        def bad_context(query: GetInvestigationContextQuery) -> InvestigationContextResult:
+            return InvestigationContextResult(
+                outcome=CapabilityOutcome.SUCCESS,
+                incident_id=INCIDENT,
+                incident_version=IncidentVersion(99),
+                source_watermark=WATERMARK,
+                isolates=tuple(_isolate(i) for i in ("ISO-001", "ISO-002")),
+                signal_config=None,
+                window_end=None,
+                requested_version=query.requested_version,
+            )
+
+        rt = _runtime(get_context=bad_context)
+        result = rt.execute(_command())
+        assert result.outcome is InvestigationExecutionOutcome.BLOCKED
+        assert result.failure_code is InvestigationExecutionErrorCode.BRANCH_BINDING_MISMATCH
+        assert result.is_success() is False
+        assert result.joined_investigation is None
+        assert result.metadata is not None
+        assert result.metadata.model_calls == 0
+
+    def test_profile_finding_with_wrong_pair_blocks(self) -> None:
+        repo = _Repo()
+        cap = _capabilities(repo)
+        good = cap[1]
+        wrong_finding = compare_canonical_isolates(_isolate("ISO-001"), _isolate("ISO-003"))
+
+        def handler(query: CompareProfilesQuery) -> ProfileComparisonResult:
+            result = good.execute(query)
+            assert isinstance(result, ProfileComparisonResult)
+            return ProfileComparisonResult(
+                outcome=CapabilityOutcome.SUCCESS,
+                incident_id=result.incident_id,
+                incident_version=result.incident_version,
+                source_watermark=result.source_watermark,
+                finding=wrong_finding,
+                finding_reference=wrong_finding.to_finding_reference(),
+                isolate_id_a=result.isolate_id_a,
+                isolate_id_b=result.isolate_id_b,
+            )
+
+        rt = _runtime(repo=repo, compare_profiles=handler)
+        result = rt.execute(_command())
+        assert result.outcome is InvestigationExecutionOutcome.BLOCKED
+        assert result.failure_code is InvestigationExecutionErrorCode.INCOMPLETE_BRANCH_RESULT
+        assert result.is_success() is False
+        assert result.joined_investigation is not None
+        assert result.joined_investigation.ready_for_downstream is False
+        assert result.metadata is not None
+        assert result.metadata.model_calls == 0
+
+    def test_profile_reference_with_wrong_pair_blocks(self) -> None:
+        repo = _Repo()
+        cap = _capabilities(repo)
+        good = cap[1]
+
+        def handler(query: CompareProfilesQuery) -> ProfileComparisonResult:
+            result = good.execute(query)
+            assert isinstance(result, ProfileComparisonResult)
+            assert result.finding is not None
+            assert result.finding_reference is not None
+            forged = DeterministicFindingReference(
+                finding_id=result.finding_reference.finding_id,
+                policy_version=result.finding_reference.policy_version,
+                input_refs=("ISO-001", "ISO-003"),
+                output_value=result.finding_reference.output_value,
+            )
+            return ProfileComparisonResult(
+                outcome=CapabilityOutcome.SUCCESS,
+                incident_id=result.incident_id,
+                incident_version=result.incident_version,
+                source_watermark=result.source_watermark,
+                finding=result.finding,
+                finding_reference=forged,
+                isolate_id_a=result.isolate_id_a,
+                isolate_id_b=result.isolate_id_b,
+            )
+
+        rt = _runtime(repo=repo, compare_profiles=handler)
+        result = rt.execute(_command())
+        assert result.outcome is InvestigationExecutionOutcome.BLOCKED
+        assert result.failure_code is InvestigationExecutionErrorCode.INCOMPLETE_BRANCH_RESULT
+        assert result.is_success() is False
+
+    def test_success_telemetry_counts_all_wrappers(self) -> None:
+        result = _runtime().execute(_command())
+        assert result.metadata is not None
+        # context + 3 branch wrappers + join wrapper = 5 wrapper executions.
+        assert result.metadata.wrapper_calls == 5
+        assert result.metadata.model_calls == 0

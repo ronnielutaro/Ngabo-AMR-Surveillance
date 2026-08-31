@@ -12,7 +12,7 @@
     "incident_id": "INC-001",
     "incident_version": 1,
     "source_watermark": "ngabo-source-v1:sha256:abc123",
-    "wrapper_calls": 1,
+    "wrapper_calls": 5,
     "model_calls": 0,
     "tool_calls": 4,
     "duration_ms": 12,

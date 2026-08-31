@@ -268,7 +268,7 @@ class TestBackendInvocation:
         result = _runtime().execute(_command(incident_id=INCIDENT_1, version=VERSION_1))
         assert result.metadata is not None
         assert result.metadata.model_calls == 0
-        assert result.metadata.wrapper_calls == 1
+        assert result.metadata.wrapper_calls == 5
         assert result.metadata.tool_calls == 4
 
     def test_primitive_event_payload_invokes_adapter(self) -> None:
@@ -465,7 +465,7 @@ class TestBackendInvocationTrace:
         assert metadata["execution_id"].startswith("RUN-")
         assert metadata["session_id"].startswith("ngabo-session-")
         assert metadata["invocation_id"].startswith("ngabo-invocation-")
-        assert metadata["wrapper_calls"] == 1
+        assert metadata["wrapper_calls"] == 5
         assert metadata["model_calls"] == 0
         assert metadata["tool_calls"] == 4
         assert metadata["duration_ms"] >= 0
@@ -720,7 +720,7 @@ class TestSyncDeadline:
         assert result.capability_result.outcome is CapabilityOutcome.SUCCESS
         assert metadata.source_watermark == result.capability_result.source_watermark
         assert metadata.source_watermark == WATERMARK
-        assert metadata.wrapper_calls == 1
+        assert metadata.wrapper_calls == 5
         assert metadata.tool_calls == 4
         assert metadata.model_calls == 0
         assert metadata.duration_ms < 2000
