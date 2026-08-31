@@ -18,6 +18,9 @@ contracts. The production entry point ``ngabo-http`` runs uvicorn bound to
 
 from __future__ import annotations
 
+import base64
+import binascii
+import json
 import os
 from typing import Final, Protocol, runtime_checkable
 
@@ -57,6 +60,12 @@ class HeroCompositionProtocol(Protocol):
 # Composition seam: set at deploy (or in tests) to a concrete HeroComposition. If
 # unset, a real composition is built lazily on first /surveillance request.
 hero_composition: HeroCompositionProtocol | None = None
+
+
+def configure_hero_composition(composition: HeroCompositionProtocol | None) -> None:
+    """Set the deployed hero composition before serving requests (deploy/bootstrap)."""
+    global hero_composition
+    hero_composition = composition
 
 
 def _hero() -> HeroCompositionProtocol:
@@ -107,9 +116,33 @@ def run_surveillance(payload: dict[str, object]) -> dict[str, object]:
     existing #54 -> #55 -> #56 -> #176 hero chain. It owns no scientific policy or
     model authority and fails closed on any stage.
     """
-    command = EventInvestigationCommand.from_primitive(payload)
+    command_data = _extract_command_data(payload)
+    command = EventInvestigationCommand.from_primitive(command_data)
     result = _hero().execute(command)
     return _sanitized_hero_result(result)
+
+
+def _extract_command_data(payload: dict[str, object]) -> dict[str, object]:
+    """Decode a Google Pub/Sub push envelope (``message.data``) if present.
+
+    Pub/Sub push delivers ``{"message":{"data":"<base64>",...}, "subscription":...}``,
+    not a flat command object. The envelope is authenticated by Pub/Sub; here we
+    decode the payload and fail closed on malformed/absent data.
+    """
+    message = payload.get("message")
+    if isinstance(message, dict) and "data" in message:
+        encoded = message["data"]
+        if not isinstance(encoded, str) or not encoded:
+            raise ValueError("Pub/Sub envelope message.data is missing/invalid")
+        try:
+            decoded = base64.b64decode(encoded).decode("utf-8")
+            data = json.loads(decoded)
+        except (ValueError, UnicodeDecodeError, binascii.Error) as exc:
+            raise ValueError(f"Pub/Sub envelope data is not valid JSON: {exc}") from exc
+        if not isinstance(data, dict):
+            raise ValueError("Pub/Sub envelope data must decode to a JSON object")
+        return data
+    return payload
 
 
 def _sanitized_hero_result(result: object) -> dict[str, object]:

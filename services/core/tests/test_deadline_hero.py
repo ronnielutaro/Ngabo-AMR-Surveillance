@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import dataclasses
+import json
 from typing import cast
 
 import pytest
@@ -388,6 +389,44 @@ class TestVerificationProofValues:
         result = VerifyHeroPackage().verify(parse.package, _canonical())
         assert result.verified is False
         assert any("support material" in e.detail for e in result.errors)
+
+    def test_statement_mentions_id_but_asserts_unrelated_fact_blocks(self) -> None:
+        # OBSERVED_FACT mentions an existing record id but asserts a different,
+        # unsupported proposition (isolate count / ward) than the referenced field.
+        mutated = _package_primitive()
+        claims = cast("list[dict[str, object]]", mutated["claims"])
+        claims[0]["statement"] = (
+            "ISO-031 was recorded; ten isolates were collected in Ward Z."
+        )
+        parse = parse_incident_package(mutated)
+        assert parse.ok and parse.package is not None
+        result = VerifyHeroPackage().verify(parse.package, _canonical())
+        assert result.verified is False
+        assert any("support material" in e.detail for e in result.errors)
+
+    def test_completion_denial_claim_blocks(self) -> None:
+        mutated = _package_primitive()
+        claims = cast("list[dict[str, object]]", mutated["claims"])
+        claims[1]["statement"] = (
+            "psim-abc123 reports similarity=1.0000;matching=6;shared=6: "
+            "PACKAGE_COMPLETED."
+        )
+        parse = parse_incident_package(mutated)
+        assert parse.ok and parse.package is not None
+        result = VerifyHeroPackage().verify(parse.package, _canonical())
+        assert result.verified is False
+        assert any("authority" in e.detail for e in result.errors)
+
+    def test_escalate_claim_blocks(self) -> None:
+        mutated = _package_primitive()
+        claims = cast("list[dict[str, object]]", mutated["claims"])
+        claims[1]["statement"] = (
+            "psim-abc123 reports similarity=1.0000;matching=6;shared=6: ESCALATE."
+        )
+        parse = parse_incident_package(mutated)
+        assert parse.ok and parse.package is not None
+        result = VerifyHeroPackage().verify(parse.package, _canonical())
+        assert result.verified is False
 
     def test_derived_statement_contradicting_output_blocks(self) -> None:
         # Statement asserts a different similarity while the reference copies the
@@ -1003,3 +1042,48 @@ class TestHeroIngress:
         assert body["ack_verified"] is True
         assert all(value == 0 for value in body["zero_human"].values())
         assert any(evt["event"] == "HERO_COMPLETED" for evt in body["events"])
+
+    def test_post_surveillance_decodes_pubsub_envelope(self) -> None:
+        import base64 as _b64
+
+        from fastapi.testclient import TestClient
+
+        from ngabo.interfaces import http as http_adapter
+
+        runtime = HeroRuntime(
+            investigation_runtime=_StubInvestigation(
+                InvestigationExecutionOutcome.READY_FOR_DOWNSTREAM
+            ),
+            triage_runtime=_StubTriage(),
+            synthesis_runtime=_StubSynthesis(),
+            hero_orchestrator=HeroOrchestrator(
+                verifier=VerifyHeroPackage(),
+                policy=HeroActionPolicy(freshness=CheckHeroFreshness()),
+                effect_port=FakeEffectPort(ack_secret=ACK_SECRET),
+                ack_verifier=VerifyHeroAck(ack_secret=ACK_SECRET),
+                intent_store=FakeActionIntentStore(),
+                freshness_port=FakeFreshnessStatePort(_binding()),
+                coordination_message="Synthetic demo surveillance review; draft only.",
+            ),
+            context_builder=_FixedContextBuilder(),
+        )
+        http_adapter.hero_composition = HeroComposition(hero_runtime=runtime)
+        command = {
+            "contract_version": "ngabo-event-investigation-v1",
+            "incident_id": INCIDENT.value,
+            "incident_version": VERSION.value,
+            "source_watermark": WATERMARK.value,
+            "event_id": "evt-pubsub-001",
+            "correlation_id": "corr-pubsub-001",
+        }
+        encoded_data = _b64.b64encode(
+            json.dumps(command).encode("utf-8")
+        ).decode("utf-8")
+        envelope = {
+            "message": {"data": encoded_data, "messageId": "m-1"},
+            "subscription": "projects/ngabo-amr-2026/subscriptions/hero",
+        }
+        client = TestClient(http_adapter.app)
+        response = client.post("/surveillance", json=envelope)
+        assert response.status_code == 200
+        assert response.json()["outcome"] == "HERO_COMPLETED"

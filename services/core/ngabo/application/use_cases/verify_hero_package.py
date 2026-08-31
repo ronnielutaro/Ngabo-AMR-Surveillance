@@ -25,7 +25,9 @@ from __future__ import annotations
 import re
 
 from ngabo.application.enums.hero_error_code import HeroErrorCode
-from ngabo.application.services.authority_guard import contains_forbidden_authority
+from ngabo.application.services.authority_guard import (
+    asserts_forbidden_authority_or_completion,
+)
 from ngabo.application.value_objects.hero_support_context import HeroSupportContext
 from ngabo.application.value_objects.hero_verification import (
     HeroVerificationError,
@@ -144,7 +146,7 @@ class VerifyHeroPackage:
                     claim_id,
                 )
             )
-        if contains_forbidden_authority(claim.statement):
+        if asserts_forbidden_authority_or_completion(claim.statement):
             errors.append(
                 HeroVerificationError(
                     HeroErrorCode.VERIFICATION_FAILED,
@@ -234,46 +236,42 @@ class VerifyHeroPackage:
             # Grounding is via the (verified) supporting claims, checked elsewhere.
             return None
         if family is ClaimType.OBSERVED_FACT:
-            tokens = [
-                ref.record_id
-                for ref in claim.supporting_record_refs
-            ] + [
-                ref.expected_value
-                for ref in claim.supporting_record_refs
-            ]
+            for record_ref in claim.supporting_record_refs:
+                # The statement must assert the referenced field/value, not merely
+                # mention the record id. A reference to an unrelated field proves
+                # nothing about a differing proposition.
+                if (
+                    record_ref.record_id in statement
+                    and record_ref.field_path in statement
+                    and record_ref.expected_value in statement
+                ):
+                    return None
         elif family is ClaimType.DERIVED_FINDING:
-            tokens = [
-                ref.finding_id
-                for ref in claim.supporting_finding_refs
-            ] + [
-                ref.output_value
-                for ref in claim.supporting_finding_refs
-            ]
+            for finding_ref in claim.supporting_finding_refs:
+                if (
+                    finding_ref.finding_id in statement
+                    and finding_ref.output_value in statement
+                ):
+                    return None
         elif family is ClaimType.EVIDENCE_STATEMENT:
-            tokens = [
-                ref.source_id
-                for ref in claim.supporting_evidence_refs
-            ] + [
-                ref.chunk_id
-                for ref in claim.supporting_evidence_refs
-                if ref.chunk_id is not None
-            ]
-        else:  # HYPOTHESIS: supporting refs are optional; if present must be grounded.
+            for evidence_ref in claim.supporting_evidence_refs:
+                if evidence_ref.source_id in statement and (
+                    evidence_ref.chunk_id is None or evidence_ref.chunk_id in statement
+                ):
+                    return None
+        else:  # HYPOTHESIS: supporting refs optional; if present must be grounded.
             tokens = (
-                [ref.record_id for ref in claim.supporting_record_refs]
-                + [ref.finding_id for ref in claim.supporting_finding_refs]
-                + [ref.source_id for ref in claim.supporting_evidence_refs]
+                [record_ref.record_id for record_ref in claim.supporting_record_refs]
+                + [finding_ref.finding_id for finding_ref in claim.supporting_finding_refs]
+                + [evidence_ref.source_id for evidence_ref in claim.supporting_evidence_refs]
             )
-        if not tokens:
-            # No support to ground on; family-typed checks already require support.
-            return None
-        if not any(token and token in statement for token in tokens):
-            return HeroVerificationError(
-                HeroErrorCode.VERIFICATION_FAILED,
-                "claim statement cannot be related to its support material",
-                claim.claim_id.value,
-            )
-        return None
+            if not tokens or any(token and token in statement for token in tokens):
+                return None
+        return HeroVerificationError(
+            HeroErrorCode.VERIFICATION_FAILED,
+            "claim statement does not assert its referenced support material",
+            claim.claim_id.value,
+        )
 
     def _record_value_errors(
         self,

@@ -27,9 +27,33 @@ _AUTHORITY_RE = re.compile(
     re.I,
 )
 
+_COMPLETION_OR_AUTHORITY_RE = re.compile(
+    r"\b(?:"
+    r"escalate|auto_execute_a1|action_ready|acknowledged|package_completed|"
+    r"investigation_complete|no_action_needed|delivered|sent|complete|done|"
+    r"verified|approved|authorized|authorize|approve"
+    r")\b",
+    re.I,
+)
+
 
 def contains_forbidden_authority(text: str) -> bool:
     """Return True if ``text`` asserts a forbidden clinical/official authority."""
     if not isinstance(text, str) or not text:
         return False
     return bool(_AUTHORITY_RE.search(text))
+
+
+def asserts_forbidden_authority_or_completion(text: str) -> bool:
+    """Stricter check used by the package verifier.
+
+    Retains the explicit completion/authority denials (ESCALATE, AUTO_EXECUTE_A1,
+    PACKAGE_COMPLETED, INVESTIGATION_COMPLETE, DELIVERED, NO_ACTION_NEEDED,
+    VERIFIED, APPROVED, AUTHORIZED, COMPLETE) in addition to the natural-language
+    clinical/official authority matcher. The narrower ``contains_forbidden_authority``
+    remains for the outgoing coordination payload to avoid the benign-word
+    false positives already encountered in #56.
+    """
+    if not isinstance(text, str) or not text:
+        return False
+    return bool(_AUTHORITY_RE.search(text) or _COMPLETION_OR_AUTHORITY_RE.search(text))
