@@ -95,12 +95,34 @@ def persist_batch_events(
     db = client if client is not None else fs.Client(project=project, database=database)
     doc = db.collection("connect_batches").document(batch_id)
     doc.set(payload)
+    # A stable pointer makes status survive Cloud Run instance changes and
+    # restarts. The UI reads this canonical payload; it never fabricates
+    # progress locally.
+    db.collection("connect_status").document("latest").set(payload)
     events = payload.get("events")
     if isinstance(events, list):
         events_col = doc.collection("events")
         for index, event in enumerate(events):
             if isinstance(event, dict):
                 events_col.document(f"evt-{index}").set(event)
+
+
+def load_latest_batch(
+    *,
+    project: str,
+    client: Any = None,
+    database: str = "ngabo",
+) -> dict[str, object] | None:
+    """Load the latest persisted Connect status payload, if one exists."""
+    _import_firestore()
+    import google.cloud.firestore as fs
+
+    db = client if client is not None else fs.Client(project=project, database=database)
+    snapshot = db.collection("connect_status").document("latest").get()
+    if not snapshot.exists:
+        return None
+    payload = snapshot.to_dict()
+    return dict(payload) if isinstance(payload, dict) else None
 
 
 def _import_firestore() -> None:

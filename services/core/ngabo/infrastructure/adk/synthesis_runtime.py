@@ -376,6 +376,50 @@ def _duration_ms(start: float) -> int:
     return int(round((time.monotonic() - start) * 1000))
 
 
+def _grounded_statement(
+    claim: ClaimSchema,
+    record_refs: list[dict[str, object]],
+    finding_refs: list[dict[str, object]],
+    evidence_refs: list[dict[str, object]],
+) -> str:
+    """Render a conservative statement that literally carries its cited proof.
+
+    Gemini chooses the typed claim and support IDs. This deterministic boundary
+    renders the exact canonical value/provenance already resolved for those IDs,
+    so stochastic punctuation or paraphrasing cannot sever a valid proof link.
+    Unknown IDs remain unresolved and fail in the verifier.
+    """
+    if claim.claim_type == "OBSERVED_FACT" and record_refs:
+        ref = record_refs[0]
+        return (
+            f"Canonical record {ref['record_id']} field {ref['field_path']} "
+            f"has value {ref['expected_value']}."
+        )
+    if claim.claim_type == "DERIVED_FINDING" and finding_refs:
+        ref = finding_refs[0]
+        return (
+            f"Deterministic finding {ref['finding_id']} has output "
+            f"{ref['output_value']}."
+        )
+    if claim.claim_type == "EVIDENCE_STATEMENT" and evidence_refs:
+        ref = evidence_refs[0]
+        chunk = ref.get("chunk_id")
+        chunk_text = f" chunk {chunk}" if chunk else ""
+        return f"Evidence source {ref['source_id']}{chunk_text} supports this statement."
+    if claim.claim_type == "HYPOTHESIS":
+        tokens = (
+            [str(ref["record_id"]) for ref in record_refs]
+            + [str(ref["finding_id"]) for ref in finding_refs]
+            + [str(ref["source_id"]) for ref in evidence_refs]
+        )
+        if tokens:
+            return f"An uncertain hypothesis is supported by {tokens[0]}."
+    if claim.claim_type == "ACTION_JUSTIFICATION" and claim.supporting_claim_ids:
+        supports = ", ".join(claim.supporting_claim_ids)
+        return f"Safe A1 coordination is justified by upstream claims {supports}."
+    return claim.statement
+
+
 def _classify_model_exception(exc: Exception) -> PackageCandidateErrorCode:
     name = type(exc).__name__.lower()
     text = str(exc).lower()
@@ -871,57 +915,52 @@ class BoundedSynthesisRuntime:
 
         claims = []
         for c in schema.claims:
+            record_refs = [
+                {
+                    "record_id": ref.record_id,
+                    "field_path": ref.field_path,
+                    "expected_value": canonical_records.get(ref.record_id, {}).get(
+                        ref.field_path, ref.expected_value
+                    ),
+                }
+                for ref in c.supporting_record_refs
+            ]
+            finding_refs = [
+                {
+                    "finding_id": ref.finding_id,
+                    "policy_version": canonical_findings.get(ref.finding_id, {}).get(
+                        "policy_version", ref.policy_version
+                    ),
+                    "input_refs": canonical_findings.get(ref.finding_id, {}).get(
+                        "input_refs", list(ref.input_refs)
+                    ),
+                    "output_value": canonical_findings.get(ref.finding_id, {}).get(
+                        "output_value", ref.output_value
+                    ),
+                }
+                for ref in c.supporting_finding_refs
+            ]
+            evidence_refs = [
+                {
+                    "source_id": ref.source_id,
+                    "chunk_id": ref.chunk_id,
+                    "provenance": canonical_evidence.get(ref.source_id, {}).get(
+                        "provenance", ref.provenance
+                    ),
+                    "support": ref.support,
+                }
+                for ref in c.supporting_evidence_refs
+            ]
             claims.append(
                 {
                     "claim_id": c.claim_id,
                     "claim_type": c.claim_type,
-                    "statement": c.statement,
-                    "supporting_record_refs": [
-                        {
-                            "record_id": ref.record_id,
-                            "field_path": ref.field_path,
-                            "expected_value": (
-                                canonical_records.get(ref.record_id, {}).get(
-                                    ref.field_path, ref.expected_value
-                                )
-                            ),
-                        }
-                        for ref in c.supporting_record_refs
-                    ],
-                    "supporting_finding_refs": [
-                        {
-                            "finding_id": ref.finding_id,
-                            "policy_version": (
-                                canonical_findings.get(ref.finding_id, {}).get(
-                                    "policy_version", ref.policy_version
-                                )
-                            ),
-                            "input_refs": (
-                                canonical_findings.get(ref.finding_id, {}).get(
-                                    "input_refs", list(ref.input_refs)
-                                )
-                            ),
-                            "output_value": (
-                                canonical_findings.get(ref.finding_id, {}).get(
-                                    "output_value", ref.output_value
-                                )
-                            ),
-                        }
-                        for ref in c.supporting_finding_refs
-                    ],
-                    "supporting_evidence_refs": [
-                        {
-                            "source_id": ref.source_id,
-                            "chunk_id": ref.chunk_id,
-                            "provenance": (
-                                canonical_evidence.get(ref.source_id, {}).get(
-                                    "provenance", ref.provenance
-                                )
-                            ),
-                            "support": ref.support,
-                        }
-                        for ref in c.supporting_evidence_refs
-                    ],
+                    "statement": _grounded_statement(
+                        c, record_refs, finding_refs, evidence_refs
+                    ),
+                    "supporting_record_refs": record_refs,
+                    "supporting_finding_refs": finding_refs,
+                    "supporting_evidence_refs": evidence_refs,
                     "supporting_claim_ids": list(c.supporting_claim_ids),
                     "contradicting_claim_ids": list(c.contradicting_claim_ids),
                     "uncertainties": list(c.uncertainties),

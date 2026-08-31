@@ -96,6 +96,9 @@ class ConnectIngestionProtocol(Protocol):
     def persist_batch_events(self, *, batch_id: str, payload: dict[str, object]) -> None:
         ...
 
+    def load_latest_batch(self) -> dict[str, object] | None:
+        ...
+
 
 # Composition seam: set at deploy (or in tests) to a concrete HeroComposition. If
 # unset, a real composition is built lazily on first /surveillance request.
@@ -324,7 +327,11 @@ def ingest_connect_batch(request: Request) -> JSONResponse:
 
 @app.get("/connect/status", summary="Latest connect batch status for the web UI")
 def connect_status() -> dict[str, object]:
-    return _last_connect_batch or {"status": "none"}
+    try:
+        persisted = _connect_ingestion().load_latest_batch()
+    except RuntimeError:
+        persisted = None
+    return persisted or _last_connect_batch or {"status": "none"}
 
 
 def _run_connect_hero(command: dict[str, object]) -> dict[str, object]:

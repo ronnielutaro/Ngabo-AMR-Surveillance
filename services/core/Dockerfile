@@ -34,6 +34,7 @@ RUN python -m pip install --no-cache-dir uv==0.12.4
 WORKDIR /src
 COPY pyproject.toml uv.lock README.md ./
 COPY ngabo ./ngabo
+COPY data/guidance ./data/guidance
 
 # --locked validates that pyproject.toml and uv.lock agree and installs the
 # exact versions already selected in uv.lock. --no-dev keeps the runtime
@@ -63,6 +64,7 @@ LABEL org.opencontainers.image.source="${SOURCE_URL}" \
 
 ENV PATH="/opt/venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
+    NGABO_EVIDENCE_DIR=/opt/ngabo-evidence \
     NGABO_SERVICE_VERSION="${APP_VERSION}" \
     NGABO_SOURCE_REVISION="${SOURCE_REVISION}"
 
@@ -80,6 +82,7 @@ RUN useradd --system --uid 10001 --create-home --shell /usr/sbin/nologin ngabo \
         -exec touch -c -h -d "@${SOURCE_DATE_EPOCH}" {} +
 
 COPY --from=builder /opt/venv /opt/venv
+COPY --from=builder /src/data/guidance /opt/ngabo-evidence
 RUN find /opt -exec touch -c -h -d "@${SOURCE_DATE_EPOCH}" {} +
 
 USER ngabo

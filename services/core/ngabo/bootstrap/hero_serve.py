@@ -144,6 +144,10 @@ def _registered_adapters() -> dict[str, object]:
             f"{registry!r}: {exc}"
         ) from exc
     adapters = getattr(module, "REGISTRY", None)
+    if (not isinstance(adapters, dict) or not adapters) and hasattr(
+        module, "build_registry"
+    ):
+        adapters = module.build_registry()
     if not isinstance(adapters, dict) or not adapters:
         raise RuntimeError(
             f"hero deployment configuration invalid: registry module {registry!r} "

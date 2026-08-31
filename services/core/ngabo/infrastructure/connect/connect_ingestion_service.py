@@ -16,6 +16,7 @@ from typing import Any
 from ngabo.domain.entities.canonical_isolate import CanonicalIsolate
 from ngabo.infrastructure.connect.firestore_incident_repository import (
     FirestoreInvestigationContextRepository,
+    load_latest_batch,
     persist_batch_events,
 )
 from ngabo.infrastructure.connect.hmac_auth import verify_upload
@@ -91,6 +92,16 @@ class ConnectIngestionService:
             project=self._project,
             batch_id=batch_id,
             payload=payload,
+            client=self._client,
+            database=self._database,
+        )
+
+    def load_latest_batch(self) -> dict[str, object] | None:
+        """Read the canonical latest status for cross-instance web polling."""
+        if not self._project:
+            return None
+        return load_latest_batch(
+            project=self._project,
             client=self._client,
             database=self._database,
         )

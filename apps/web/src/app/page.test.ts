@@ -2,6 +2,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Home from "./page";
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
+}));
+
 const ORIGINAL_CORE_API_URL = process.env.CORE_API_URL;
 const REVISION = "a".repeat(40);
 const DIGEST = "sha256:" + "d".repeat(64);
@@ -42,6 +46,7 @@ function versionBody(
 function stubCore(
   ready: Record<string, unknown> = readyBody(),
   version: Record<string, unknown> = versionBody(),
+  connect: Record<string, unknown> = { status: "none" },
 ) {
   vi.stubGlobal(
     "fetch",
@@ -51,6 +56,7 @@ function stubCore(
       }
       if (url.endsWith("/ready")) return Promise.resolve(okJson(ready));
       if (url.endsWith("/version")) return Promise.resolve(okJson(version));
+      if (url.endsWith("/connect/status")) return Promise.resolve(okJson(connect));
       return Promise.resolve(new Response("not found", { status: 404 }));
     }),
   );
@@ -94,6 +100,33 @@ describe("Home", () => {
     expect(html).toContain(DIGEST);
     expect(html).toContain("test");
     expect(html).toContain("true");
+  });
+
+  it("renders only persisted Connect events and acknowledgement identifiers", async () => {
+    stubCore(readyBody(), versionBody(), {
+      lab_id: "synthetic-lab-gulu",
+      received_count: 4,
+      accepted_count: 3,
+      quarantined_count: 1,
+      signal_id: "sig-demo",
+      hero_result: {
+        outcome: "HERO_COMPLETED",
+        delivery_id: "dlv-demo",
+        ack_id: "ack-demo",
+      },
+      events: [
+        { event: "LAB_BATCH_SYNCED" },
+        { event: "SIGNAL_DETECTED", signal_id: "sig-demo" },
+        { event: "WORKFLOW_HERO_COMPLETED" },
+      ],
+    });
+    const html = renderToStaticMarkup(await Home());
+    expect(html).toContain("Laboratory export received");
+    expect(html).toContain("Meaningful resistance signal detected");
+    expect(html).toContain("Evidence verified and coordination acknowledged");
+    expect(html).toContain("dlv-demo");
+    expect(html).toContain("ack-demo");
+    expect(html).toContain("0 prompts · 0 approvals · 0 human interventions");
   });
 
   it("renders an honest missing-config state when CORE_API_URL is absent", async () => {
