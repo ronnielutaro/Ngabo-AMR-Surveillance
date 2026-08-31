@@ -66,7 +66,18 @@ def build_registry() -> dict[str, object]:
         raise RuntimeError("NGABO_RECEIVER_URL and NGABO_ACK_SECRET are required")
 
     repo = FirestoreInvestigationContextRepository(project=project)
-    sources = load_evidence_corpus(REPO_ROOT / "data" / "guidance")
+    evidence_dir = os.environ.get("NGABO_EVIDENCE_DIR", "")
+    if evidence_dir:
+        sources = load_evidence_corpus(Path(evidence_dir))
+    else:
+        bundled = Path(REPO_ROOT) / "data" / "guidance"
+        if bundled.exists():
+            sources = load_evidence_corpus(bundled)
+        else:
+            raise RuntimeError(
+                "hero deployment configuration missing approved evidence corpus; "
+                "set NGABO_EVIDENCE_DIR to the bundled data/guidance directory"
+            )
     evidence_search = LocalEvidenceSearch(sources)
     corpus_metadata = EvidenceCorpusMetadata(
         corpus_id="ngabo-approved-evidence-v1",
