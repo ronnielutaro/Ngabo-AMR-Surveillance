@@ -26,6 +26,7 @@ class ActionIntentStore(Protocol):
         *,
         lease_ttl_seconds: float = 30.0,
         max_retries: int = 2,
+        now: float | None = None,
     ) -> IntentReservation:
         """Atomically create-or-get the logical intent and acquire dispatch lease.
 
@@ -42,7 +43,14 @@ class ActionIntentStore(Protocol):
         self,
         intent: HeroActionIntent,
         state: IntentState,
+        *,
+        lease_token: str,
         delivery: EffectDelivery | None = None,
-    ) -> None:
-        """Durably transition the intent to ``state`` (recording delivery if given)."""
+    ) -> bool:
+        """Durably transition the intent to ``state`` (recording delivery if given).
+
+        Only the CURRENT lease owner (``lease_token``) may mutate a dispatch-owned
+        intent; a stale worker must not overwrite a newer lease generation.
+        Returns True if applied, False if the token is stale (no mutation made).
+        """
         ...

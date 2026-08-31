@@ -15,6 +15,7 @@ class IntentReservation:
     intent: HeroActionIntent
     state: IntentState
     owned: bool
+    lease_token: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.intent, HeroActionIntent):
@@ -23,3 +24,9 @@ class IntentReservation:
             raise ValueError("state must be an IntentState")
         if not isinstance(self.owned, bool):
             raise ValueError("owned must be a bool")
+        if self.lease_token is not None and (
+            not isinstance(self.lease_token, str) or not self.lease_token.strip()
+        ):
+            raise ValueError("lease_token must be non-blank text or None")
+        if self.owned and not self.lease_token:
+            raise ValueError("an owned reservation must carry a lease_token")

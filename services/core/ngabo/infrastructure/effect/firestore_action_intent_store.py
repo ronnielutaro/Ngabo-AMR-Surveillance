@@ -18,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+import uuid
 
 from ngabo.application.enums.intent_state import IntentState
 from ngabo.application.value_objects.effect_delivery import EffectDelivery
@@ -61,11 +62,16 @@ class FirestoreActionIntentStore:
             if not snap.exists:
                 # Atomic create-if-absent inside the transaction: a concurrent
                 # contender observes the write on commit and cannot also create.
+                token = "lease-" + uuid.uuid4().hex
                 transaction.set(
-                    doc, _record(intent, IntentState.DISPATCHED, None, deadline, 0)
+                    doc,
+                    _record(intent, IntentState.DISPATCHED, None, deadline, 0, token),
                 )
                 return IntentReservation(
-                    intent=intent, state=IntentState.DISPATCHED, owned=True
+                    intent=intent,
+                    state=IntentState.DISPATCHED,
+                    owned=True,
+                    lease_token=token,
                 )
             record = snap.to_dict() or {}
             state = IntentState(record.get("state", IntentState.DISPATCHED.value))
@@ -77,6 +83,7 @@ class FirestoreActionIntentStore:
             )
             if stateless or lease_expired:
                 if retries < max_retries:
+                    token = "lease-" + uuid.uuid4().hex
                     transaction.set(
                         doc,
                         _record(
@@ -85,13 +92,25 @@ class FirestoreActionIntentStore:
                             None,
                             deadline,
                             retries + 1,
+                            token,
                         ),
                     )
                     return IntentReservation(
-                        intent=intent, state=IntentState.DISPATCHED, owned=True
+                        intent=intent,
+                        state=IntentState.DISPATCHED,
+                        owned=True,
+                        lease_token=token,
                     )
                 transaction.set(
-                    doc, _record(intent, IntentState.FAILED, None, 0.0, retries)
+                    doc,
+                    _record(
+                        intent,
+                        IntentState.FAILED,
+                        None,
+                        0.0,
+                        retries,
+                        record.get("lease_token"),
+                    ),
                 )
                 return IntentReservation(
                     intent=intent, state=IntentState.FAILED, owned=False
@@ -104,20 +123,34 @@ class FirestoreActionIntentStore:
         self,
         intent: HeroActionIntent,
         state: IntentState,
+        *,
+        lease_token: str,
         delivery: EffectDelivery | None = None,
-    ) -> None:
+    ) -> bool:
+        from google.cloud import firestore
+
         doc = self._col.document(self._doc_id(intent.idempotency_key))
-        snap = doc.get()
-        record = snap.to_dict() or {}
-        doc.set(
-            _record(
-                intent,
-                state,
-                delivery,
-                record.get("lease_expires_at"),
-                int(record.get("retries") or 0),
+
+        @firestore.transactional
+        def _transition(transaction: firestore.Transaction) -> bool:
+            snap = doc.get(transaction=transaction)
+            record = snap.to_dict() or {}
+            if record.get("lease_token") != lease_token:
+                return False
+            transaction.set(
+                doc,
+                _record(
+                    intent,
+                    state,
+                    delivery,
+                    record.get("lease_expires_at"),
+                    int(record.get("retries") or 0),
+                    lease_token,
+                ),
             )
-        )
+            return True
+
+        return _transition(self._db.transaction())  # type: ignore[no-any-return]
 
 
 def _record(
@@ -126,6 +159,7 @@ def _record(
     delivery: EffectDelivery | None,
     lease_expires_at: float | None = None,
     retries: int = 0,
+    lease_token: str | None = None,
 ) -> dict[str, object]:
     document: dict[str, object] = {
         "action_id": intent.action_id,
@@ -141,6 +175,7 @@ def _record(
         "state": state.value,
         "lease_expires_at": lease_expires_at,
         "retries": retries,
+        "lease_token": lease_token,
         "delivery": json.dumps(
             delivery.to_primitive(), sort_keys=True, separators=(",", ":")
         )

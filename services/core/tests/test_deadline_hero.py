@@ -54,7 +54,7 @@ from ngabo.application.value_objects.package_candidate_result import (
 )
 from ngabo.application.value_objects.triage_result import TriageResult
 from ngabo.bootstrap.hero import HeroComposition
-from ngabo.bootstrap.hero_serve import build_hero_composition
+from ngabo.bootstrap.hero_serve import build_hero_composition, build_hero_composition_from_config
 from ngabo.domain.enums.action_class import ActionClass
 from ngabo.domain.value_objects.incident_id import IncidentId
 from ngabo.domain.value_objects.incident_version import IncidentVersion
@@ -1354,3 +1354,187 @@ class TestHeroAckStatusAndBootstrap:
         assert second.status_code == 200
         assert second.json()["outcome"] == "HERO_COMPLETED"
         assert store.state_transitions.count(IntentState.RETRYABLE) == 1
+
+
+class TestLeaseOwnedTransitions:
+    def test_stale_lease_worker_cannot_mutate(self) -> None:
+        store = FakeActionIntentStore()
+        intent = HeroActionIntent(
+            action_id="ACT-lease",
+            incident_id=INCIDENT,
+            incident_version=VERSION,
+            source_watermark=WATERMARK,
+            verified_package_id="PKG-1",
+            action_class=ActionClass.SAFE_EXTERNAL_COORDINATION,
+            authorized_target_id="demo-receiver-01",
+            payload_hash="0" * 64,
+            idempotency_key="idem-lease-owned",
+        )
+        a = store.reserve(intent, lease_ttl_seconds=10.0, now=100.0)
+        assert a.owned is True and a.lease_token
+        assert a.lease_token is not None
+        # Lease expires; a DIFFERENT worker (B) acquires a new generation.
+        b = store.reserve(intent, lease_ttl_seconds=10.0, now=115.0)
+        assert b.owned is True and b.lease_token != a.lease_token
+        assert b.lease_token is not None and a.lease_token is not None
+        a_token, b_token = a.lease_token, b.lease_token
+        # A (stale owner) cannot write RETRYABLE over B's newer generation.
+        assert store.record_state(
+            intent, IntentState.RETRYABLE, lease_token=a_token
+        ) is False
+        # A (stale owner) cannot write ACKNOWLEDGED either.
+        assert store.record_state(
+            intent, IntentState.ACKNOWLEDGED, lease_token=a_token
+        ) is False
+        # B (current owner) may transition validly.
+        assert store.record_state(
+            intent, IntentState.DISPATCHED, lease_token=b_token
+        ) is True
+        assert store.record_state(
+            intent, IntentState.ACKNOWLEDGED, lease_token=b_token
+        ) is True
+        # ACKNOWLEDGED cannot be reopened by a stale worker or a new contender.
+        c = store.reserve(intent, lease_ttl_seconds=10.0, now=120.0)
+        assert c.owned is False
+        assert c.state is IntentState.ACKNOWLEDGED
+        assert store.record_state(
+            intent, IntentState.RETRYABLE, lease_token=a_token
+        ) is False
+
+
+class TestAuthorityGuardForms:
+    def test_prescription_noun_claim_blocks(self) -> None:
+        mutated = _package_primitive()
+        claims = cast("list[dict[str, object]]", mutated["claims"])
+        claims[1]["statement"] = (
+            "psim-abc123 reports similarity=1.0000;matching=6;shared=6: "
+            "a prescription for meropenem is indicated."
+        )
+        parse = parse_incident_package(mutated)
+        assert parse.ok and parse.package is not None
+        result = VerifyHeroPackage().verify(parse.package, _canonical())
+        assert result.verified is False
+        assert any("authority" in e.detail for e in result.errors)
+
+    @pytest.mark.parametrize(
+        "statement_tail",
+        [
+            "The outbreak is confirmed.",
+            "The outbreak has been confirmed in Ward A.",
+            "The outbreak was confirmed.",
+            "We confirm an outbreak.",
+            "Confirmation of an outbreak was established.",
+            "Confirmed outbreak in Ward A.",
+            "Outbreak confirmation was issued.",
+            "This constitutes an official outbreak declaration.",
+        ],
+    )
+    def test_passive_outbreak_wording_blocks(self, statement_tail: str) -> None:
+        mutated = _package_primitive()
+        claims = cast("list[dict[str, object]]", mutated["claims"])
+        claims[1]["statement"] = (
+            "psim-abc123 reports similarity=1.0000;matching=6;shared=6: "
+            + statement_tail
+        )
+        parse = parse_incident_package(mutated)
+        assert parse.ok and parse.package is not None
+        result = VerifyHeroPackage().verify(parse.package, _canonical())
+        assert result.verified is False
+        assert any("authority" in e.detail for e in result.errors)
+
+    @pytest.mark.parametrize(
+        "statement_tail",
+        [
+            "an investigation-priority signal was detected.",
+            "a possible cluster warrants review.",
+            "resistance pattern warrants review.",
+            "outbreak status has not been determined.",
+            "this does not confirm an outbreak.",
+            "this does not prescribe treatment.",
+        ],
+    )
+    def test_safe_negated_and_nominal_language_allowed(self, statement_tail: str) -> None:
+        mutated = _package_primitive()
+        claims = cast("list[dict[str, object]]", mutated["claims"])
+        claims[1]["statement"] = (
+            "psim-abc123 reports similarity=1.0000;matching=6;shared=6: "
+            + statement_tail
+        )
+        parse = parse_incident_package(mutated)
+        assert parse.ok and parse.package is not None
+        result = VerifyHeroPackage().verify(parse.package, _canonical())
+        assert result.verified is True
+
+
+class TestFileStoreRetry:
+    def test_file_store_reacquires_retryable_intent(self, tmp_path) -> None:
+        from ngabo.infrastructure.effect.file_action_intent_store import (
+            FileActionIntentStore,
+        )
+
+        store = FileActionIntentStore(tmp_path)
+        intent = HeroActionIntent(
+            action_id="ACT-file",
+            incident_id=INCIDENT,
+            incident_version=VERSION,
+            source_watermark=WATERMARK,
+            verified_package_id="PKG-1",
+            action_class=ActionClass.SAFE_EXTERNAL_COORDINATION,
+            authorized_target_id="demo-receiver-01",
+            payload_hash="0" * 64,
+            idempotency_key="idem-file",
+        )
+        first = store.reserve(intent, lease_ttl_seconds=10.0, now=100.0)
+        assert first.owned is True and first.lease_token
+        assert first.lease_token is not None
+        second = store.reserve(intent, lease_ttl_seconds=10.0, now=105.0)
+        assert second.owned is False
+        third = store.reserve(intent, lease_ttl_seconds=10.0, now=115.0)
+        assert third.owned is True
+        assert third.intent.idempotency_key == intent.idempotency_key
+        # Stale owner from the first lease cannot mutate after reacquisition.
+        assert store.record_state(
+            intent, IntentState.RETRYABLE, lease_token=first.lease_token
+        ) is False
+
+
+class TestProductionCompositionFromConfig:
+    def test_build_hero_composition_from_config_installs(self) -> None:
+        from fastapi.testclient import TestClient
+
+        from ngabo.interfaces import http as http_adapter
+
+        composition = build_hero_composition_from_config(
+            adapters={
+                "investigation_runtime": _StubInvestigation(
+                    InvestigationExecutionOutcome.READY_FOR_DOWNSTREAM
+                ),
+                "triage_runtime": _StubTriage(),
+                "synthesis_runtime": _StubSynthesis(),
+                "hero_orchestrator": HeroOrchestrator(
+                    verifier=VerifyHeroPackage(),
+                    policy=HeroActionPolicy(freshness=CheckHeroFreshness()),
+                    effect_port=FakeEffectPort(ack_secret=ACK_SECRET),
+                    ack_verifier=VerifyHeroAck(ack_secret=ACK_SECRET),
+                    intent_store=FakeActionIntentStore(),
+                    freshness_port=FakeFreshnessStatePort(_binding()),
+                    coordination_message="Synthetic demo surveillance review; draft only.",
+                ),
+            },
+            context_builder=_FixedContextBuilder(),
+        )
+        http_adapter.configure_hero_composition(composition)
+        client = TestClient(http_adapter.app)
+        response = client.post(
+            "/surveillance",
+            json={
+                "contract_version": "ngabo-event-investigation-v1",
+                "incident_id": INCIDENT.value,
+                "incident_version": VERSION.value,
+                "source_watermark": WATERMARK.value,
+                "event_id": "evt-cfg-001",
+                "correlation_id": "corr-cfg-001",
+            },
+        )
+        assert response.status_code == 200
+        assert response.json()["outcome"] == "HERO_COMPLETED"

@@ -205,13 +205,18 @@ class HeroOrchestrator:
                 decision=decision,
                 intent=intent,
             )
+        lease_token = reservation.lease_token
+        if lease_token is None:
+            raise RuntimeError("an owned reservation must carry a lease_token")
 
         try:
             delivery = self._effect_port.deliver(intent, payload)
         except Exception:
             # Transient delivery failure: mark RETRYABLE so a bounded redelivery
             # can reacquire the SAME logical intent + idempotency key.
-            self._intent_store.record_state(intent, IntentState.RETRYABLE)
+            self._intent_store.record_state(
+                intent, IntentState.RETRYABLE, lease_token=lease_token
+            )
             return self._terminal(
                 HeroOutcome.FAILED,
                 events,
@@ -243,7 +248,12 @@ class HeroOrchestrator:
             )
         )
         if not ack_ok:
-            self._intent_store.record_state(intent, IntentState.FAILED, delivery)
+            self._intent_store.record_state(
+                intent,
+                IntentState.FAILED,
+                lease_token=lease_token,
+                delivery=delivery,
+            )
             return self._terminal(
                 HeroOutcome.FAILED,
                 events,
@@ -254,7 +264,12 @@ class HeroOrchestrator:
                 intent=intent,
                 delivery=delivery,
             )
-        self._intent_store.record_state(intent, IntentState.ACKNOWLEDGED, delivery)
+        self._intent_store.record_state(
+            intent,
+            IntentState.ACKNOWLEDGED,
+            lease_token=lease_token,
+            delivery=delivery,
+        )
         events.append(
             self._event(
                 "HERO_COMPLETED",
