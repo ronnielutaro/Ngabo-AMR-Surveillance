@@ -32,7 +32,7 @@
 
 Ngabo does **not** aim to replace microbiology instruments, ALIS, WHONET, LIMS/LIS platforms, or national surveillance infrastructure. It aims to remove the human glue between those systems and the recurring surveillance-to-coordination job.
 
-> **Ngabo is an always-on AMR surveillance and coordination layer that connects to the laboratory systems you already use, continuously turns microbiology data into surveillance intelligence, automatically investigates meaningful signals, and completes the next permitted coordination step with machine-verifiable proof.**
+> **Ngabo is designed to become an always-on AMR surveillance and coordination layer that connects through governed adapters to the laboratory systems already in use, continuously turns microbiology data into surveillance intelligence, automatically investigates meaningful signals, and completes the next permitted coordination step with machine-verifiable proof.**
 
 The product loop is:
 
@@ -55,6 +55,8 @@ deterministic policy + safe action + acknowledgement
 The v0.1 hackathon release does **not** yet claim a production ALIS, WHONET, LIS, instrument, or hospital connector. Its certified source is a committed synthetic WHONET-style dataset that exercises the deterministic ingestion and surveillance contracts.
 
 The product direction is to replace that fixture boundary with governed source adapters while preserving the same canonical import, provenance, deduplication, surveillance, proof, and safety contracts.
+
+In this document, **always-on** describes an operating loop that responds automatically to authorized data arrival or scheduled ingestion. It does not require permanently running compute and does not change the Cloud Run scale-to-zero policy.
 
 ---
 

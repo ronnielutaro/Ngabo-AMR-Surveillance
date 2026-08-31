@@ -8,7 +8,7 @@ The project uses Semantic Versioning and Conventional Commits.
 
 ### Added
 
-- `docs/LEAN_CANVAS.md`, `docs/COMPETITOR_ANALYSIS.md` and `docs/VALUE_PROPOSITION_CANVAS.md` for evidence-disciplined product strategy, competitive positioning, segment-specific value propositions and post-hackathon validation priorities.
+- `docs/LEAN_CANVAS.md`, `docs/COMPETITOR_ANALYSIS.md`, `docs/VALUE_PROPOSITION_CANVAS.md` and `docs/USER_PERSONAS.md` for evidence-disciplined product strategy, competitive positioning, prioritized personas, segment-specific value propositions and post-hackathon validation priorities.
 - Product/release roadmap and release governance.
 - Clean Architecture + monorepo contract and ADR.
 - Hackathon alignment, ADK runtime, graph-first orchestration, long-running state/freshness, UI/UX, data/safety/evaluation and implementation contracts.
@@ -40,6 +40,7 @@ The project uses Semantic Versioning and Conventional Commits.
 - The canonical demo storyboard prioritizes zero-human execution and Proof-Carrying Autonomy rather than clarification/resume/human approval.
 - ADK implementation requires a pinned-version capability spike with a documented fallback ladder if workshop terminology differs from supported Python APIs.
 - README, Hackathon Alignment, ADK Runtime, System Design, Implementation Plan, UI/UX Hackathon Addendum, Submission Evidence and Risk Register were synchronized to the Proof-Carrying Autonomy pipeline.
+- Product-strategy documentation now distinguishes the always-on **Connect → Watch → Investigate → Coordinate** direction from the bounded synthetic v0.1 implementation claim and explicitly avoids implying a production laboratory-system connector.
 - The risk register now explicitly covers competition-Twist visibility, fabricated/stale proof references, hypothesis/forbidden-claim escalation, cross-document drift, premature proof-carrying claims, and misrepresentation of software safety metrics.
 
 ## [0.1.0] — Planned

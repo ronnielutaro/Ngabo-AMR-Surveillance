@@ -22,34 +22,35 @@ Read in this order:
 4. `docs/LEAN_CANVAS.md`
 5. `docs/COMPETITOR_ANALYSIS.md`
 6. `docs/VALUE_PROPOSITION_CANVAS.md`
-7. `docs/TECH_STACK.md`
-8. `docs/CLEAN_ARCHITECTURE.md`
-9. `docs/HACKATHON_ALIGNMENT.md`
-10. `docs/TASKMASTER_ZERO_HUMAN_AUTONOMY.md`
-11. `docs/BYOF_FRICTION.md`
-12. `docs/ADK_CAPABILITY_SPIKE.md`
-13. `docs/ADK_RUNTIME.md`
-14. `docs/ORCHESTRATION_PATTERNS.md`
-15. `docs/PROOF_CARRYING_REASONING.md`
-16. `docs/LONG_RUNNING_AGENT.md`
-17. `docs/AUTONOMOUS_EFFECT_OUTBOX.md`
-18. `docs/SYSTEM_DESIGN.md`
-19. `docs/AGENT_ARCHITECTURE.md`
-20. `docs/DATA_SAFETY_EVALUATION.md`
-21. `docs/OPERATIONAL_UTILITY_EVALUATION.md`
-22. `docs/UI_UX_SPEC.md`
-23. `docs/UI_UX_HACKATHON_ADDENDUM.md`
-24. `docs/ARCHITECTURE_DIAGRAM.md`
-25. `docs/THIRD_PARTY_PROVENANCE.md`
-26. `docs/SUBMISSION_EVIDENCE.md`
-27. `docs/SUBMISSION_FREEZE.md`
-28. `docs/HACKATHON_RISK_REGISTER.md`
-29. `docs/IMPLEMENTATION_PLAN.md`
-30. relevant ADRs, especially ADRs 0005–0009.
+7. `docs/USER_PERSONAS.md`
+8. `docs/TECH_STACK.md`
+9. `docs/CLEAN_ARCHITECTURE.md`
+10. `docs/HACKATHON_ALIGNMENT.md`
+11. `docs/TASKMASTER_ZERO_HUMAN_AUTONOMY.md`
+12. `docs/BYOF_FRICTION.md`
+13. `docs/ADK_CAPABILITY_SPIKE.md`
+14. `docs/ADK_RUNTIME.md`
+15. `docs/ORCHESTRATION_PATTERNS.md`
+16. `docs/PROOF_CARRYING_REASONING.md`
+17. `docs/LONG_RUNNING_AGENT.md`
+18. `docs/AUTONOMOUS_EFFECT_OUTBOX.md`
+19. `docs/SYSTEM_DESIGN.md`
+20. `docs/AGENT_ARCHITECTURE.md`
+21. `docs/DATA_SAFETY_EVALUATION.md`
+22. `docs/OPERATIONAL_UTILITY_EVALUATION.md`
+23. `docs/UI_UX_SPEC.md`
+24. `docs/UI_UX_HACKATHON_ADDENDUM.md`
+25. `docs/ARCHITECTURE_DIAGRAM.md`
+26. `docs/THIRD_PARTY_PROVENANCE.md`
+27. `docs/SUBMISSION_EVIDENCE.md`
+28. `docs/SUBMISSION_FREEZE.md`
+29. `docs/HACKATHON_RISK_REGISTER.md`
+30. `docs/IMPLEMENTATION_PLAN.md`
+31. relevant ADRs, especially ADRs 0005–0009.
 
 Also read `AGENTS.md` and `CHANGELOG.md` before release-oriented work.
 
-The Lean Canvas, competitor analysis and value proposition canvases provide current product strategy and market context. Their customer segments, partnerships, adoption paths and commercial propositions remain hypotheses unless supported by explicit evidence. They may focus implementation and public positioning, but they may not expand active issue scope, override safety or architecture contracts, or turn planned capability into an implementation claim.
+The Lean Canvas, competitor analysis, value proposition canvases and user personas provide current product strategy and market context. Their customer segments, partnerships, adoption paths and commercial propositions remain hypotheses unless supported by explicit evidence. They may focus implementation and public positioning, but they may not expand active issue scope, override safety or architecture contracts, or turn planned capability into an implementation claim.
 
 ### Conflict precedence
 
@@ -76,6 +77,8 @@ Product strategy / market-hypothesis documents
 ## 2. Product Definition
 
 Ngabo is an **open-source, event-driven antimicrobial-resistance surveillance and incident-response system**.
+
+Its longer-term product direction is an always-on **Connect → Watch → Investigate → Coordinate** surveillance and coordination operating loop. For the public v0.1 release, this direction does not imply a production ALIS, WHONET, LIS/LIMS, instrument, or hospital connector. The certified source remains the committed synthetic WHONET-style fixture, and implementation scope remains governed by the active issue and roadmap.
 
 Current maturity:
 

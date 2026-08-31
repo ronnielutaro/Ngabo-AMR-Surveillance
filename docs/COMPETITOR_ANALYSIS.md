@@ -1,6 +1,6 @@
 # Ngabo — Competitor and Alternatives Analysis
 
-**Product:** Ngabo — Autonomous Antimicrobial Resistance Surveillance & Incident Response  
+**Product:** Ngabo — Always-On Antimicrobial Resistance Surveillance & Coordination<br>
 **Decision:** Define Ngabo's defensible position, integration strategy, and product priorities  
 **Audience:** Maintainer, hackathon judges, prospective domain reviewers, and future partners  
 **Version:** 1.0  
@@ -23,9 +23,13 @@ The reviewed landscape includes:
 
 Ngabo therefore should not position itself as another AMR database, dashboard, antibiogram generator, laboratory information system, national repository, or clinical prescribing tool.
 
-Its most defensible position is narrower:
+Its product direction is:
 
-> **Ngabo is an open, event-driven investigation and safe-coordination layer that turns a suspicious AMR signal into a proof-verified investigation package and one authorized, acknowledged A1 coordination action.**
+> **Ngabo is designed as an open, always-on surveillance and coordination layer that connects to existing laboratory workflows through governed adapters, keeps deterministic surveillance state current, investigates meaningful signals, and completes only permitted coordination with machine-verifiable proof.**
+
+The current v0.1 target boundary is deliberately narrower:
+
+> **The v0.1 target is for a committed synthetic WHONET-style source to produce a deterministic surveillance signal that starts an event-driven, proof-verified investigation and completes one authorized, acknowledged A1 coordination action. This must not be described as delivered until the required runtime evidence exists. No production hospital or laboratory-system connector is claimed.**
 
 The distinctive architecture is **Proof-Carrying Autonomy**:
 
@@ -33,7 +37,7 @@ The distinctive architecture is **Proof-Carrying Autonomy**:
 
 None of the reviewed public product materials describes the same combination of typed model claims, deterministic record/finding/source verification, bounded repair, deterministic action classification, freshness, durable idempotent intent, real A1 execution, and machine acknowledgement. This is a **public-evidence finding**, not proof that no private or unpublished system has similar capabilities.
 
-Ngabo's opportunity is credible, but it is not yet market validation. The product must still prove that AMR surveillance professionals value this exact post-signal workflow and that its proof-verification machinery improves trust and utility in practice.
+Ngabo's opportunity is credible, but it is not yet market validation. The product must still prove that AMR surveillance professionals value the recurring data-to-surveillance-to-coordination loop, that governed source adapters remove rather than add work, and that proof verification improves trust and utility in practice.
 
 ---
 
@@ -50,10 +54,12 @@ This report answers four questions:
 
 ### Product boundary used for comparison
 
-Ngabo v0.1 targets this canonical workflow:
+Ngabo v0.1 targets this canonical operating slice:
 
 ```text
-synthetic AMR signal
+committed synthetic WHONET-style source
+→ deterministic validation / normalization / surveillance
+→ synthetic AMR signal
 → event-driven investigation
 → deterministic fan-out/join
 → bounded evidence-grounded Gemini synthesis
@@ -123,7 +129,7 @@ The strategic implication is clear: **Ngabo should consume or interoperate with 
 
 [AMASS](https://www.amass.website/infobox.aspx?pageID=101) is an open-access, offline application that cleans, de-duplicates, analyzes, and automatically generates AMR surveillance reports from microbiology and optional hospital-admission data. Its current materials describe cluster signals, data verification reports, antimicrobial-use analysis, bloodstream-infection epidemiology, and fungal surveillance in version 4.0.
 
-AMASS is especially important because it already addresses a central Ngabo claim: reducing the work required to convert routine facility data into a standardized report. AMASS is therefore a direct substitute for automated batch reporting and an upstream complement for a post-signal orchestration layer.
+AMASS is especially important because it already addresses a central Ngabo claim: reducing the work required to convert routine facility data into a standardized report. AMASS is therefore a direct substitute for automated batch reporting, an adjacent competitor to Ngabo's broader data-readiness direction, and a potential upstream complement for Ngabo's investigation and coordination workflow. Ngabo must validate whether any integration removes enough recurring work to justify another operating layer.
 
 The original multi-country proof-of-concept also documented limitations in input formats, automatic data validation, language coverage, output formats, and formal user-feedback evaluation at that time. Current AMASS releases have evolved, so historical limitations should not be assumed to remain unchanged without checking the current version. [AMASS proof-of-concept](https://pmc.ncbi.nlm.nih.gov/articles/PMC7568216/) and [current AMASS FAQ](https://amass.website/faq.html)
 
@@ -413,11 +419,14 @@ That supports Ngabo's direction, while also setting a high bar. Ngabo must reduc
 
 ### Positioning statement
 
-> **For AMR surveillance professionals who already have structured laboratory data or an upstream surveillance signal, Ngabo is an open event-driven investigation and safe-coordination layer that assembles traceable evidence, machine-verifies action-relevant model claims, and completes one authorized coordination effect with acknowledgement. Unlike dashboards, report generators, or general-purpose AI assistants, Ngabo makes the verification and action boundary explicit and auditable.**
+> **For AMR surveillance professionals whose routine laboratory data is structured or exportable, Ngabo is designed as a complementary operating layer that connects through governed adapters, keeps deterministic surveillance state current, investigates meaningful signals, and completes permitted coordination with acknowledgement. Unlike a dashboard, report generator, or general-purpose AI assistant, Ngabo makes the evidence, verification, policy, and action boundaries explicit and auditable.**
+
+For v0.1, that positioning is demonstrated only with the committed synthetic WHONET-style source and the bounded event-to-ack hero. Production source-system integration remains a post-v0.1 hypothesis and engineering frontier.
 
 ### What Ngabo is
 
-- a post-signal investigation and coordination workflow;
+- a product direction spanning governed acquisition, deterministic surveillance, investigation, and coordination;
+- a v0.1 target for a synthetic source-to-signal-to-ack proof rather than a production connector;
 - a deterministic/agentic hybrid;
 - a proof-verification and abstention system;
 - a safe A1 automation demonstration;
@@ -496,12 +505,13 @@ The verifier rejects unknown, stale, unsupported, fabricated, or forbidden refer
 
 ## 9. Product and Roadmap Implications
 
-### Priority 1 — Prove the post-signal workflow, not generic surveillance
+### Priority 1 — Prove the bounded v0.1 operating slice, not generic surveillance
 
 The hero should visibly demonstrate what established dashboards and reports do not prove:
 
 ```text
-signal
+committed synthetic source
+→ deterministic surveillance signal
 → deterministic investigation
 → evidence-linked typed claims
 → deterministic verification
@@ -589,7 +599,8 @@ Key interview questions:
 ### Defensible now as product positioning
 
 - Ngabo targets a documented problem: fragmented AMR data-to-action workflows.
-- Established tools already analyze and report AMR data; Ngabo is designed as a complementary post-signal layer.
+- Established tools already analyze and report AMR data; Ngabo is designed as a complementary surveillance-to-coordination operating layer rather than their replacement.
+- The current v0.1 target uses a committed synthetic WHONET-style source and does not establish a production ALIS, WHONET, LIS/LIMS, instrument, or hospital connector.
 - Proof-Carrying Autonomy is Ngabo's intended architectural differentiator.
 - The public v0.1 action envelope permits only safe, authorized A1 coordination after deterministic gates.
 - The project uses synthetic data and does not claim clinical validation.

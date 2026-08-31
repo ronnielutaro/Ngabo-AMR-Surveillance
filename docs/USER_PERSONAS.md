@@ -43,6 +43,8 @@ safe authorized action + acknowledgement
 
 The strongest personas are therefore those who already spend meaningful time moving, cleaning, inspecting, interpreting, packaging, routing, or following up on AMR surveillance work.
 
+This operating loop is the **product direction**, not a statement that production source-system integration already exists. The public v0.1 target uses a committed synthetic WHONET-style source and does not claim a production ALIS, WHONET, LIS/LIMS, instrument, or hospital connector. Completion requires runtime evidence. Persona needs that depend on live acquisition remain hypotheses for post-v0.1 discovery and validation.
+
 ---
 
 ## 2. Evidence and Persona Discipline
