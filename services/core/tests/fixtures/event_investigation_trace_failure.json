@@ -1,0 +1,30 @@
+{
+  "$schema": "ngabo/event-investigation-trace/v1",
+  "outcome": "BLOCKED",
+  "is_success": false,
+  "execution_id": "RUN-abcdefabcdefabcdefabcdefabcdefab",
+  "metadata": {
+    "execution_id": "RUN-abcdefabcdefabcdefabcdefabcdefab",
+    "session_id": "ngabo-session-abcdefabcdefabcdefabcdefabcdefab",
+    "invocation_id": "ngabo-invocation-abcdefabcdefabcdefabcdefabcdefab",
+    "event_id": "evt-synth-0001",
+    "correlation_id": "corr-synth-0001",
+    "incident_id": "INC-999",
+    "incident_version": 1,
+    "source_watermark": "ngabo-source-v1:sha256:abc123",
+    "wrapper_calls": 1,
+    "model_calls": 0,
+    "tool_calls": 1,
+    "duration_ms": 9,
+    "budget": {
+      "max_runtime_seconds": 30.0,
+      "max_model_calls": 0,
+      "max_tool_calls": 4,
+      "max_loop_iterations": 1,
+      "max_repair_attempts": 0
+    },
+    "adk_version": "2.8.0"
+  },
+  "capability_outcome": "INCIDENT_NOT_FOUND",
+  "failure_code": "INCIDENT_NOT_FOUND"
+}
