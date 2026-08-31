@@ -27,11 +27,13 @@ from typing import Final, Protocol, runtime_checkable
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from ngabo.application.connect.processor import process_connect_csv
 from ngabo.application.enums.hero_error_code import HeroErrorCode
 from ngabo.application.enums.hero_outcome import HeroOutcome
 from ngabo.application.value_objects.investigation_execution import (
     EventInvestigationCommand,
 )
+from ngabo.infrastructure.connect.hmac_auth import verify_upload
 from ngabo.interfaces.health import health, readiness, runtime_identity
 
 SERVICE_NAME: Final[str] = "ngabo-core"
@@ -62,6 +64,7 @@ class HeroCompositionProtocol(Protocol):
 # Composition seam: set at deploy (or in tests) to a concrete HeroComposition. If
 # unset, a real composition is built lazily on first /surveillance request.
 hero_composition: HeroCompositionProtocol | None = None
+_last_connect_batch: dict[str, object] | None = None
 
 
 def configure_hero_composition(composition: HeroCompositionProtocol | None) -> None:
@@ -218,6 +221,56 @@ def _sanitized_hero_result(result: object) -> dict[str, object]:
         out["delivery_id"] = delivery.delivery_id
         out["ack_id"] = delivery.ack_id
     return out
+
+
+@app.post("/connect/batches", summary="Ingest one governed synthetic export batch")
+def ingest_connect_batch(request: Request) -> JSONResponse:
+    """Receive a raw CSV export (HMAC-signed), clean it, and hand off to the hero."""
+    body = _read_body(request)
+    lab_id = request.headers.get("X-Ngabo-Lab-Id", "")
+    source_id = request.headers.get("X-Ngabo-Source-Id", "")
+    secret = os.environ.get("NGABO_HMAC_SECRET", "demo-secret").encode("utf-8")
+    headers = dict(request.headers.items())
+    ok, err = verify_upload(
+        headers=headers,
+        body=body,
+        secret=secret,
+        configured_lab_ids={"synthetic-lab-gulu"},
+        configured_source_ids={"whonet-demo"},
+    )
+    if not ok:
+        return JSONResponse(status_code=400, content={"status": "rejected", "error": err})
+    try:
+        batch = process_connect_csv(
+            body,
+            lab_id=lab_id,
+            source_id=source_id,
+            window_end_iso=os.environ.get("NGABO_SURVEILLANCE_WINDOW_END", "2026-08-31"),
+            execute_hero=_run_connect_hero,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse(
+            status_code=500, content={"status": "processing_failed", "error": str(exc)}
+        )
+    global _last_connect_batch
+    _last_connect_batch = batch
+    return JSONResponse(status_code=200, content=batch)
+
+
+@app.get("/connect/status", summary="Latest connect batch status for the web UI")
+def connect_status() -> dict[str, object]:
+    return _last_connect_batch or {"status": "none"}
+
+
+def _run_connect_hero(command: dict[str, object]) -> dict[str, object]:
+    parsed = EventInvestigationCommand.from_primitive(command)
+    return _sanitized_hero_result(_hero().execute(parsed))
+
+
+def _read_body(request: Request) -> bytes:
+    import asyncio
+
+    return asyncio.run(request.body())
 
 
 @app.exception_handler(404)
