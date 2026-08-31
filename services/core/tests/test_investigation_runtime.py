@@ -673,6 +673,65 @@ class TestSyncDeadline:
         assert result.is_success() is False
         assert elapsed < 1.5, f"sync execute_primitive() blocked {elapsed:.2f}s"
 
+    def test_delayed_success_completes_without_false_timeout(self) -> None:
+        import time
+
+        def delayed_handler(query: GetInvestigationContextQuery) -> InvestigationContextResult:
+            time.sleep(0.08)  # completes well before the 2.0s deadline
+            return self._success_result(query)
+
+        runtime = _runtime(
+            get_context=delayed_handler,
+            budget=_budget(max_runtime_seconds=2.0),
+        )
+        command = _command(incident_id=INCIDENT_1, version=VERSION_1)
+        start = time.monotonic()
+        result = runtime.execute(command)
+        elapsed = time.monotonic() - start
+        # A handler that finishes after the loop is awaiting but well before the
+        # deadline MUST wake the loop instead of waiting for the timeout timer.
+        # This proves the daemon-thread completion is delivered thread-safely and
+        # does not become a false EXECUTION_TIMEOUT.
+        assert result.outcome is InvestigationExecutionOutcome.COMPLETED_CURRENT_STAGE
+        assert result.failure_code is None
+        assert result.is_success() is True
+        assert elapsed < 1.5, f"delayed success waited {elapsed:.2f}s; false timeout?"
+        metadata = result.metadata
+        assert metadata is not None
+        assert result.capability_result is not None
+        assert result.capability_result.outcome is CapabilityOutcome.SUCCESS
+        assert metadata.source_watermark == result.capability_result.source_watermark
+        assert metadata.source_watermark == WATERMARK
+        assert metadata.wrapper_calls == 1
+        assert metadata.tool_calls == 1
+        assert metadata.model_calls == 0
+        assert metadata.duration_ms < 2000
+
+    def test_delayed_success_debug_mode_no_non_thread_safe_mutation(self) -> None:
+        import asyncio
+        import time
+
+        def delayed_handler(query: GetInvestigationContextQuery) -> InvestigationContextResult:
+            time.sleep(0.08)
+            return self._success_result(query)
+
+        runtime = _runtime(
+            get_context=delayed_handler,
+            budget=_budget(max_runtime_seconds=2.0),
+        )
+
+        async def main() -> EventInvocationResult:
+            return await runtime.execute_async(
+                _command(incident_id=INCIDENT_1, version=VERSION_1)
+            )
+
+        # asyncio debug mode surfaces non-thread-safe Future/loop scheduling
+        # mistakes. The delayed success must still complete (no false timeout).
+        result = asyncio.run(main(), debug=True)
+        assert result.outcome is InvestigationExecutionOutcome.COMPLETED_CURRENT_STAGE
+        assert result.failure_code is None
+        assert result.is_success() is True
+
 
 class TestCommandContractVersion:
     """P2 regression: from_primitive must validate contract_version exactly."""

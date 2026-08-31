@@ -40,6 +40,7 @@ import threading
 import time
 import uuid
 from collections.abc import Callable, Mapping
+from contextlib import suppress
 from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
@@ -279,9 +280,12 @@ class EventInvestigationRuntime:
     async def _run_context_node(self, ctx: Context, node_input: object) -> dict[str, object]:
         """Run the thin inward-capability wrapper (no scientific recomputation).
 
-        The sync deterministic handler is awaited via ``asyncio.to_thread`` so a
-        slow canonical fetch never blocks the event loop and the outer
-        ``asyncio.wait_for`` deadline can actually preempt the run (fail closed).
+        The sync deterministic handler is awaited via ``_invoke_context_handler``,
+        which runs it on a dedicated daemon worker thread and marshals the
+        completion back onto the event loop with ``loop.call_soon_threadsafe``.
+        This keeps a slow canonical fetch off the event loop, lets the outer
+        ``asyncio.wait_for`` deadline preempt the run (fail closed), and never pins
+        the work to the default executor (which would hang ``asyncio.run`` shutdown).
         """
         envelope = self._extract_envelope(node_input)
         execution_id = str(envelope.get("execution_id")) if envelope is not None else None
@@ -363,11 +367,16 @@ class EventInvestigationRuntime:
         that executor worker to finish during its shutdown, so the public synchronous
         entry point would block FAR beyond the configured deadline (or never return).
 
-        Instead the handler runs on a dedicated daemon thread and the result is
-        resolved on a loop future. When the outer ``asyncio.wait_for`` deadline fires
-        and the awaiting task is cancelled, the loop returns promptly because the
-        abandoned daemon thread is never joined by ``asyncio.run``'s default-executor
-        shutdown. This makes the synchronous caller wall-clock bounded.
+        Instead the handler runs on a dedicated daemon thread and the result or
+        exception is marshalled back onto the event-loop thread with
+        ``loop.call_soon_threadsafe`` (an ``asyncio.Future`` is not thread-safe and
+        must never be mutated directly from a worker thread, otherwise a handler
+        finishing after the loop has suspended on the Future may not reliably wake
+        the loop and could produce a false ``EXECUTION_TIMEOUT``). When the outer
+        ``asyncio.wait_for`` deadline fires and the awaiting task is cancelled, the
+        loop returns promptly because the abandoned daemon thread is never joined by
+        ``asyncio.run``'s default-executor shutdown. This makes the synchronous
+        caller wall-clock bounded.
 
         Lifecycle truth: a timed-out handler is *abandoned*, not cancelled. The
         daemon thread keeps running until it returns or the process exits. It is
@@ -377,23 +386,30 @@ class EventInvestigationRuntime:
         loop = asyncio.get_running_loop()
         future: asyncio.Future[InvestigationContextResult] = loop.create_future()
 
+        def deliver_result(result: InvestigationContextResult) -> None:
+            # Runs on the event-loop thread: safe asyncio.Future mutation.
+            if future.done() or future.cancelled():
+                return
+            future.set_result(result)
+
+        def deliver_exception(exc: Exception) -> None:
+            # Runs on the event-loop thread: safe asyncio.Future mutation.
+            if future.done() or future.cancelled():
+                return
+            future.set_exception(exc)
+
         def worker() -> None:
             try:
                 result = self._get_context(query)
-            except BaseException as exc:  # noqa: BLE001 - captured and re-raised on await
-                # The loop may already be closed once the caller has timed out and
-                # ``asyncio.run`` has returned; never crash a background daemon thread.
-                try:
-                    if not future.done() and not future.cancelled() and not loop.is_closed():
-                        future.set_exception(exc)
-                except RuntimeError:
-                    pass
+            except Exception as exc:  # noqa: BLE001 - captured and re-raised on await
+                # Marshal the exception onto the event-loop thread. If the loop is
+                # already closed (caller timed out and ``asyncio.run`` returned),
+                # there is nothing to wake, so swallow the closed-loop race.
+                with suppress(RuntimeError):
+                    loop.call_soon_threadsafe(deliver_exception, exc)
             else:
-                try:
-                    if not future.done() and not future.cancelled() and not loop.is_closed():
-                        future.set_result(result)
-                except RuntimeError:
-                    pass
+                with suppress(RuntimeError):
+                    loop.call_soon_threadsafe(deliver_result, result)
 
         threading.Thread(target=worker, daemon=True).start()
         return await future
