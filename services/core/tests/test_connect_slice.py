@@ -182,7 +182,6 @@ def test_connect_bridge_cleans_detects_signal_and_hands_off() -> None:
     path = REPO_ROOT / "demo" / "connect" / "synthetic_gulu_surveillance_export.csv"
     raw = path.read_bytes()
     hero_commands: list[dict[str, object]] = []
-    progress: list[dict[str, object]] = []
 
     def fake_hero(command: dict[str, object]) -> dict[str, object]:
         hero_commands.append(command)
@@ -194,7 +193,6 @@ def test_connect_bridge_cleans_detects_signal_and_hands_off() -> None:
         source_id="whonet-demo",
         window_end_iso="2026-08-31",
         execute_hero=fake_hero,
-        publish_progress=progress.append,
     )
     assert result["received_count"] == 4
     assert result["accepted_count"] == 3
@@ -207,17 +205,6 @@ def test_connect_bridge_cleans_detects_signal_and_hands_off() -> None:
     assert "SIGNAL_DETECTED" in event_names
     assert "INVESTIGATION_STARTED" in event_names
     assert "WORKFLOW_HERO_COMPLETED" in event_names
-    assert [item["active_stage"] for item in progress] == [
-        "LAB_BATCH_SYNCED",
-        "CLEANING_STARTED",
-        "SURVEILLANCE_REFRESHED",
-        "SIGNAL_DETECTED",
-        "INVESTIGATION_STARTED",
-        "WORKFLOW_HERO_COMPLETED",
-        None,
-    ]
-    assert progress[-1]["workflow_state"] == "COMPLETED"
-    assert progress[-1]["events"] == result["events"]
 
 
 def test_profile_pair_is_derived_deterministically_from_accepted_isolates() -> None:

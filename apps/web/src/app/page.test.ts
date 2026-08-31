@@ -129,34 +129,6 @@ describe("Home", () => {
     expect(html).toContain("0 prompts · 0 approvals · 0 human interventions");
   });
 
-  it("shows one persisted active stage with a loader and pending work", async () => {
-    stubCore(readyBody(), versionBody(), {
-      lab_id: "synthetic-lab-gulu",
-      received_count: 4,
-      accepted_count: 3,
-      quarantined_count: 1,
-      signal_id: "sig-demo",
-      hero_result: null,
-      workflow_state: "RUNNING",
-      active_stage: "INVESTIGATION_STARTED",
-      events: [
-        { event: "LAB_BATCH_SYNCED" },
-        { event: "CLEANING_STARTED" },
-        { event: "VALIDATION_COMPLETED" },
-        { event: "NORMALIZATION_COMPLETED" },
-        { event: "QUARANTINE_COMPLETED" },
-        { event: "SURVEILLANCE_REFRESHED" },
-        { event: "SIGNAL_DETECTED", signal_id: "sig-demo" },
-      ],
-    });
-    const html = renderToStaticMarkup(await Home());
-    expect(html).toContain("Autonomous workflow in progress");
-    expect(html).toContain("Loading the governed investigation context");
-    expect(html).toContain('aria-label="INVESTIGATION_STARTED in progress"');
-    expect(html).toContain("Working");
-    expect(html).toContain("Pending");
-  });
-
   it("renders an honest missing-config state when CORE_API_URL is absent", async () => {
     delete process.env.CORE_API_URL;
     const fetchSpy = vi.fn();

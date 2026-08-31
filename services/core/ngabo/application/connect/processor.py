@@ -41,7 +41,6 @@ def process_connect_csv(
     window_end_iso: str,
     execute_hero: Callable[[dict[str, object]], dict[str, object]],
     persist_isolates: Callable[[str, list[CanonicalIsolate]], None] | None = None,
-    publish_progress: Callable[[dict[str, object]], None] | None = None,
 ) -> dict[str, Any]:
     """Run cleaning + signal detection + hero handoff for one raw CSV batch.
 
@@ -49,40 +48,6 @@ def process_connect_csv(
     hero result, and the workflow timeline. The ``execute_hero`` callback is the
     existing HeroRuntime seam (injected by the infrastructure composition root).
     """
-    batch_id = f"batch-{hashlib.sha256(raw).hexdigest()[:16]}"
-    events: list[dict[str, object]] = []
-    received_count = 0
-    accepted_count = 0
-    quarantined_count = 0
-    normalization_count = 0
-    signal_id: str | None = None
-    signal_count = 0
-    hero_result: dict[str, object] | None = None
-
-    def snapshot(
-        *, active_stage: str | None, workflow_state: str = "RUNNING"
-    ) -> dict[str, Any]:
-        payload: dict[str, Any] = {
-            "batch_id": batch_id,
-            "lab_id": lab_id,
-            "source_id": source_id,
-            "source_profile_version": WHONET_DEMO_V1.version,
-            "accepted_count": accepted_count,
-            "quarantined_count": quarantined_count,
-            "received_count": received_count,
-            "normalization_count": normalization_count,
-            "signal_id": signal_id,
-            "signal_count": signal_count,
-            "hero_result": hero_result,
-            "active_stage": active_stage,
-            "workflow_state": workflow_state,
-            "events": [dict(event) for event in events],
-        }
-        if publish_progress is not None:
-            publish_progress(payload)
-        return payload
-
-    snapshot(active_stage="LAB_BATCH_SYNCED")
     parser = csv.DictReader(io.StringIO(raw.decode("utf-8")))
     rows: list[dict[str, object]] = []
     for index, raw_row in enumerate(parser):
@@ -101,31 +66,21 @@ def process_connect_csv(
             "ast_results": {code: raw_row.get(code, "") for code in AST_CODES},
         }
         rows.append(row)
-    received_count = len(rows)
-    events.append({"event": "LAB_BATCH_SYNCED"})
-    snapshot(active_stage="CLEANING_STARTED")
     accepted, quarantined, report = clean_rows(rows, WHONET_DEMO_V1)
-    received_count = report.received_count
-    accepted_count = report.accepted_count
-    quarantined_count = report.quarantined_count
-    normalization_count = report.normalization_count
-    events.extend(
-        (
-            {"event": "CLEANING_STARTED"},
-            {"event": "VALIDATION_COMPLETED"},
-            {"event": "NORMALIZATION_COMPLETED"},
-            {"event": "QUARANTINE_COMPLETED"},
-        )
-    )
-    snapshot(active_stage="SURVEILLANCE_REFRESHED")
     isolates = [_to_isolate(record) for record in accepted]
     window_end = date.fromisoformat(window_end_iso)
     signals = evaluate_surveillance_signals(isolates, window_end, SignalConfig())
-    events.append({"event": "SURVEILLANCE_REFRESHED"})
+    events: list[dict[str, object]] = [
+        {"event": "LAB_BATCH_SYNCED"},
+        {"event": "CLEANING_STARTED"},
+        {"event": "VALIDATION_COMPLETED"},
+        {"event": "NORMALIZATION_COMPLETED"},
+        {"event": "QUARANTINE_COMPLETED"},
+        {"event": "SURVEILLANCE_REFRESHED"},
+    ]
+    hero_result: dict[str, object] | None = None
     signal_id = signals[0].signal_id if signals else None
-    signal_count = len(signals)
     if signals:
-        snapshot(active_stage="SIGNAL_DETECTED")
         events.append({"event": "SIGNAL_DETECTED", "signal_id": signal_id})
         incident_numeric = int(hashlib.sha256(raw).hexdigest()[:12], 16) % 10**8
         command: dict[str, object] = {
@@ -136,21 +91,27 @@ def process_connect_csv(
             "event_id": f"evt-{hashlib.sha256(raw).hexdigest()[:16]}",
             "correlation_id": f"corr-{signal_id or 'none'}",
         }
-        snapshot(active_stage="INVESTIGATION_STARTED")
         if persist_isolates is not None:
             persist_isolates(str(command["incident_id"]), isolates)
         events.append({"event": "INVESTIGATION_STARTED"})
-        snapshot(active_stage="WORKFLOW_HERO_COMPLETED")
         hero_result = execute_hero(command)
         outcome = hero_result.get("outcome") if hero_result else None
         if outcome:
             events.append({"event": f"WORKFLOW_{outcome}"})
-    terminal = (
-        "COMPLETED"
-        if hero_result and hero_result.get("outcome") == "HERO_COMPLETED"
-        else "BLOCKED"
-    )
-    return snapshot(active_stage=None, workflow_state=terminal)
+    result: dict[str, Any] = {
+        "lab_id": lab_id,
+        "source_id": source_id,
+        "source_profile_version": WHONET_DEMO_V1.version,
+        "accepted_count": report.accepted_count,
+        "quarantined_count": report.quarantined_count,
+        "received_count": report.received_count,
+        "normalization_count": report.normalization_count,
+        "signal_id": signal_id,
+        "signal_count": len(signals),
+        "hero_result": hero_result,
+        "events": events,
+    }
+    return result
 
 
 def _to_isolate(record: AcceptedRecord) -> CanonicalIsolate:

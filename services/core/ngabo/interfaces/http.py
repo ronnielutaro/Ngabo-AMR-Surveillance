@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import base64
 import binascii
-import hashlib
 import json
 import os
 from datetime import date
@@ -285,7 +284,6 @@ def ingest_connect_batch(request: Request) -> JSONResponse:
     source_id = request.headers.get("X-Ngabo-Source-Id", "")
     headers = dict(request.headers.items())
     ingestion = _connect_ingestion()
-    batch_id = f"batch-{hashlib.sha256(body).hexdigest()[:16]}"
     ok, err = ingestion.verify_upload(
         headers=headers,
         body=body,
@@ -305,11 +303,6 @@ def ingest_connect_batch(request: Request) -> JSONResponse:
             profile_pair=_isolate_pair(isolates),
         )
 
-    def _publish_progress(payload: dict[str, object]) -> None:
-        global _last_connect_batch
-        _last_connect_batch = payload
-        ingestion.persist_batch_events(batch_id=batch_id, payload=payload)
-
     try:
         batch = process_connect_csv(
             body,
@@ -318,8 +311,11 @@ def ingest_connect_batch(request: Request) -> JSONResponse:
             window_end_iso=os.environ.get("NGABO_SURVEILLANCE_WINDOW_END", "2026-08-31"),
             execute_hero=_run_connect_hero,
             persist_isolates=_persist,
-            publish_progress=_publish_progress,
         )
+        if batch.get("signal_id"):
+            ingestion.persist_batch_events(
+                batch_id=str(batch["signal_id"]), payload=batch
+            )
     except Exception as exc:  # noqa: BLE001
         return JSONResponse(
             status_code=500, content={"status": "processing_failed", "error": str(exc)}

@@ -7,7 +7,7 @@ export default function AutoRefresh() {
   const router = useRouter();
 
   useEffect(() => {
-    const timer = window.setInterval(() => router.refresh(), 1000);
+    const timer = window.setInterval(() => router.refresh(), 2000);
     return () => window.clearInterval(timer);
   }, [router]);
 
