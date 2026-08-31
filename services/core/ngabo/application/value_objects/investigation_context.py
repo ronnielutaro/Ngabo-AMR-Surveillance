@@ -33,6 +33,23 @@ def _require_isolates(values: object) -> None:
             )
 
 
+def _require_pair(value: object) -> tuple[str, str] | None:
+    """Validate an optional canonical profile-comparison isolate pair."""
+    if value is None:
+        return None
+    if not isinstance(value, tuple) or len(value) != 2:
+        raise ValueError(
+            f"Invalid profile_comparison_isolate_ids {value!r}; expected a 2-tuple"
+        )
+    a, b = value
+    for item in (a, b):
+        if not isinstance(item, str) or not item.strip() or item != item.strip():
+            raise ValueError(f"Invalid profile comparison isolate id {item!r}")
+    if a == b:
+        raise ValueError("a profile comparison requires two distinct isolates")
+    return (a, b)
+
+
 @dataclass(frozen=True)
 class StoredIncidentContext:
     """Immutable canonical incident context returned by the repository port."""
@@ -43,6 +60,7 @@ class StoredIncidentContext:
     isolates: tuple[CanonicalIsolate, ...]
     signal_config: SignalConfig
     window_end: date
+    profile_comparison_isolate_ids: tuple[str, str] | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.incident_id, IncidentId):
@@ -63,6 +81,11 @@ class StoredIncidentContext:
             raise TypeError("signal_config must be an exact SignalConfig")
         if type(self.window_end) is not date:
             raise TypeError("window_end must be an exact datetime.date")
+        object.__setattr__(
+            self,
+            "profile_comparison_isolate_ids",
+            _require_pair(self.profile_comparison_isolate_ids),
+        )
 
 
 @dataclass(frozen=True)
@@ -93,6 +116,7 @@ class InvestigationContextResult:
     signal_config: SignalConfig | None
     window_end: date | None
     requested_version: IncidentVersion | None = None
+    profile_comparison_isolate_ids: tuple[str, str] | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.outcome, CapabilityOutcome):
@@ -117,3 +141,8 @@ class InvestigationContextResult:
             raise TypeError("signal_config must be an exact SignalConfig or None")
         if self.window_end is not None and type(self.window_end) is not date:
             raise TypeError("window_end must be an exact datetime.date or None")
+        object.__setattr__(
+            self,
+            "profile_comparison_isolate_ids",
+            _require_pair(self.profile_comparison_isolate_ids),
+        )

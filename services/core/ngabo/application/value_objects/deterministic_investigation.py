@@ -157,7 +157,7 @@ class DeterministicInvestigationInput:
         _require_opaque_id(self.facility_id, "facility_id")
         _require_opaque_id(self.ward, "ward")
         if not isinstance(self.required_isolate_ids, tuple) or not self.required_isolate_ids:
-            raise ValueError("required_isolate_ids must be a non-empty tuple")
+            raise ValueError("required_isolate_ids must be a non-empty tuple of the full cohort")
         for isolate_id in self.required_isolate_ids:
             _require_opaque_id(isolate_id, "required_isolate_ids element")
         required = set(self.required_isolate_ids)

@@ -168,6 +168,30 @@ class _RunTelemetry:
         return state
 
 
+@dataclass
+class _RunBudget:
+    """Concurrency-safe per-run tool-call budget (infrastructure-owned).
+
+    The max_tool_calls budget is a HARD per-run bound: every deterministic
+    capability invocation (context + each required branch) acquires a slot, and
+    retry attempts share the SAME run-level budget (attempt 1 is never reset).
+    The lock makes concurrent branch acquisition race-safe so the hard limit
+    cannot be exceeded nondeterministically.
+    """
+
+    max_calls: int
+    used: int = 0
+    lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+
+    def try_acquire(self) -> bool:
+        """Atomically reserve one tool slot if the run budget remains."""
+        with self.lock:
+            if self.used >= self.max_calls:
+                return False
+            self.used += 1
+            return True
+
+
 def _require_opaque(value: object, label: str) -> str:
     if not isinstance(value, str) or not value.strip() or value != value.strip():
         raise ValueError(f"Invalid {label} {value!r}; expected a non-blank opaque value")
@@ -220,6 +244,9 @@ class EventInvestigationRuntime:
         self._capability_results: dict[str, InvestigationContextResult] = {}
         self._joined_results: dict[str, JoinedInvestigationContext] = {}
         self._run_telemetry: dict[str, _RunTelemetry] = {}
+        # Per-run hard tool-call budget, keyed by opaque execution_id. It is
+        # created once per backend invocation and survives retry attempts.
+        self._run_budget: dict[str, _RunBudget] = {}
         # Last started attempt identifiers so a boundary timeout can still emit
         # run metadata (the run did start even though it did not complete).
         self._last_attempt: dict[str, tuple[str, str, dict[str, object]]] = {}
@@ -251,6 +278,7 @@ class EventInvestigationRuntime:
             )
 
         execution_id = self._new_execution_id()
+        self._run_budget[execution_id.value] = _RunBudget(max_calls=self._budget.max_tool_calls)
         start = time.monotonic()
         try:
             # Overall runtime deadline wraps the whole deterministic graph
@@ -263,7 +291,6 @@ class EventInvestigationRuntime:
         except asyncio.CancelledError:
             # Cancellation never converts to success. Clean up carriers and let
             # the cancellation propagate so the caller knows the graph was halted.
-            self._cleanup(execution_id.value)
             raise
         except TimeoutError:
             duration_ms = _duration_ms(start)
@@ -281,6 +308,13 @@ class EventInvestigationRuntime:
                 telemetry=self._pop_telemetry(execution_id.value),
                 duration_ms=duration_ms,
             )
+        finally:
+            # Every terminal path (success, blocked, deterministic failure,
+            # wrapper failure, retry exhaustion, timeout, cancellation, ADK
+            # runtime failure) releases all run-scoped carriers here. The
+            # returned EventInvocationResult already holds the popped
+            # metadata/branch records/joined result, so cleanup is safe.
+            self._cleanup(execution_id.value)
 
     async def _run_attempts(
         self,
@@ -488,22 +522,14 @@ class EventInvestigationRuntime:
             else _RunTelemetry()
         )
         telemetry.wrapper_calls += 1
-        telemetry.tool_calls += 1
         telemetry.model_calls += 0  # deterministic path: no model call
+        budget = self._run_budget.get(execution_id) if execution_id is not None else None
         snapshot = self._snapshot_fields(envelope)
         if envelope is None:
             return self._context_blocked_payload(
                 envelope,
                 InvestigationExecutionOutcome.FAILED,
                 InvestigationExecutionErrorCode.MALFORMED_COMMAND,
-                telemetry,
-                snapshot,
-            )
-        if telemetry.tool_calls > self._budget.max_tool_calls:
-            return self._context_blocked_payload(
-                envelope,
-                InvestigationExecutionOutcome.FAILED,
-                InvestigationExecutionErrorCode.EXECUTION_BUDGET_EXCEEDED,
                 telemetry,
                 snapshot,
             )
@@ -518,6 +544,14 @@ class EventInvestigationRuntime:
                 incident_id=incident_id,
                 requested_version=requested_version,
             )
+            if budget is not None and not budget.try_acquire():
+                return self._context_blocked_payload(
+                    envelope,
+                    InvestigationExecutionOutcome.FAILED,
+                    InvestigationExecutionErrorCode.EXECUTION_BUDGET_EXCEEDED,
+                    telemetry,
+                    snapshot,
+                )
             context_result = await self._await_daemon_sync(lambda: self._get_context(query))
         except Exception as exc:  # noqa: BLE001 - fail closed on a wrapper exception
             return self._context_blocked_payload(
@@ -579,6 +613,12 @@ class EventInvestigationRuntime:
                 result.incident_id == inv.incident_id
                 and result.incident_version == inv.incident_version
                 and result.source_watermark == inv.source_watermark
+                # Scientific input binding: the reported pair must be the exact
+                # canonicalized comparison pair from DeterministicInvestigationInput.
+                # CompareResistanceProfiles canonicalizes the unordered pair to a
+                # sorted A/B identity, matching the canonicalized input pair.
+                and result.isolate_id_a == inv.isolate_id_a
+                and result.isolate_id_b == inv.isolate_id_b
             ),
         )
 
@@ -598,6 +638,11 @@ class EventInvestigationRuntime:
                 result.incident_id == inv.incident_id
                 and result.incident_version == inv.incident_version
                 and result.source_watermark == inv.source_watermark
+                # Scientific input binding: the reported cohort dimensions must be
+                # the exact deterministic cohort identity from the fan-out input.
+                and result.organism_code == inv.organism_code
+                and result.facility_id == inv.facility_id
+                and result.ward == inv.ward
             ),
         )
 
@@ -636,11 +681,10 @@ class EventInvestigationRuntime:
         )
         state = telemetry.branch_state(branch)
         state["started"] = True
-        state["invocation_count"] = cast(int, state["invocation_count"]) + 1
         started_monotonic = time.monotonic()
         state["start_monotonic"] = started_monotonic
-        telemetry.tool_calls += 1
         telemetry.model_calls += 0
+        budget = self._run_budget.get(execution_id) if execution_id is not None else None
 
         context_ready = bool(payload.get("context_ready")) if payload is not None else False
         investigation_input = (
@@ -662,6 +706,23 @@ class EventInvestigationRuntime:
                 binding_ok=None,
             )
 
+        if budget is not None and not budget.try_acquire():
+            # Hard per-run tool budget exhausted before this branch handler is
+            # invoked: fail closed and never report the branch as executed.
+            state["blocked"] = True
+            state["duration_ms"] = _duration_ms(started_monotonic)
+            return self._branch_payload(
+                branch,
+                InvestigationExecutionOutcome.FAILED,
+                InvestigationExecutionErrorCode.EXECUTION_BUDGET_EXCEEDED,
+                None,
+                state,
+                payload,
+                invoked=False,
+                binding_ok=None,
+            )
+
+        state["invocation_count"] = cast(int, state["invocation_count"]) + 1
         try:
             query = query_builder(investigation_input)
             result = await self._await_daemon_sync(lambda: handler(query))
@@ -760,6 +821,7 @@ class EventInvestigationRuntime:
         binding_all_ok = True
         outcomes_all_ok = True
         wrapper_failure = False
+        budget_exceeded = False
         for branch in REQUIRED_BRANCH_IDENTITIES:
             branch_payload = self._payload_for_branch(payloads, branch)
             if branch_payload is None:
@@ -771,11 +833,11 @@ class EventInvestigationRuntime:
                 outcomes_all_ok = False
             if branch_payload.get("binding_ok") is False:
                 binding_all_ok = False
-            if (
-                branch_payload.get("failure_code")
-                == InvestigationExecutionErrorCode.WRAPPER_EXCEPTION.value
-            ):
+            branch_failure = branch_payload.get("failure_code")
+            if branch_failure == InvestigationExecutionErrorCode.WRAPPER_EXCEPTION.value:
                 wrapper_failure = True
+            if branch_failure == InvestigationExecutionErrorCode.EXECUTION_BUDGET_EXCEEDED.value:
+                budget_exceeded = True
 
         profile_result = self._as_profile_result(branch_results.get(BranchIdentity.PROFILE))
         baseline_result = self._as_baseline_result(branch_results.get(BranchIdentity.BASELINE))
@@ -792,9 +854,10 @@ class EventInvestigationRuntime:
             and binding_all_ok
             and outcomes_all_ok
             and all_results_present
+            and not budget_exceeded
         )
         failure_code = self._resolve_join_failure_code(
-            payloads, wrapper_failure, binding_all_ok, outcomes_all_ok
+            payloads, wrapper_failure, budget_exceeded, binding_all_ok, outcomes_all_ok
         )
         joined = JoinedInvestigationContext(
             incident_id=investigation_input.incident_id,
@@ -819,6 +882,7 @@ class EventInvestigationRuntime:
                 in (
                     InvestigationExecutionErrorCode.WRAPPER_EXCEPTION,
                     InvestigationExecutionErrorCode.ADK_RUNTIME_EXCEPTION,
+                    InvestigationExecutionErrorCode.EXECUTION_BUDGET_EXCEEDED,
                 )
                 else InvestigationExecutionOutcome.BLOCKED
             )
@@ -946,6 +1010,8 @@ class EventInvestigationRuntime:
             canonical_watermark = capability_result.source_watermark
         else:
             canonical_watermark = SourceWatermark(str(envelope["source_watermark"]))
+        run_budget = self._run_budget.get(execution_id.value)
+        tool_calls = run_budget.used if run_budget is not None else telemetry.tool_calls
         return ADKExecutionMetadata(
             execution_id=execution_id,
             session_id=session_id,
@@ -963,7 +1029,7 @@ class EventInvestigationRuntime:
             source_watermark=canonical_watermark,
             wrapper_calls=telemetry.wrapper_calls,
             model_calls=telemetry.model_calls,
-            tool_calls=telemetry.tool_calls,
+            tool_calls=tool_calls,
             duration_ms=duration_ms,
             budget=self._budget,
             adk_version=self._adk_version,
@@ -1010,25 +1076,45 @@ class EventInvestigationRuntime:
     ) -> DeterministicInvestigationInput:
         """Derive ONE unambiguous deterministic fan-out input.
 
-        The incident must contain exactly the intended comparison pair (the two
-        isolates) and the relevant cohort must be homogeneous on
-        organism/facility/ward. Ambiguity fails closed with REQUIRED_INPUT_UNAVAILABLE
-        (no heuristic "best pair" is invented inside orchestration).
+        The fan-out input preserves the COMPLETE canonical investigation cohort
+        (all isolates) and derives a deterministic profile-comparison pair from
+        canonical signal/context data:
+
+        - if the canonical context carries an explicit governed
+          ``profile_comparison_isolate_ids`` (the signal's primary phenotype pair,
+          e.g. "ISO-031"/"ISO-034" for the canonical hero), that pair is used;
+        - otherwise, if the cohort has exactly two isolates, those two are the pair;
+        - otherwise the intended pair cannot be determined unambiguously and the
+          runtime fails closed with REQUIRED_INPUT_UNAVAILABLE (no "first two",
+          "best pair", or model-selected heuristic is invented here).
+
+        The baseline cohort must be homogeneous on organism/facility/ward, and the
+        missingness branch operates against the full required isolate cohort.
         """
         if context_result.incident_id is None or context_result.incident_version is None:
             raise ValueError("context result lacks canonical incident identity")
         if context_result.source_watermark is None:
             raise ValueError("context result lacks a canonical source watermark")
         isolates = context_result.isolates
-        if len(isolates) != 2:
+        if not isolates:
+            raise ValueError("incident cohort is empty")
+        provided_pair = context_result.profile_comparison_isolate_ids
+        if provided_pair is not None:
+            pair_a, pair_b = provided_pair
+        elif len(isolates) == 2:
+            pair_a, pair_b = isolates[0].isolate_id, isolates[1].isolate_id
+        else:
             raise ValueError(
-                "incident must contain exactly the intended comparison pair "
-                f"(got {len(isolates)} isolates)"
+                "the intended profile comparison pair cannot be derived "
+                f"unambiguously from a {len(isolates)}-isolate cohort"
             )
-        first, second = isolates[0], isolates[1]
-        organism_code = first.organism_code
-        facility_id = first.facility_id
-        ward = first.ward
+        by_id = {iso.isolate_id: iso for iso in isolates}
+        if pair_a not in by_id or pair_b not in by_id or pair_a == pair_b:
+            raise ValueError("the canonical profile comparison pair is not a valid cohort pair")
+        isolate_id_a, isolate_id_b = sorted((pair_a, pair_b))
+        organism_code = by_id[isolate_id_a].organism_code
+        facility_id = by_id[isolate_id_a].facility_id
+        ward = by_id[isolate_id_a].ward
         for iso in isolates:
             if (
                 iso.organism_code != organism_code
@@ -1041,12 +1127,12 @@ class EventInvestigationRuntime:
             incident_version=context_result.incident_version,
             source_watermark=context_result.source_watermark,
             graph_attempt=graph_attempt,
-            isolate_id_a=first.isolate_id,
-            isolate_id_b=second.isolate_id,
+            isolate_id_a=isolate_id_a,
+            isolate_id_b=isolate_id_b,
             organism_code=organism_code,
             facility_id=facility_id,
             ward=ward,
-            required_isolate_ids=(first.isolate_id, second.isolate_id),
+            required_isolate_ids=tuple(sorted(iso.isolate_id for iso in isolates)),
         )
 
     # -- helpers -----------------------------------------------------------------------
@@ -1112,12 +1198,15 @@ class EventInvestigationRuntime:
         self,
         payloads: list[dict[str, object]],
         wrapper_failure: bool,
+        budget_exceeded: bool,
         binding_all_ok: bool,
         outcomes_all_ok: bool,
     ) -> InvestigationExecutionErrorCode | None:
         del payloads
         if wrapper_failure:
             return InvestigationExecutionErrorCode.WRAPPER_EXCEPTION
+        if budget_exceeded:
+            return InvestigationExecutionErrorCode.EXECUTION_BUDGET_EXCEEDED
         if not binding_all_ok:
             return InvestigationExecutionErrorCode.BRANCH_BINDING_MISMATCH
         if not outcomes_all_ok:
@@ -1353,6 +1442,7 @@ class EventInvestigationRuntime:
         self._capability_results.pop(execution_id, None)
         self._joined_results.pop(execution_id, None)
         self._run_telemetry.pop(execution_id, None)
+        self._run_budget.pop(execution_id, None)
         self._last_attempt.pop(execution_id, None)
 
     @staticmethod

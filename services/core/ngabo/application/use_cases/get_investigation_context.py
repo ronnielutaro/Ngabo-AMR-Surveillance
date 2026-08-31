@@ -46,6 +46,7 @@ class GetInvestigationContext:
                 signal_config=None,
                 window_end=None,
                 requested_version=query.requested_version,
+                profile_comparison_isolate_ids=None,
             )
 
         if (
@@ -62,6 +63,7 @@ class GetInvestigationContext:
                 signal_config=None,
                 window_end=None,
                 requested_version=query.requested_version,
+                profile_comparison_isolate_ids=stored.profile_comparison_isolate_ids,
             )
 
         return InvestigationContextResult(
@@ -73,6 +75,7 @@ class GetInvestigationContext:
             signal_config=stored.signal_config,
             window_end=stored.window_end,
             requested_version=query.requested_version,
+            profile_comparison_isolate_ids=stored.profile_comparison_isolate_ids,
         )
 
     def __call__(self, query: GetInvestigationContextQuery) -> InvestigationContextResult:

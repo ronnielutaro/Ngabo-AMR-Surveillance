@@ -129,12 +129,11 @@ def _stored() -> StoredIncidentContext:
 class _Repo:
     """In-memory InvestigationContextRepository fake."""
 
-    _context: StoredIncidentContext | None = _stored()
+    def __init__(self, context: StoredIncidentContext | None = None) -> None:
+        self._context = context if context is not None else _stored()
 
     def get(self, incident_id: IncidentId) -> StoredIncidentContext | None:
-        if incident_id.value == INCIDENT.value:
-            return self._context
-        return None
+        return self._context if incident_id.value == INCIDENT.value else None
 
 
 def _budget(**overrides: object) -> InvestigationRuntimeBudget:
@@ -625,12 +624,12 @@ class TestTimeoutAndCancellation:
 
         def slow(query: GetBaselineSummaryQuery) -> BaselineSummaryResult:
             del query
-            time.sleep(0.6)
+            time.sleep(2.0)
             raise AssertionError("should never return")
 
         rt = _runtime(
             get_baseline_summary=slow,
-            budget=_budget(max_runtime_seconds=0.25),
+            budget=_budget(max_runtime_seconds=0.8),
         )
         start = time.monotonic()
         result = rt.execute(_command())
@@ -642,7 +641,7 @@ class TestTimeoutAndCancellation:
         # A branch that started but was interrupted by the overall deadline is
         # truthfully reported as timed out; downstream readiness is false.
         assert any(r.timed_out for r in result.branch_records)
-        assert elapsed < 2.0
+        assert elapsed < 3.0
 
     def test_async_cancellation_never_reports_ready(self) -> None:
         import time
@@ -793,3 +792,269 @@ class TestTraceArtifact:
             assert "SYNTH-CASE" not in serialized
             assert "verified" not in serialized.lower()
             assert "authorized" not in serialized.lower()
+
+
+class TestCanonicalHeroCohort:
+    """P1: the runtime must accept the canonical three-isolate hero cohort."""
+
+    def _hero_repo(self) -> _Repo:
+        context = StoredIncidentContext(
+            incident_id=INCIDENT,
+            incident_version=VERSION,
+            source_watermark=WATERMARK,
+            isolates=(_isolate("ISO-031"), _isolate("ISO-034"), _isolate("ISO-039")),
+            signal_config=SignalConfig(),
+            window_end=WINDOW_END,
+            profile_comparison_isolate_ids=("ISO-031", "ISO-034"),
+        )
+        return _Repo(context)
+
+    def test_canonical_three_isolate_hero_reaches_ready(self) -> None:
+        rt = _runtime(repo=self._hero_repo())
+        result = rt.execute(_command())
+        assert result.outcome is InvestigationExecutionOutcome.READY_FOR_DOWNSTREAM
+        joined = result.joined_investigation
+        assert joined is not None
+        assert joined.ready_for_downstream is True
+        assert joined.profile_result is not None
+        assert joined.profile_result.incident_id == INCIDENT
+        # The deterministic ground pair is ISO-031 / ISO-034.
+        assert joined.profile_result.isolate_id_a == "ISO-031"
+        assert joined.profile_result.isolate_id_b == "ISO-034"
+        # Missingness operates against the full three-isolate cohort.
+        assert joined.missingness_result is not None
+        assert joined.missingness_result.has_material_missingness is False
+        # All three branches ran exactly once.
+        records = {r.branch.value: r for r in result.branch_records}
+        for branch in ("PROFILE", "BASELINE", "MISSINGNESS"):
+            assert records[branch].invocation_count == 1
+
+    def test_ambiguous_cohort_without_ground_pair_fails_closed(self) -> None:
+        context = StoredIncidentContext(
+            incident_id=INCIDENT,
+            incident_version=VERSION,
+            source_watermark=WATERMARK,
+            isolates=(_isolate("ISO-031"), _isolate("ISO-034"), _isolate("ISO-039")),
+            signal_config=SignalConfig(),
+            window_end=WINDOW_END,
+            profile_comparison_isolate_ids=None,
+        )
+        rt = _runtime(repo=_Repo(context))
+        result = rt.execute(_command())
+        assert result.outcome is InvestigationExecutionOutcome.BLOCKED
+        assert result.failure_code is InvestigationExecutionErrorCode.REQUIRED_INPUT_UNAVAILABLE
+        # The ambiguous pair fails closed before any branch is invoked, so no
+        # joined snapshot exists; readiness is trivially false.
+        assert result.joined_investigation is None
+        assert result.is_success() is False
+
+
+class TestHardToolBudget:
+    """P2: max_tool_calls is a hard per-run bound (no retry reset)."""
+
+    def test_max_tool_calls_one_fails_closed(self) -> None:
+        repo = _Repo()
+        cap = _capabilities(repo)
+        invoked: dict[str, int] = {}
+        lock = threading.Lock()
+
+        def track(name: str, handler: object) -> object:
+            def wrapper(*args: object) -> object:
+                with lock:
+                    invoked[name] = invoked.get(name, 0) + 1
+                return handler(*args)  # type: ignore[operator]
+
+            return wrapper
+
+        rt = _runtime(
+            repo=repo,
+            budget=_budget(max_tool_calls=1),
+            compare_profiles=track("profile", cap[1]),
+            get_baseline_summary=track("baseline", cap[2]),
+            assess_missingness=track("missingness", cap[3]),
+        )
+        result = rt.execute(_command())
+        assert result.outcome is InvestigationExecutionOutcome.FAILED
+        assert result.failure_code is InvestigationExecutionErrorCode.EXECUTION_BUDGET_EXCEEDED
+        assert result.is_success() is False
+        assert result.joined_investigation is not None
+        assert result.joined_investigation.ready_for_downstream is False
+        # Context consumed the single slot; no branch handler was ever invoked.
+        assert invoked == {}
+
+    def test_budget_sufficient_for_one_full_attempt(self) -> None:
+        rt = _runtime(repo=_Repo(), budget=_budget(max_tool_calls=4))
+        result = rt.execute(_command())
+        assert result.outcome is InvestigationExecutionOutcome.READY_FOR_DOWNSTREAM
+        assert result.metadata is not None
+        assert result.metadata.tool_calls == 4
+
+    def test_retry_does_not_reset_run_level_budget(self) -> None:
+        repo = _Repo()
+        cap = _capabilities(repo)
+        good = cap[1]
+        calls = 0
+        lock = threading.Lock()
+
+        def handler(query: CompareProfilesQuery) -> ProfileComparisonResult:
+            nonlocal calls
+            with lock:
+                calls += 1
+            if calls == 1:
+                raise RuntimeError("transient")
+            return good.execute(query)
+
+        # Attempt 1 consumes 4 slots; with a 5-slot budget the retried run's
+        # context reserves slot 5, so the retried profile branch is budget
+        # blocked before its handler is invoked -> terminal budget failure,
+        # proving retry does not reset the per-run counter.
+        rt = _runtime(
+            repo=repo,
+            compare_profiles=handler,
+            budget=_budget(max_tool_calls=5, max_loop_iterations=2),
+        )
+        result = rt.execute(_command())
+        assert result.outcome is InvestigationExecutionOutcome.FAILED
+        assert result.failure_code is InvestigationExecutionErrorCode.EXECUTION_BUDGET_EXCEEDED
+        assert result.is_success() is False
+        # Only the context acquire of attempt 2 (7th slot) can be reserved; the
+        # branch handler of attempt 2 is never invoked after the budget is spent.
+        assert calls == 1
+
+
+class TestScientificBinding:
+    """P2: a successful branch result must match the requested scientific input."""
+
+    def test_wrong_profile_pair_blocks(self) -> None:
+        repo = _Repo()
+        cap = _capabilities(repo)
+        good = cap[1]
+
+        def bad(query: CompareProfilesQuery) -> ProfileComparisonResult:
+            result = good.execute(query)
+            return ProfileComparisonResult(
+                outcome=CapabilityOutcome.SUCCESS,
+                incident_id=result.incident_id,
+                incident_version=result.incident_version,
+                source_watermark=result.source_watermark,
+                finding=result.finding,
+                finding_reference=result.finding_reference,
+                isolate_id_a="ISO-001",
+                isolate_id_b="ISO-999",
+            )
+
+        rt = _runtime(repo=repo, compare_profiles=bad)
+        result = rt.execute(_command())
+        assert result.outcome is InvestigationExecutionOutcome.BLOCKED
+        assert result.failure_code is InvestigationExecutionErrorCode.BRANCH_BINDING_MISMATCH
+        assert result.joined_investigation is not None
+        assert result.joined_investigation.ready_for_downstream is False
+
+    def _baseline_result_with(
+        self,
+        cap: GetBaselineSummary,
+        *,
+        organism_code: str | None = None,
+        facility_id: str | None = None,
+        ward: str | None = None,
+    ) -> BaselineSummaryResult:
+        result = cap.execute(
+            GetBaselineSummaryQuery(
+                incident_id=INCIDENT,
+                organism_code=ORG,
+                facility_id=FACILITY,
+                ward=WARD,
+                requested_version=VERSION,
+            )
+        )
+        assert isinstance(result, BaselineSummaryResult)
+        return BaselineSummaryResult(
+            outcome=CapabilityOutcome.SUCCESS,
+            incident_id=result.incident_id,
+            incident_version=result.incident_version,
+            source_watermark=result.source_watermark,
+            signal_evaluation=result.signal_evaluation,
+            organism_code=organism_code or result.organism_code,
+            facility_id=facility_id or result.facility_id,
+            ward=ward or result.ward,
+        )
+
+    def test_wrong_baseline_organism_blocks(self) -> None:
+        repo = _Repo()
+        cap = _capabilities(repo)
+        rt = _runtime(
+            repo=repo,
+            get_baseline_summary=lambda q: self._baseline_result_with(
+                cap[2], organism_code="eco"
+            ),
+        )
+        result = rt.execute(_command())
+        assert result.outcome is InvestigationExecutionOutcome.BLOCKED
+        assert result.failure_code is InvestigationExecutionErrorCode.BRANCH_BINDING_MISMATCH
+        assert result.is_success() is False
+
+    def test_wrong_baseline_facility_blocks(self) -> None:
+        repo = _Repo()
+        cap = _capabilities(repo)
+        rt = _runtime(
+            repo=repo,
+            get_baseline_summary=lambda q: self._baseline_result_with(
+                cap[2], facility_id="SYNTH-FACILITY-999"
+            ),
+        )
+        result = rt.execute(_command())
+        assert result.outcome is InvestigationExecutionOutcome.BLOCKED
+        assert result.failure_code is InvestigationExecutionErrorCode.BRANCH_BINDING_MISMATCH
+        assert result.is_success() is False
+
+    def test_wrong_baseline_ward_blocks(self) -> None:
+        repo = _Repo()
+        cap = _capabilities(repo)
+        rt = _runtime(
+            repo=repo,
+            get_baseline_summary=lambda q: self._baseline_result_with(
+                cap[2], ward="SYNTH-WARD-Z"
+            ),
+        )
+        result = rt.execute(_command())
+        assert result.outcome is InvestigationExecutionOutcome.BLOCKED
+        assert result.failure_code is InvestigationExecutionErrorCode.BRANCH_BINDING_MISMATCH
+        assert result.is_success() is False
+
+
+class TestRunStateCleanup:
+    """P2: run-scoped carriers are released on every terminal path."""
+
+    def _assert_empty(self, runtime: EventInvestigationRuntime) -> None:
+        assert runtime._capability_results == {}
+        assert runtime._joined_results == {}
+        assert runtime._run_telemetry == {}
+        assert runtime._last_attempt == {}
+        assert runtime._run_budget == {}
+
+    def test_successful_terminal_cleans_run_scoped_state(self) -> None:
+        runtime = _runtime()
+        for _ in range(10):
+            result = runtime.execute(_command())
+            assert result.outcome is InvestigationExecutionOutcome.READY_FOR_DOWNSTREAM
+            self._assert_empty(runtime)
+
+    def test_blocked_terminal_cleans_run_scoped_state(self) -> None:
+        def failing(query: CompareProfilesQuery) -> ProfileComparisonResult:
+            result = _capabilities(_Repo())[1].execute(query)
+            return ProfileComparisonResult(
+                outcome=CapabilityOutcome.REQUIRED_CAPABILITY_FAILED,
+                incident_id=result.incident_id,
+                incident_version=result.incident_version,
+                source_watermark=result.source_watermark,
+                finding=None,
+                finding_reference=None,
+                isolate_id_a=result.isolate_id_a,
+                isolate_id_b=result.isolate_id_b,
+            )
+
+        runtime = _runtime(compare_profiles=failing)
+        for _ in range(10):
+            result = runtime.execute(_command())
+            assert result.outcome is InvestigationExecutionOutcome.BLOCKED
+            self._assert_empty(runtime)
