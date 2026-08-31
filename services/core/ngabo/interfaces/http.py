@@ -35,11 +35,6 @@ from ngabo.application.value_objects.investigation_execution import (
     EventInvestigationCommand,
 )
 from ngabo.domain.entities.canonical_isolate import CanonicalIsolate
-from ngabo.infrastructure.connect.firestore_incident_repository import (
-    FirestoreInvestigationContextRepository,
-    persist_batch_events,
-)
-from ngabo.infrastructure.connect.hmac_auth import verify_upload
 from ngabo.interfaces.health import health, readiness, runtime_identity
 
 SERVICE_NAME: Final[str] = "ngabo-core"
@@ -67,9 +62,45 @@ class HeroCompositionProtocol(Protocol):
         ...
 
 
+@runtime_checkable
+class ConnectIngestionProtocol(Protocol):
+    """Connect ingestion adapters, injected by the bootstrap layer.
+
+    Defined here (never imported from infrastructure/bootstrap) so the
+    ``interfaces`` layer keeps its inward dependency direction while still
+    authenticating uploads and persisting cleanup/signal results.
+    """
+
+    def verify_upload(
+        self,
+        *,
+        headers: dict[str, str],
+        body: bytes,
+        configured_lab_ids: set[str],
+        configured_source_ids: set[str],
+    ) -> tuple[bool, str | None]:
+        ...
+
+    def persist_isolates(
+        self,
+        *,
+        incident_id: str,
+        isolates: list[CanonicalIsolate],
+        lab_id: str,
+        source_id: str,
+        window_end: date,
+        profile_pair: tuple[str, str] | None = None,
+    ) -> None:
+        ...
+
+    def persist_batch_events(self, *, batch_id: str, payload: dict[str, object]) -> None:
+        ...
+
+
 # Composition seam: set at deploy (or in tests) to a concrete HeroComposition. If
 # unset, a real composition is built lazily on first /surveillance request.
 hero_composition: HeroCompositionProtocol | None = None
+connect_ingestion: ConnectIngestionProtocol | None = None
 _last_connect_batch: dict[str, object] | None = None
 
 
@@ -79,6 +110,12 @@ def configure_hero_composition(composition: HeroCompositionProtocol | None) -> N
     hero_composition = composition
 
 
+def configure_connect_ingestion(ingestion: ConnectIngestionProtocol | None) -> None:
+    """Set the deployed connect ingestion adapters before serving requests."""
+    global connect_ingestion
+    connect_ingestion = ingestion
+
+
 def _hero() -> HeroCompositionProtocol:
     global hero_composition
     if hero_composition is None:
@@ -86,6 +123,13 @@ def _hero() -> HeroCompositionProtocol:
         # so a misconfigured deployment fails closed rather than fabricating a run.
         raise RuntimeError("hero composition is not configured; deploy must inject it")
     return hero_composition
+
+
+def _connect_ingestion() -> ConnectIngestionProtocol:
+    global connect_ingestion
+    if connect_ingestion is None:
+        raise RuntimeError("connect ingestion is not configured; deploy must inject it")
+    return connect_ingestion
 
 
 @app.get("/health", response_model=dict[str, str], summary="Liveness")
@@ -235,30 +279,24 @@ def ingest_connect_batch(request: Request) -> JSONResponse:
     body = _read_body(request)
     lab_id = request.headers.get("X-Ngabo-Lab-Id", "")
     source_id = request.headers.get("X-Ngabo-Source-Id", "")
-    secret = os.environ.get("NGABO_HMAC_SECRET", "demo-secret").encode("utf-8")
     headers = dict(request.headers.items())
-    ok, err = verify_upload(
+    ingestion = _connect_ingestion()
+    ok, err = ingestion.verify_upload(
         headers=headers,
         body=body,
-        secret=secret,
         configured_lab_ids={"synthetic-lab-gulu"},
         configured_source_ids={"whonet-demo"},
     )
     if not ok:
         return JSONResponse(status_code=400, content={"status": "rejected", "error": err})
-    project = os.environ.get("NGABO_GCP_PROJECT", "")
 
     def _persist(incident_id: str, isolates: list[CanonicalIsolate]) -> None:
-        if not project:
-            return
-        repo = FirestoreInvestigationContextRepository(project=project)
-
-        repo.persist_incident(
+        ingestion.persist_isolates(
             incident_id=incident_id,
-            incident_version=1,
-            source_watermark=f"connect/{lab_id}/{source_id}/v1",
-            window_end=_parsed_window_end(),
             isolates=isolates,
+            lab_id=lab_id,
+            source_id=source_id,
+            window_end=_parsed_window_end(),
             profile_pair=_isolate_pair(isolates),
         )
 
@@ -271,9 +309,9 @@ def ingest_connect_batch(request: Request) -> JSONResponse:
             execute_hero=_run_connect_hero,
             persist_isolates=_persist,
         )
-        if project and batch.get("signal_id"):
-            persist_batch_events(
-                project=project, batch_id=str(batch["signal_id"]), payload=batch
+        if batch.get("signal_id"):
+            ingestion.persist_batch_events(
+                batch_id=str(batch["signal_id"]), payload=batch
             )
     except Exception as exc:  # noqa: BLE001
         return JSONResponse(
