@@ -47,6 +47,7 @@ class ConnectApp(tk.Tk):
         self.geometry("620x380")
         self.watch_dir: Path | None = None
         self.queue: ConnectQueue | None = None
+        self._observed_hashes: set[str] = set()
         self.running = False
         self._build_ui()
 
@@ -100,23 +101,30 @@ class ConnectApp(tk.Tk):
             self._log("Already watching.")
             return
         self.watch_dir.mkdir(parents=True, exist_ok=True)
-        self.queue = ConnectQueue(self.watch_dir / "connect_queue.sqlite")
         self.running = True
         self.status_var.set("● Watching")
         self._log("Watching for new .csv exports. Drop a file to begin.")
         threading.Thread(target=self._watch_loop, daemon=True).start()
 
     def _watch_loop(self) -> None:
+        assert self.watch_dir is not None
+        # sqlite3 connections are thread-affine by default. Construct and use
+        # the durable queue exclusively inside this watcher thread.
+        self.queue = ConnectQueue(self.watch_dir / "connect_queue.sqlite")
         intake_url = os.environ.get("NGABO_INTAKE_URL", DEFAULT_INTAKE_URL)
         lab_id = os.environ.get("NGABO_LAB_ID", "synthetic-lab-gulu")
         source_id = os.environ.get("NGABO_SOURCE_ID", "whonet-demo")
         secret = os.environ.get("NGABO_HMAC_SECRET", "demo-secret").encode("utf-8")
-        while self.running and self.queue is not None:
-            try:
-                self._scan_and_upload(intake_url, lab_id, source_id, secret)
-            except Exception as exc:  # noqa: BLE001
-                self.after(0, self._log, f"loop error: {exc}")
-            time.sleep(1.0)
+        try:
+            while self.running:
+                try:
+                    self._scan_and_upload(intake_url, lab_id, source_id, secret)
+                except Exception as exc:  # noqa: BLE001
+                    self.after(0, self._log, f"loop error: {exc}")
+                time.sleep(1.0)
+        finally:
+            self.queue.close()
+            self.queue = None
 
     def _scan_and_upload(
         self, intake_url: str, lab_id: str, source_id: str, secret: bytes
@@ -126,53 +134,56 @@ class ConnectApp(tk.Tk):
             if not stable_size_mtime(path):
                 continue
             sha = file_sha256(path)
+            if sha in self._observed_hashes:
+                continue
+            self._observed_hashes.add(sha)
             self.after(0, self._log, f"DETECTED {path.name} sha256={sha[:12]}…")
             self.queue.add(
                 file_path=str(path), file_sha256=sha, lab_id=lab_id, source_id=source_id
             )
-            while True:
-                item = self.queue.next_due()
-                if item is None:
-                    break
-                self.queue.mark_syncing(item["id"])
-                queued_path = Path(str(item["file_path"]))
-                body = queued_path.read_bytes()
-                queued_sha = str(item["file_sha256"])
-                filename = queued_path.name
-                ts = str(int(time.time()))
-                signature = compute_signature(
-                    secret, lab_id, source_id, ts, queued_sha, filename, body
-                )
-                token = _identity_token(intake_url)
-                headers = {
-                    "Content-Type": "text/csv",
-                    "X-Ngabo-Lab-Id": lab_id,
-                    "X-Ngabo-Source-Id": source_id,
-                    "X-Ngabo-Timestamp": ts,
-                    "X-Ngabo-Content-SHA256": queued_sha,
-                    "X-Ngabo-Signature": signature,
-                    "X-Ngabo-Filename": filename,
-                }
-                if token:
-                    headers["Authorization"] = f"Bearer {token}"
-                req = request.Request(
-                    intake_url,
-                    data=body,
-                    method="POST",
-                    headers=headers,
-                )
-                try:
-                    with request.urlopen(req, timeout=180) as response:
-                        if 200 <= response.status < 300:
-                            self.queue.mark_acknowledged(item["id"], "batch-ack")
-                            self.after(0, self.status_var.set, "● Connected")
-                            self.after(0, self._log, f"ACKNOWLEDGED {queued_path.name}")
-                        else:
-                            self.queue.mark_retry(item["id"], f"HTTP {response.status}")
-                            self.after(0, self._log, f"RETRYING {queued_path.name}")
-                except Exception as exc:  # noqa: BLE001
-                    self.queue.mark_retry(item["id"], str(exc))
-                    self.after(0, self._log, f"RETRYING {queued_path.name}: {exc}")
+        while True:
+            item = self.queue.next_due()
+            if item is None:
+                break
+            self.queue.mark_syncing(item["id"])
+            queued_path = Path(str(item["file_path"]))
+            body = queued_path.read_bytes()
+            queued_sha = str(item["file_sha256"])
+            filename = queued_path.name
+            ts = str(int(time.time()))
+            signature = compute_signature(
+                secret, lab_id, source_id, ts, queued_sha, filename, body
+            )
+            token = _identity_token(intake_url)
+            headers = {
+                "Content-Type": "text/csv",
+                "X-Ngabo-Lab-Id": lab_id,
+                "X-Ngabo-Source-Id": source_id,
+                "X-Ngabo-Timestamp": ts,
+                "X-Ngabo-Content-SHA256": queued_sha,
+                "X-Ngabo-Signature": signature,
+                "X-Ngabo-Filename": filename,
+            }
+            if token:
+                headers["Authorization"] = f"Bearer {token}"
+            req = request.Request(
+                intake_url,
+                data=body,
+                method="POST",
+                headers=headers,
+            )
+            try:
+                with request.urlopen(req, timeout=180) as response:
+                    if 200 <= response.status < 300:
+                        self.queue.mark_acknowledged(item["id"], "batch-ack")
+                        self.after(0, self.status_var.set, "● Connected")
+                        self.after(0, self._log, f"ACKNOWLEDGED {queued_path.name}")
+                    else:
+                        self.queue.mark_retry(item["id"], f"HTTP {response.status}")
+                        self.after(0, self._log, f"RETRYING {queued_path.name}")
+            except Exception as exc:  # noqa: BLE001
+                self.queue.mark_retry(item["id"], str(exc))
+                self.after(0, self._log, f"RETRYING {queued_path.name}: {exc}")
 
 
 def _identity_token(intake_url: str) -> str | None:
