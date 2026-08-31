@@ -26,7 +26,7 @@ from typing import Any, Literal
 from google.adk import Agent, Event, Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from ngabo.application.enums.evidence_intent import EvidenceIntent
 from ngabo.application.enums.investigation_execution_outcome import (
@@ -69,6 +69,7 @@ FORBIDDEN_SEMANTIC_TOKENS = (
     "SEND",
     "APPROVE",
     "APPROVED",
+    "DECISION",
     "OUTBREAK_CONFIRMED",
     "PACKAGE_COMPLETED",
 )
@@ -89,8 +90,6 @@ TRIAGE_INSTRUCTION = (
 
 class EvidenceIntentSchema(BaseModel):
     """Schema-constrained provisional triage proposal bound to the ADK Agent."""
-
-    model_config = ConfigDict(extra="forbid")
 
     proposal_id: str = Field(pattern=_PROPOSAL_ID_PATTERN)
     evidence_intent: Literal[
