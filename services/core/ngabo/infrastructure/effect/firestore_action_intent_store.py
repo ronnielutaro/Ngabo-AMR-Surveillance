@@ -29,12 +29,21 @@ from ngabo.application.value_objects.intent_reservation import IntentReservation
 class FirestoreActionIntentStore:
     """Shared durable intent/outbox boundary backed by Firestore docs."""
 
-    def __init__(self, *, project: str, collection: str = "ngabo_action_intents") -> None:
+    def __init__(
+        self,
+        *,
+        project: str,
+        collection: str = "ngabo_action_intents",
+        client: object | None = None,
+        database: str = "ngabo",
+    ) -> None:
         from google.cloud import firestore
 
         self._project = project
         self._collection = collection
-        self._db = firestore.Client(project=project)
+        self._db = (
+            client if client is not None else firestore.Client(project=project, database=database)
+        )
         self._col = self._db.collection(collection)
 
     def _doc_id(self, idempotency_key: str) -> str:

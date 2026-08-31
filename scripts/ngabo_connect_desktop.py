@@ -11,12 +11,16 @@ Config via env:  NGABO_INTAKE_URL, NGABO_LAB_ID, NGABO_SOURCE_ID, NGABO_HMAC_SEC
 from __future__ import annotations
 
 import os
+import sys
 import threading
 import time
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, ttk
 from urllib import request
+
+_SERVICE_CORE = Path(__file__).resolve().parents[1] / "services" / "core"
+sys.path.insert(0, str(_SERVICE_CORE))
 
 from ngabo.infrastructure.connect.connect_queue import ConnectQueue
 from ngabo.infrastructure.connect.edge import file_sha256, stable_size_mtime

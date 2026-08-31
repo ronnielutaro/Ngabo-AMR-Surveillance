@@ -82,8 +82,10 @@ def process_connect_csv(
     signal_id = signals[0].signal_id if signals else None
     if signals:
         events.append({"event": "SIGNAL_DETECTED", "signal_id": signal_id})
+        incident_numeric = int(hashlib.sha256(raw).hexdigest()[:12], 16) % 10**8
         command: dict[str, object] = {
-            "incident_id": "INC-CONNECT-" + hashlib.sha256(raw).hexdigest()[:12],
+            "contract_version": "ngabo-event-investigation-v1",
+            "incident_id": f"INC-{incident_numeric}",
             "incident_version": 1,
             "source_watermark": f"connect/{lab_id}/{source_id}/v1",
             "event_id": f"evt-{hashlib.sha256(raw).hexdigest()[:16]}",

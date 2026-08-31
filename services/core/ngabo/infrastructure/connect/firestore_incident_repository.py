@@ -26,11 +26,19 @@ from ngabo.domain.value_objects.source_watermark import SourceWatermark
 class FirestoreInvestigationContextRepository:
     """InvestigationContextRepository backed by Firestore documents."""
 
-    def __init__(self, *, project: str, client: Any = None) -> None:
+    def __init__(
+        self,
+        *,
+        project: str,
+        client: Any = None,
+        database: str = "ngabo",
+    ) -> None:
         _import_firestore()
         import google.cloud.firestore as fs
 
-        self._db: Any = client if client is not None else fs.Client(project=project)
+        self._db: Any = (
+            client if client is not None else fs.Client(project=project, database=database)
+        )
         self._incidents = self._db.collection("connect_incidents")
 
     def get(self, incident_id: IncidentId) -> StoredIncidentContext | None:
@@ -77,12 +85,14 @@ def persist_batch_events(
     project: str,
     batch_id: str,
     payload: dict[str, object],
+    client: Any = None,
+    database: str = "ngabo",
 ) -> None:
     """Persist one ConnectBatch + its workflow events under connect_batches."""
     _import_firestore()
     import google.cloud.firestore as fs
 
-    db = fs.Client(project=project)
+    db = client if client is not None else fs.Client(project=project, database=database)
     doc = db.collection("connect_batches").document(batch_id)
     doc.set(payload)
     events = payload.get("events")

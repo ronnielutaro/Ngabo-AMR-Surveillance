@@ -57,7 +57,7 @@ from ngabo.infrastructure.evidence.local_evidence_search import LocalEvidenceSea
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
-def build_registry() -> dict[str, object]:
+def build_registry(client: object | None = None, database: str = "ngabo") -> dict[str, object]:
     project = _required("NGABO_GCP_PROJECT")
     model = os.environ.get("NGABO_ADK_MODEL", "gemini-3.6-flash")
     receiver_url = os.environ.get("NGABO_RECEIVER_URL", "")
@@ -65,7 +65,9 @@ def build_registry() -> dict[str, object]:
     if not receiver_url or not ack_secret:
         raise RuntimeError("NGABO_RECEIVER_URL and NGABO_ACK_SECRET are required")
 
-    repo = FirestoreInvestigationContextRepository(project=project)
+    repo = FirestoreInvestigationContextRepository(
+        project=project, client=client, database=database
+    )
     evidence_dir = os.environ.get("NGABO_EVIDENCE_DIR", "")
     if evidence_dir:
         sources = load_evidence_corpus(Path(evidence_dir))
@@ -104,7 +106,9 @@ def build_registry() -> dict[str, object]:
         budget=SynthesisBudget(max_model_calls=1, max_runtime_seconds=60.0),
         app_name=DEFAULT_APP_NAME,
     )
-    intent_store = FirestoreActionIntentStore(project=project)
+    intent_store = FirestoreActionIntentStore(
+        project=project, client=client, database=database
+    )
     freshness_port = FirestoreFreshnessStatePort(repo)
     hero_orchestrator = HeroOrchestrator(
         verifier=VerifyHeroPackage(),
