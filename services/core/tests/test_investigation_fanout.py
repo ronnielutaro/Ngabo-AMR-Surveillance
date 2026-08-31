@@ -26,6 +26,7 @@ from ngabo.application.enums.investigation_execution_error_code import (
 from ngabo.application.enums.investigation_execution_outcome import (
     InvestigationExecutionOutcome,
 )
+from ngabo.application.enums.missingness_code import MissingnessCode
 from ngabo.application.use_cases.assess_material_missingness import (
     AssessMaterialMissingness,
 )
@@ -55,6 +56,7 @@ from ngabo.application.value_objects.investigation_execution import (
 )
 from ngabo.application.value_objects.missingness import (
     AssessMissingnessQuery,
+    MissingnessItem,
     MissingnessResult,
 )
 from ngabo.application.value_objects.profile_comparison import (
@@ -1076,3 +1078,123 @@ class TestRunStateCleanup:
             assert result.outcome is InvestigationExecutionOutcome.FAILED
             assert result.failure_code is InvestigationExecutionErrorCode.EXECUTION_TIMEOUT
             self._assert_empty(runtime)
+
+
+class TestMissingDataAndIncompleteResults:
+    """Review: material missingness and incomplete SUCCESS DTOs must block readiness."""
+
+    def _material_missingness_handler(self) -> object:
+        repo = _Repo()
+        cap = _capabilities(repo)
+        good = cap[3]
+
+        def handler(query: AssessMissingnessQuery) -> MissingnessResult:
+            result = good.execute(query)
+            assert isinstance(result, MissingnessResult)
+            return MissingnessResult(
+                outcome=CapabilityOutcome.SUCCESS,
+                incident_id=result.incident_id,
+                incident_version=result.incident_version,
+                source_watermark=result.source_watermark,
+                missing_items=(
+                    MissingnessItem(
+                        code=MissingnessCode.MISSING_COMPARISON_INPUT,
+                        field="isolate_id",
+                        material=True,
+                        detail="required comparison isolate is absent",
+                    ),
+                ),
+                has_material_missingness=True,
+            )
+
+        return handler
+
+    def test_material_missingness_blocks_downstream(self) -> None:
+        rt = _runtime(assess_missingness=self._material_missingness_handler())
+        result = rt.execute(_command())
+        assert result.outcome is InvestigationExecutionOutcome.BLOCKED
+        assert result.failure_code is InvestigationExecutionErrorCode.NEEDS_INFORMATION
+        assert result.is_success() is False
+        assert result.joined_investigation is not None
+        assert result.joined_investigation.ready_for_downstream is False
+        assert result.metadata is not None
+        assert result.metadata.model_calls == 0
+        # The typed missingness result is preserved (material absence is not hidden).
+        assert result.joined_investigation.missingness_result is not None
+        assert result.joined_investigation.missingness_result.has_material_missingness is True
+
+    def _profile_result_without(self, *, finding: bool, reference: bool) -> object:
+        repo = _Repo()
+        cap = _capabilities(repo)
+        good = cap[1]
+
+        def handler(query: CompareProfilesQuery) -> ProfileComparisonResult:
+            result = good.execute(query)
+            assert isinstance(result, ProfileComparisonResult)
+            return ProfileComparisonResult(
+                outcome=CapabilityOutcome.SUCCESS,
+                incident_id=result.incident_id,
+                incident_version=result.incident_version,
+                source_watermark=result.source_watermark,
+                finding=result.finding if finding else None,
+                finding_reference=result.finding_reference if reference else None,
+                isolate_id_a=result.isolate_id_a,
+                isolate_id_b=result.isolate_id_b,
+            )
+
+        return handler
+
+    def test_profile_success_with_finding_none_blocks(self) -> None:
+        rt = _runtime(
+            compare_profiles=self._profile_result_without(finding=False, reference=True)
+        )
+        result = rt.execute(_command())
+        assert result.outcome is InvestigationExecutionOutcome.BLOCKED
+        assert result.failure_code is InvestigationExecutionErrorCode.INCOMPLETE_BRANCH_RESULT
+        assert result.is_success() is False
+        assert result.joined_investigation is not None
+        assert result.joined_investigation.ready_for_downstream is False
+        assert result.metadata is not None
+        assert result.metadata.model_calls == 0
+
+    def test_profile_success_with_finding_reference_none_blocks(self) -> None:
+        rt = _runtime(
+            compare_profiles=self._profile_result_without(finding=True, reference=False)
+        )
+        result = rt.execute(_command())
+        assert result.outcome is InvestigationExecutionOutcome.BLOCKED
+        assert result.failure_code is InvestigationExecutionErrorCode.INCOMPLETE_BRANCH_RESULT
+        assert result.is_success() is False
+        assert result.joined_investigation is not None
+        assert result.joined_investigation.ready_for_downstream is False
+        assert result.metadata is not None
+        assert result.metadata.model_calls == 0
+
+    def test_baseline_success_with_signal_evaluation_none_blocks(self) -> None:
+        repo = _Repo()
+        cap = _capabilities(repo)
+        good = cap[2]
+
+        def handler(query: GetBaselineSummaryQuery) -> BaselineSummaryResult:
+            result = good.execute(query)
+            assert isinstance(result, BaselineSummaryResult)
+            return BaselineSummaryResult(
+                outcome=CapabilityOutcome.SUCCESS,
+                incident_id=result.incident_id,
+                incident_version=result.incident_version,
+                source_watermark=result.source_watermark,
+                signal_evaluation=None,
+                organism_code=result.organism_code,
+                facility_id=result.facility_id,
+                ward=result.ward,
+            )
+
+        rt = _runtime(get_baseline_summary=handler)
+        result = rt.execute(_command())
+        assert result.outcome is InvestigationExecutionOutcome.BLOCKED
+        assert result.failure_code is InvestigationExecutionErrorCode.INCOMPLETE_BRANCH_RESULT
+        assert result.is_success() is False
+        assert result.joined_investigation is not None
+        assert result.joined_investigation.ready_for_downstream is False
+        assert result.metadata is not None
+        assert result.metadata.model_calls == 0

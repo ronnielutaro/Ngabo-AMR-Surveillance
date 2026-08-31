@@ -620,6 +620,7 @@ class EventInvestigationRuntime:
                 and result.isolate_id_a == inv.isolate_id_a
                 and result.isolate_id_b == inv.isolate_id_b
             ),
+            lambda result, inv: result.finding is not None and result.finding_reference is not None,
         )
 
     async def _run_baseline_node(self, node_input: object) -> dict[str, object]:
@@ -644,6 +645,7 @@ class EventInvestigationRuntime:
                 and result.facility_id == inv.facility_id
                 and result.ward == inv.ward
             ),
+            lambda result, inv: result.signal_evaluation is not None,
         )
 
     async def _run_missingness_node(self, node_input: object) -> dict[str, object]:
@@ -661,6 +663,7 @@ class EventInvestigationRuntime:
                 and result.incident_version == inv.incident_version
                 and result.source_watermark == inv.source_watermark
             ),
+            lambda result, inv: True,
         )
 
     async def _run_branch(
@@ -670,6 +673,7 @@ class EventInvestigationRuntime:
         handler: Callable[..., Any],
         query_builder: Callable[[DeterministicInvestigationInput], Any],
         binding_ok: Callable[[Any, DeterministicInvestigationInput], bool],
+        success_ok: Callable[[Any, DeterministicInvestigationInput], bool],
     ) -> dict[str, object]:
         """Run one required deterministic branch via a thin wrapper (no science)."""
         payload = self._branch_input(node_input)
@@ -763,6 +767,20 @@ class EventInvestigationRuntime:
                     invoked=True,
                     binding_ok=False,
                 )
+            if not success_ok(result, investigation_input):
+                # A successful DTO is not complete without its required
+                # deterministic scientific output: fail closed.
+                state["blocked"] = True
+                return self._branch_payload(
+                    branch,
+                    InvestigationExecutionOutcome.BLOCKED,
+                    InvestigationExecutionErrorCode.INCOMPLETE_BRANCH_RESULT,
+                    result,
+                    state,
+                    payload,
+                    invoked=True,
+                    binding_ok=True,
+                )
             return self._branch_payload(
                 branch,
                 InvestigationExecutionOutcome.COMPLETED_CURRENT_STAGE,
@@ -822,6 +840,7 @@ class EventInvestigationRuntime:
         outcomes_all_ok = True
         wrapper_failure = False
         budget_exceeded = False
+        incomplete_branch = False
         for branch in REQUIRED_BRANCH_IDENTITIES:
             branch_payload = self._payload_for_branch(payloads, branch)
             if branch_payload is None:
@@ -838,6 +857,8 @@ class EventInvestigationRuntime:
                 wrapper_failure = True
             if branch_failure == InvestigationExecutionErrorCode.EXECUTION_BUDGET_EXCEEDED.value:
                 budget_exceeded = True
+            if branch_failure == InvestigationExecutionErrorCode.INCOMPLETE_BRANCH_RESULT.value:
+                incomplete_branch = True
 
         profile_result = self._as_profile_result(branch_results.get(BranchIdentity.PROFILE))
         baseline_result = self._as_baseline_result(branch_results.get(BranchIdentity.BASELINE))
@@ -849,15 +870,26 @@ class EventInvestigationRuntime:
             and baseline_result is not None
             and missingness_result is not None
         )
+        material_missingness = bool(
+            missingness_result is not None and missingness_result.has_material_missingness
+        )
         ready = (
             context_ready
             and binding_all_ok
             and outcomes_all_ok
             and all_results_present
             and not budget_exceeded
+            and not incomplete_branch
+            and not material_missingness
         )
         failure_code = self._resolve_join_failure_code(
-            payloads, wrapper_failure, budget_exceeded, binding_all_ok, outcomes_all_ok
+            payloads,
+            wrapper_failure,
+            budget_exceeded,
+            incomplete_branch,
+            material_missingness,
+            binding_all_ok,
+            outcomes_all_ok,
         )
         joined = JoinedInvestigationContext(
             incident_id=investigation_input.incident_id,
@@ -1199,6 +1231,8 @@ class EventInvestigationRuntime:
         payloads: list[dict[str, object]],
         wrapper_failure: bool,
         budget_exceeded: bool,
+        incomplete_branch: bool,
+        material_missingness: bool,
         binding_all_ok: bool,
         outcomes_all_ok: bool,
     ) -> InvestigationExecutionErrorCode | None:
@@ -1207,6 +1241,10 @@ class EventInvestigationRuntime:
             return InvestigationExecutionErrorCode.WRAPPER_EXCEPTION
         if budget_exceeded:
             return InvestigationExecutionErrorCode.EXECUTION_BUDGET_EXCEEDED
+        if incomplete_branch:
+            return InvestigationExecutionErrorCode.INCOMPLETE_BRANCH_RESULT
+        if material_missingness:
+            return InvestigationExecutionErrorCode.NEEDS_INFORMATION
         if not binding_all_ok:
             return InvestigationExecutionErrorCode.BRANCH_BINDING_MISMATCH
         if not outcomes_all_ok:

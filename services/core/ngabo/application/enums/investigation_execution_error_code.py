@@ -39,6 +39,15 @@ class InvestigationExecutionErrorCode(StrEnum):
     """A branch reported SUCCESS but returned a different incident id, incident
     version, or source watermark than the canonical fan-out input."""
 
+    INCOMPLETE_BRANCH_RESULT = "INCOMPLETE_BRANCH_RESULT"
+    """A successful branch DTO is missing a required deterministic scientific
+    output (e.g. a profile result without a finding/finding_reference, or a
+    baseline result without a signal_evaluation)."""
+
+    NEEDS_INFORMATION = "NEEDS_INFORMATION"
+    """The investigation has a material data absence that must block downstream
+    reasoning (missing-data abstention; no action and zero model calls)."""
+
     GRAPH_RETRY_EXHAUSTED = "GRAPH_RETRY_EXHAUSTED"
     """A retryable graph attempt failed repeatedly and the hard attempt budget
     was exhausted."""
