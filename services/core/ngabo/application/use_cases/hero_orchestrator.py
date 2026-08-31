@@ -264,12 +264,26 @@ class HeroOrchestrator:
                 intent=intent,
                 delivery=delivery,
             )
-        self._intent_store.record_state(
+        ack_transitioned = self._intent_store.record_state(
             intent,
             IntentState.ACKNOWLEDGED,
             lease_token=lease_token,
             delivery=delivery,
         )
+        if not ack_transitioned:
+            # A stale/conflicting worker may not reach HERO_COMPLETED: an already
+            # newer lease generation owns the intent, so this run must not claim
+            # completion over it.
+            return self._terminal(
+                HeroOutcome.FAILED,
+                events,
+                context,
+                error_code=HeroErrorCode.INTENT_ALREADY_ACQUIRED,
+                verification=verification,
+                decision=decision,
+                intent=intent,
+                delivery=delivery,
+            )
         events.append(
             self._event(
                 "HERO_COMPLETED",

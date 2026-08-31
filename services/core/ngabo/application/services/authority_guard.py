@@ -35,7 +35,7 @@ _AUTHORITY_RE = re.compile(
 
 _COMPLETION_OR_AUTHORITY_RE = re.compile(
     r"\b(?:"
-    r"escalate|action_ready|acknowledged|package_completed|"
+    r"escalate|auto_execute_a1|action_ready|acknowledged|package_completed|"
     r"investigation_complete|no_action_needed|delivered|sent|complete|done|"
     r"verified|approved|authorized|authorize|approve"
     r")\b",

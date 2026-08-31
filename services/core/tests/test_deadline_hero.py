@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+from pathlib import Path
 from typing import cast
 
 import pytest
@@ -1467,7 +1468,7 @@ class TestAuthorityGuardForms:
 
 
 class TestFileStoreRetry:
-    def test_file_store_reacquires_retryable_intent(self, tmp_path) -> None:
+    def test_file_store_reacquires_retryable_intent(self, tmp_path: Path) -> None:
         from ngabo.infrastructure.effect.file_action_intent_store import (
             FileActionIntentStore,
         )

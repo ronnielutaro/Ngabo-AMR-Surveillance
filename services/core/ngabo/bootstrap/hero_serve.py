@@ -9,6 +9,7 @@ absent, rather than serving a route that is guaranteed to return HTTP 500.
 
 from __future__ import annotations
 
+import importlib
 import os
 
 from ngabo.application.services.hero_support_context_builder import (
@@ -104,7 +105,14 @@ def main() -> None:
 
 
 def _registered_adapters() -> dict[str, object]:
-    """Return the deployment-registered adapter graph, failing clearly if absent."""
+    """Return the deployment-registered adapter graph, failing clearly if absent.
+
+    The deployment image points ``NGABO_HERO_ADAPTER_REGISTRY`` at a module that
+    exposes ``REGISTRY: dict[str, object]`` mapping the required runtime seams
+    (investigation_runtime, triage_runtime, synthesis_runtime, hero_orchestrator)
+    to concrete adapter instances. This entry point actually loads that module; a
+    missing/incomplete registry fails startup rather than serving a 500-route.
+    """
     registry = os.environ.get("NGABO_HERO_ADAPTER_REGISTRY")
     if not registry:
         raise RuntimeError(
@@ -112,10 +120,17 @@ def _registered_adapters() -> dict[str, object]:
             "(deploy must register the real #54/#55/#56/#176 adapter graph before "
             "serving /surveillance)"
         )
-    # Deployment code registers the concrete adapters; this entry point treats a
-    # missing registry as a fatal startup misconfiguration rather than serving a
-    # route that is guaranteed to 500.
-    raise RuntimeError(
-        "hero deployment configuration is incomplete for an offline environment; "
-        "the deployment image must supply NGABO_HERO_ADAPTER_REGISTRY"
-    )
+    try:
+        module = importlib.import_module(registry)
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            f"hero deployment configuration invalid: cannot import adapter registry "
+            f"{registry!r}: {exc}"
+        ) from exc
+    adapters = getattr(module, "REGISTRY", None)
+    if not isinstance(adapters, dict) or not adapters:
+        raise RuntimeError(
+            f"hero deployment configuration invalid: registry module {registry!r} "
+            "must expose a non-empty REGISTRY dict"
+        )
+    return adapters
