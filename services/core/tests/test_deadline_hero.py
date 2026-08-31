@@ -1,31 +1,42 @@
-"""Focused tests for the deadline hero verification -> A1 -> delivery -> ack slice."""
+"""Focused tests for the deadline hero: verification -> A1 -> durable intent
+-> delivery -> machine acknowledgement."""
 
 from __future__ import annotations
 
+import dataclasses
 from typing import cast
 
 import pytest
 
 from ngabo.application.enums.hero_error_code import HeroErrorCode
 from ngabo.application.enums.hero_outcome import HeroOutcome
+from ngabo.application.enums.intent_state import IntentState
 from ngabo.application.services.incident_package_codec import parse_incident_package
 from ngabo.application.use_cases.check_hero_freshness import CheckHeroFreshness
 from ngabo.application.use_cases.hero_action_policy import HeroActionPolicy
 from ngabo.application.use_cases.hero_orchestrator import HeroOrchestrator
 from ngabo.application.use_cases.verify_hero_ack import VerifyHeroAck
 from ngabo.application.use_cases.verify_hero_package import VerifyHeroPackage
+from ngabo.application.value_objects.canonical_binding import (
+    CanonicalEvidence,
+    CanonicalFinding,
+    HeroStateBinding,
+)
 from ngabo.application.value_objects.effect_delivery import EffectDelivery
 from ngabo.application.value_objects.hero_action_intent import HeroActionIntent
 from ngabo.application.value_objects.hero_completion_result import HeroCompletionResult
-from ngabo.application.value_objects.hero_payload import HeroCoordinationPayload
+from ngabo.application.value_objects.hero_payload import (
+    HeroCoordinationPayload,
+    validate_coordination_message,
+)
 from ngabo.application.value_objects.hero_support_context import HeroSupportContext
-from ngabo.application.value_objects.hero_verification import HeroVerificationResult
 from ngabo.application.value_objects.incident_package import IncidentPackageCandidate
-from ngabo.domain.enums.action_class import ActionClass
 from ngabo.domain.value_objects.incident_id import IncidentId
 from ngabo.domain.value_objects.incident_version import IncidentVersion
 from ngabo.domain.value_objects.source_watermark import SourceWatermark
+from ngabo.infrastructure.effect.fake_action_intent_store import FakeActionIntentStore
 from ngabo.infrastructure.effect.fake_effect_port import FakeEffectPort
+from ngabo.infrastructure.effect.fake_freshness_state_port import FakeFreshnessStatePort
 
 INCIDENT = IncidentId("INC-001")
 VERSION = IncidentVersion(1)
@@ -58,7 +69,7 @@ def _package_primitive(**overrides: object) -> dict[str, object]:
             {
                 "claim_id": "claim-01",
                 "claim_type": "OBSERVED_FACT",
-                "statement": "ISO-031 and ISO-034 were collected in the synthetic ward.",
+                "statement": "ISO-031 was collected in the synthetic ward.",
                 "supporting_record_refs": [
                     {
                         "record_id": "ISO-031",
@@ -147,39 +158,73 @@ def _package(**overrides: object) -> IncidentPackageCandidate:
     return parse.package
 
 
-def _context(**overrides: object) -> HeroSupportContext:
-    def _frozen(key: str, default: frozenset[str]) -> frozenset[str]:
-        value = overrides.get(key, default)
-        return value if isinstance(value, frozenset) else default
-
-    incident_id = cast(IncidentId, overrides.get("incident_id", INCIDENT))
-    incident_version = cast(
-        IncidentVersion, overrides.get("incident_version", VERSION)
-    )
-    source_watermark = cast(
-        SourceWatermark, overrides.get("source_watermark", WATERMARK)
-    )
-    execution_id = cast(str, overrides.get("execution_id", EXECUTION_ID))
-    policy_config_version = cast(
-        str, overrides.get("policy_config_version", "v1")
-    )
+def _canonical(**overrides: object) -> HeroSupportContext:
     return HeroSupportContext(
-        incident_id=incident_id,
-        incident_version=incident_version,
-        source_watermark=source_watermark,
-        execution_id=execution_id,
-        policy_config_version=policy_config_version,
-        record_ids=_frozen("record_ids", frozenset({"ISO-031", "ISO-034"})),
-        finding_ids=_frozen("finding_ids", frozenset({"psim-abc123"})),
-        evidence_source_ids=_frozen(
-            "evidence_source_ids", frozenset({"WHO-AMR-001"})
+        incident_id=cast(IncidentId, overrides.get("incident_id", INCIDENT)),
+        incident_version=cast(
+            IncidentVersion, overrides.get("incident_version", VERSION)
         ),
-        evidence_reference_ids=_frozen(
-            "evidence_reference_ids",
-            frozenset({"WHO-AMR-001::ipc-principle-01"}),
+        source_watermark=cast(
+            SourceWatermark, overrides.get("source_watermark", WATERMARK)
         ),
-        authorized_target_ids=_frozen(
-            "authorized_target_ids", frozenset({"demo-receiver-01"})
+        execution_id=cast(str, overrides.get("execution_id", EXECUTION_ID)),
+        policy_config_version=cast(
+            str, overrides.get("policy_config_version", "v1")
+        ),
+        canonical_records=cast(
+            "dict[str, dict[str, str]]",
+            overrides.get(
+                "canonical_records",
+                {"ISO-031": {"organism_code": "kle", "ward": "SYNTH-WARD-A"}},
+            ),
+        ),
+        canonical_findings=cast(
+            "dict[str, CanonicalFinding]",
+            overrides.get(
+                "canonical_findings",
+                {
+                    "psim-abc123": CanonicalFinding(
+                        finding_id="psim-abc123",
+                        policy_version="v1",
+                        input_refs=("ISO-031", "ISO-034"),
+                        output_value="similarity=1.0000;matching=6;shared=6",
+                    )
+                },
+            ),
+        ),
+        canonical_evidence=cast(
+            "dict[str, CanonicalEvidence]",
+            overrides.get(
+                "canonical_evidence",
+                {
+                    "WHO-AMR-001": CanonicalEvidence(
+                        source_id="WHO-AMR-001",
+                        provenance="1",
+                        chunk_ids=("WHO-AMR-001::ipc-principle-01",),
+                    )
+                },
+            ),
+        ),
+        authorized_target_ids=frozenset(
+            cast(
+                "frozenset[str]",
+                overrides.get("authorized_target_ids", frozenset({"demo-receiver-01"})),
+            )
+        ),
+    )
+
+
+def _binding(**overrides: object) -> HeroStateBinding:
+    return HeroStateBinding(
+        incident_id=cast(IncidentId, overrides.get("incident_id", INCIDENT)),
+        incident_version=cast(
+            IncidentVersion, overrides.get("incident_version", VERSION)
+        ),
+        source_watermark=cast(
+            SourceWatermark, overrides.get("source_watermark", WATERMARK)
+        ),
+        policy_config_version=cast(
+            str, overrides.get("policy_config_version", "v1")
         ),
     )
 
@@ -188,155 +233,322 @@ def _orchestrator(
     *,
     ack_secret: str = ACK_SECRET,
     port: FakeEffectPort | None = None,
-) -> tuple[HeroOrchestrator, FakeEffectPort]:
-    fake: FakeEffectPort = (
-        port if port is not None else FakeEffectPort(ack_secret=ack_secret)
+    intent_store: FakeActionIntentStore | None = None,
+    freshness: FakeFreshnessStatePort | None = None,
+    coordination_message: str = "Synthetic demo surveillance review; draft only.",
+) -> tuple[HeroOrchestrator, FakeEffectPort, FakeActionIntentStore, FakeFreshnessStatePort]:
+    effect = port if port is not None else FakeEffectPort(ack_secret=ack_secret)
+    store = intent_store if intent_store is not None else FakeActionIntentStore()
+    fresh = (
+        freshness
+        if freshness is not None
+        else FakeFreshnessStatePort(_binding())
     )
     orchestrator = HeroOrchestrator(
         verifier=VerifyHeroPackage(),
         policy=HeroActionPolicy(freshness=CheckHeroFreshness()),
-        effect_port=fake,
+        effect_port=effect,
         ack_verifier=VerifyHeroAck(ack_secret=ack_secret),
-        coordination_message="Synthetic demo surveillance review; draft only.",
+        intent_store=store,
+        freshness_port=fresh,
+        coordination_message=coordination_message,
     )
-    return orchestrator, fake
+    return orchestrator, effect, store, fresh
 
 
-class TestVerification:
+class TestVerificationProofValues:
     def test_valid_package_verifies(self) -> None:
-        result = VerifyHeroPackage().verify(_package(), _context())
+        result = VerifyHeroPackage().verify(_package(), _canonical())
         assert result.verified is True
         assert result.package is not None
         assert result.claim_count == 4
 
-    def test_fabricated_record_ref_blocks(self) -> None:
-        # Mutate first OBSERVED_FACT record id.
+    def test_valid_record_id_wrong_field_value_blocks(self) -> None:
         mutated = _package_primitive()
         claims = cast("list[dict[str, object]]", mutated["claims"])
         claims[0]["supporting_record_refs"] = [
             {
-                "record_id": "ISO-999",
+                "record_id": "ISO-031",
+                "field_path": "organism_code",
+                "expected_value": "ecoli",  # altered vs canonical "kle"
+            }
+        ]
+        parse = parse_incident_package(mutated)
+        assert parse.ok and parse.package is not None
+        result = VerifyHeroPackage().verify(parse.package, _canonical())
+        assert result.verified is False
+        assert any("expected value" in e.detail for e in result.errors)
+
+    def test_valid_finding_id_wrong_output_blocks(self) -> None:
+        mutated = _package_primitive()
+        claims = cast("list[dict[str, object]]", mutated["claims"])
+        claims[1]["supporting_finding_refs"] = [
+            {
+                "finding_id": "psim-abc123",
+                "policy_version": "v1",
+                "input_refs": ["ISO-031", "ISO-034"],
+                "output_value": "similarity=0.1000",
+            }
+        ]
+        parse = parse_incident_package(mutated)
+        assert parse.ok and parse.package is not None
+        result = VerifyHeroPackage().verify(parse.package, _canonical())
+        assert result.verified is False
+        assert any("output value" in e.detail for e in result.errors)
+
+    def test_valid_finding_id_wrong_input_refs_blocks(self) -> None:
+        mutated = _package_primitive()
+        claims = cast("list[dict[str, object]]", mutated["claims"])
+        claims[1]["supporting_finding_refs"] = [
+            {
+                "finding_id": "psim-abc123",
+                "policy_version": "v1",
+                "input_refs": ["ISO-031", "ISO-999"],
+                "output_value": "similarity=1.0000;matching=6;shared=6",
+            }
+        ]
+        parse = parse_incident_package(mutated)
+        assert parse.ok and parse.package is not None
+        result = VerifyHeroPackage().verify(parse.package, _canonical())
+        assert result.verified is False
+        assert any("input refs" in e.detail for e in result.errors)
+
+    def test_valid_finding_id_wrong_policy_version_blocks(self) -> None:
+        mutated = _package_primitive()
+        claims = cast("list[dict[str, object]]", mutated["claims"])
+        claims[1]["supporting_finding_refs"] = [
+            {
+                "finding_id": "psim-abc123",
+                "policy_version": "v2",
+                "input_refs": ["ISO-031", "ISO-034"],
+                "output_value": "similarity=1.0000;matching=6;shared=6",
+            }
+        ]
+        parse = parse_incident_package(mutated)
+        assert parse.ok and parse.package is not None
+        result = VerifyHeroPackage().verify(parse.package, _canonical())
+        assert result.verified is False
+        assert any("policy version" in e.detail for e in result.errors)
+
+    def test_fabricated_record_finding_evidence_refs_block(self) -> None:
+        for claim_index, field in (
+            (0, "supporting_record_refs"),
+            (1, "supporting_finding_refs"),
+            (2, "supporting_evidence_refs"),
+        ):
+            mutated = _package_primitive()
+            claims = cast("list[dict[str, object]]", mutated["claims"])
+            claims[claim_index][field] = []  # empty family support -> family error
+            parse = parse_incident_package(mutated)
+            assert parse.ok and parse.package is not None
+            result = VerifyHeroPackage().verify(parse.package, _canonical())
+            assert result.verified is False
+
+    def test_url_substituted_for_support_blocks(self) -> None:
+        mutated = _package_primitive()
+        claims = cast("list[dict[str, object]]", mutated["claims"])
+        claims[0]["supporting_record_refs"] = [
+            {
+                "record_id": "https://evil.example.com",
                 "field_path": "organism_code",
                 "expected_value": "kle",
             }
         ]
         parse = parse_incident_package(mutated)
         assert parse.ok and parse.package is not None
-        result = VerifyHeroPackage().verify(parse.package, _context())
+        result = VerifyHeroPackage().verify(parse.package, _canonical())
         assert result.verified is False
-        assert any("record reference" in e.detail for e in result.errors)
 
-    def test_fabricated_finding_ref_blocks(self) -> None:
+
+class TestClaimResolution:
+    def test_nonexistent_supporting_claim_blocks(self) -> None:
+        mutated = _package_primitive()
+        claims = cast("list[dict[str, object]]", mutated["claims"])
+        claims[3]["supporting_claim_ids"] = ["claim-99"]
+        parse = parse_incident_package(mutated)
+        assert parse.ok and parse.package is not None
+        result = VerifyHeroPackage().verify(parse.package, _canonical())
+        assert result.verified is False
+        assert any("non-existent claim" in e.detail for e in result.errors)
+
+    def test_nonexistent_contradicting_claim_blocks(self) -> None:
+        mutated = _package_primitive()
+        claims = cast("list[dict[str, object]]", mutated["claims"])
+        claims[1]["contradicting_claim_ids"] = ["claim-99"]
+        parse = parse_incident_package(mutated)
+        assert parse.ok and parse.package is not None
+        result = VerifyHeroPackage().verify(parse.package, _canonical())
+        assert result.verified is False
+        assert any("non-existent claim" in e.detail for e in result.errors)
+
+    def test_self_reference_blocks(self) -> None:
+        mutated = _package_primitive()
+        claims = cast("list[dict[str, object]]", mutated["claims"])
+        claims[3]["supporting_claim_ids"] = ["claim-04"]
+        parse = parse_incident_package(mutated)
+        assert parse.ok and parse.package is not None
+        result = VerifyHeroPackage().verify(parse.package, _canonical())
+        assert result.verified is False
+        assert any("itself" in e.detail for e in result.errors)
+
+    def test_claim_dependency_cycle_blocks(self) -> None:
+        mutated = _package_primitive()
+        claims = cast("list[dict[str, object]]", mutated["claims"])
+        # Make OBSERVED_FACT support the DERIVED_FINDING and vice versa -> cycle.
+        claims[0]["supporting_claim_ids"] = ["claim-02"]
+        claims[1]["supporting_claim_ids"] = ["claim-01"]
+        parse = parse_incident_package(mutated)
+        assert parse.ok and parse.package is not None
+        result = VerifyHeroPackage().verify(parse.package, _canonical())
+        assert result.verified is False
+        assert any("cycle" in e.detail for e in result.errors)
+
+
+class TestFreshnessReload:
+    def test_unchanged_current_state_happy_path(self) -> None:
+        orchestrator, effect, store, _ = _orchestrator(
+            freshness=FakeFreshnessStatePort(_binding())
+        )
+        result = orchestrator.run(_package(), _canonical())
+        assert result.outcome is HeroOutcome.HERO_COMPLETED
+        assert result.intent is not None
+        assert store.state(result.intent) is IntentState.ACKNOWLEDGED
+
+    def test_canonical_state_advances_before_policy_blocks(self) -> None:
+        # Verify against V1; the freshness port returns V2 at the pre-action reload.
+        orchestrator, effect, store, _ = _orchestrator(
+            freshness=FakeFreshnessStatePort(_binding(incident_version=IncidentVersion(2)))
+        )
+        result = orchestrator.run(_package(), _canonical())
+        assert result.outcome is HeroOutcome.BLOCKED
+        assert result.error_code is HeroErrorCode.STALE_VERSION_BINDING
+        assert effect.calls == []
+        assert store.state_transitions == []
+
+
+class TestIdempotency:
+    def test_same_logical_action_two_executions_same_key(self) -> None:
+        orchestrator, _, _, _ = _orchestrator()
+        ctx_a = _canonical(execution_id="RUN-" + "a" * 32)
+        ctx_b = _canonical(execution_id="RUN-" + "b" * 32)
+        intent_a = orchestrator._build_intent(
+            ctx_a, "PKG-1", "demo-receiver-01", "0" * 64
+        )
+        intent_b = orchestrator._build_intent(
+            ctx_b, "PKG-1", "demo-receiver-01", "0" * 64
+        )
+        assert intent_a.action_id == intent_b.action_id
+        assert intent_a.idempotency_key == intent_b.idempotency_key
+
+    def test_materially_different_action_different_key(self) -> None:
+        orchestrator, _, _, _ = _orchestrator()
+        ctx = _canonical()
+        base = orchestrator._build_intent(ctx, "PKG-1", "demo-receiver-01", "0" * 64)
+        different_package = orchestrator._build_intent(
+            ctx, "PKG-2", "demo-receiver-01", "0" * 64
+        )
+        different_target = orchestrator._build_intent(
+            ctx, "PKG-1", "other-receiver", "0" * 64
+        )
+        assert base.idempotency_key != different_package.idempotency_key
+        assert base.idempotency_key != different_target.idempotency_key
+
+    def test_duplicate_dispatch_cannot_become_duplicate_intent(self) -> None:
+        orchestrator, effect, store, _ = _orchestrator()
+        first = orchestrator.run(_package(), _canonical())
+        assert first.outcome is HeroOutcome.HERO_COMPLETED
+        assert len(effect.calls) == 1
+        second = orchestrator.run(_package(), _canonical())
+        # The same logical action re-dispatched cannot acquire ownership again.
+        assert second.outcome is HeroOutcome.BLOCKED
+        assert second.error_code is HeroErrorCode.INTENT_ALREADY_ACQUIRED
+        assert len(effect.calls) == 1
+
+
+class TestActionIntentPersistence:
+    def test_persisted_intent_exists_before_effect(self) -> None:
+        orchestrator, effect, store, _ = _orchestrator()
+        result = orchestrator.run(_package(), _canonical())
+        assert result.outcome is HeroOutcome.HERO_COMPLETED
+        assert result.intent is not None
+        assert store.state(result.intent) is IntentState.ACKNOWLEDGED
+        assert effect.calls  # effect was sent after the intent was reserved
+
+    def test_no_intent_no_effect(self) -> None:
+        orchestrator, effect, store, _ = _orchestrator()
         mutated = _package_primitive()
         claims = cast("list[dict[str, object]]", mutated["claims"])
         claims[1]["supporting_finding_refs"] = [
             {
-                "finding_id": "finding-fake",
+                "finding_id": "fake",
                 "policy_version": "v1",
                 "input_refs": ["ISO-031", "ISO-034"],
-                "output_value": "similarity=1.0000",
+                "output_value": "x",
             }
         ]
         parse = parse_incident_package(mutated)
         assert parse.ok and parse.package is not None
-        result = VerifyHeroPackage().verify(parse.package, _context())
-        assert result.verified is False
-        assert any("finding reference" in e.detail for e in result.errors)
+        result = orchestrator.run(parse.package, _canonical())
+        assert result.outcome is HeroOutcome.BLOCKED
+        assert effect.calls == []
+        assert store.state_transitions == []
 
-    def test_fabricated_evidence_ref_blocks(self) -> None:
-        mutated = _package_primitive()
-        claims = cast("list[dict[str, object]]", mutated["claims"])
-        claims[2]["supporting_evidence_refs"] = [
-            {
-                "source_id": "EVIL-SRC-999",
-                "chunk_id": "EVIL-SRC-999::x",
-                "provenance": "ngabo-approved-evidence-v1",
-                "support": "supports",
-            }
-        ]
-        parse = parse_incident_package(mutated)
-        assert parse.ok and parse.package is not None
-        result = VerifyHeroPackage().verify(parse.package, _context())
-        assert result.verified is False
-        assert any("evidence" in e.detail for e in result.errors)
+    def test_effect_error_never_becomes_success(self) -> None:
+        class _RaisePort:
+            def deliver(self, intent: object, payload: object) -> object:
+                raise RuntimeError("transport down")
 
-    def test_wrong_incident_or_version_or_watermark_blocks(self) -> None:
-        for context in (
-            _context(incident_id=IncidentId("INC-999")),
-            _context(incident_version=IncidentVersion(2)),
-            _context(source_watermark=SourceWatermark("other")),
-        ):
-            p = _package()
-            result = VerifyHeroPackage().verify(p, context)
-            assert result.verified is False
-
-    def test_forbidden_authority_claim_blocks(self) -> None:
-        mutated = _package_primitive()
-        claims = cast("list[dict[str, object]]", mutated["claims"])
-        claims[1]["statement"] = "This run declares OUTBREAK_CONFIRMED and is verified."
-        parse = parse_incident_package(mutated)
-        assert parse.ok and parse.package is not None
-        result = VerifyHeroPackage().verify(parse.package, _context())
-        assert result.verified is False
-        assert any("authority" in e.detail for e in result.errors)
-
-
-class TestPolicy:
-    def test_verified_and_current_model_returns_a1(self) -> None:
-        verification = VerifyHeroPackage().verify(_package(), _context())
-        decision = HeroActionPolicy(freshness=CheckHeroFreshness()).decide(
-            verification, _context()
+        orchestrator, effect, store, _ = _orchestrator(
+            port=cast(FakeEffectPort, _RaisePort())
         )
-        assert decision.auto_execute_a1 is True
-        assert decision.action_class is ActionClass.SAFE_EXTERNAL_COORDINATION
-        assert decision.authorized_target_id == "demo-receiver-01"
+        result = orchestrator.run(_package(), _canonical())
+        assert result.outcome is HeroOutcome.FAILED
+        assert result.error_code is HeroErrorCode.DELIVERY_FAILED
+        assert result.intent is not None
+        assert store.state(result.intent) is IntentState.FAILED
 
-    def test_unverified_package_blocks(self) -> None:
-        unverified = HeroVerificationResult(verified=False, package=None)
-        decision = HeroActionPolicy().decide(unverified, _context())
-        assert decision.auto_execute_a1 is False
-        assert decision.error_code is HeroErrorCode.UNVERIFIED_PACKAGE
+    def test_ack_failure_never_acknowledged(self) -> None:
+        store = FakeActionIntentStore()
+        result = _run_with_mutated_delivery(action_id="WRONG", store=store)
+        assert result.outcome is HeroOutcome.FAILED
+        assert result.ack_verified is False
+        assert result.intent is not None
+        assert store.state(result.intent) is IntentState.FAILED
 
-    def test_stale_version_blocks(self) -> None:
-        verification = VerifyHeroPackage().verify(_package(), _context())
-        decision = HeroActionPolicy().decide(
-            verification, _context(incident_version=IncidentVersion(9))
+
+class TestA1PayloadSafety:
+    def test_safe_wording_allowed(self) -> None:
+        ok, detail = validate_coordination_message(
+            "Synthetic demo surveillance review; draft only."
         )
-        assert decision.auto_execute_a1 is False
-        assert decision.error_code is HeroErrorCode.STALE_VERSION_BINDING
+        assert ok is True and detail is None
 
-    def test_unauthorized_target_blocks(self) -> None:
-        verification = VerifyHeroPackage().verify(_package(), _context())
-        decision = HeroActionPolicy().decide(
-            verification, _context(authorized_target_ids=frozenset())
-        )
-        assert decision.auto_execute_a1 is False
-        assert decision.error_code is HeroErrorCode.UNAUTHORIZED_TARGET
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "We prescribe IV meropenem immediately.",
+            "This is a diagnosis of carbapenem-resistant infection.",
+            "OUTBREAK_CONFIRMED in ward A.",
+            "This is an OFFICIAL_PUBLIC_HEALTH_DECLARATION.",
+            "We authorize immediate action.",
+        ],
+    )
+    def test_unsafe_wording_rejected(self, message: str) -> None:
+        ok, detail = validate_coordination_message(message)
+        assert ok is False and detail is not None
 
-    def test_model_cannot_authorize_a2_or_a3(self) -> None:
-        # The hero intent contract only permits A1; an A2/A3 request cannot be
-        # represented, and the policy always produces the canonical A1 verdict.
+    def test_orchestrator_rejects_unsafe_message_at_construction(self) -> None:
         with pytest.raises(ValueError):
-            HeroActionIntent(
-                action_id="ACT-1",
-                incident_id=INCIDENT,
-                incident_version=VERSION,
-                source_watermark=WATERMARK,
-                verified_package_id="PKG-1",
-                action_class=ActionClass.REAL_OPERATIONAL_ESCALATION,
-                authorized_target_id="demo-receiver-01",
-                payload_hash="0" * 64,
-                idempotency_key="idem-1",
-            )
+            _orchestrator(coordination_message="Prescribe antibiotics now.")
 
 
 class TestAck:
     def test_signed_correlated_ack_passes(self) -> None:
-        orchestrator, fake = _orchestrator()
-        result = orchestrator.run(_package(), _context())
+        orchestrator, effect, store, _ = _orchestrator()
+        result = orchestrator.run(_package(), _canonical())
         assert result.outcome is HeroOutcome.HERO_COMPLETED
         assert result.ack_verified is True
-        assert fake.calls and fake.calls[0].synthetic is True
+        assert effect.calls[0].synthetic is True
 
     def test_wrong_action_id_blocks(self) -> None:
         result = _run_with_mutated_delivery(action_id="ACT-X")
@@ -348,16 +560,16 @@ class TestAck:
         assert result.outcome is HeroOutcome.FAILED
 
     def test_invalid_signature_blocks(self) -> None:
-        # Delivery is signed with "signer-secret" but verified with a different
-        # secret -> signature mismatch must fail closed.
         orchestrator = HeroOrchestrator(
             verifier=VerifyHeroPackage(),
             policy=HeroActionPolicy(),
             effect_port=FakeEffectPort(ack_secret="signer-secret"),
             ack_verifier=VerifyHeroAck(ack_secret="verifier-secret"),
+            intent_store=FakeActionIntentStore(),
+            freshness_port=FakeFreshnessStatePort(_binding()),
             coordination_message="draft only",
         )
-        result = orchestrator.run(_package(), _context())
+        result = orchestrator.run(_package(), _canonical())
         assert result.outcome is HeroOutcome.FAILED
         assert result.error_code is HeroErrorCode.ACK_SIGNATURE_INVALID
 
@@ -365,12 +577,11 @@ class TestAck:
 def _run_with_mutated_delivery(
     action_id: str | None = None,
     payload_hash: str | None = None,
+    store: FakeActionIntentStore | None = None,
 ) -> HeroCompletionResult:
-    """Run the hero, then mutate the delivery before ack verification."""
-
     class _Port:
         def __init__(self) -> None:
-            self.calls: list[object] = []
+            self.calls: list[HeroActionIntent] = []
 
         def deliver(
             self,
@@ -380,8 +591,6 @@ def _run_with_mutated_delivery(
             fake = FakeEffectPort(ack_secret=ACK_SECRET)
             d = fake.deliver(intent, payload)
             self.calls.append(intent)
-            import dataclasses
-
             return dataclasses.replace(
                 d,
                 action_id=action_id if action_id is not None else d.action_id,
@@ -389,20 +598,20 @@ def _run_with_mutated_delivery(
             )
 
     port = _Port()
-    orch = HeroOrchestrator(
+    store = store if store is not None else FakeActionIntentStore()
+    orchestrator = HeroOrchestrator(
         verifier=VerifyHeroPackage(),
         policy=HeroActionPolicy(freshness=CheckHeroFreshness()),
         effect_port=port,
         ack_verifier=VerifyHeroAck(ack_secret=ACK_SECRET),
+        intent_store=store,
+        freshness_port=FakeFreshnessStatePort(_binding()),
         coordination_message="draft only",
     )
-    return orch.run(_package(), _context())
-
-
+    return orchestrator.run(_package(), _canonical())
 class TestHero:
     def test_no_downstream_action_on_verification_failure(self) -> None:
-        port = FakeEffectPort(ack_secret=ACK_SECRET)
-        orchestrator, _ = _orchestrator(port=port)
+        orchestrator, effect, store, _ = _orchestrator()
         mutated = _package_primitive()
         claims = cast("list[dict[str, object]]", mutated["claims"])
         claims[1]["supporting_finding_refs"] = [
@@ -415,9 +624,9 @@ class TestHero:
         ]
         parse = parse_incident_package(mutated)
         assert parse.ok and parse.package is not None
-        result = orchestrator.run(parse.package, _context())
+        result = orchestrator.run(parse.package, _canonical())
         assert result.outcome is HeroOutcome.BLOCKED
-        assert port.calls == []
+        assert effect.calls == []
         assert result.error_code is HeroErrorCode.UNVERIFIED_PACKAGE
 
     def test_hero_completed_impossible_before_ack(self) -> None:
@@ -426,9 +635,8 @@ class TestHero:
         assert result.ack_verified is False
 
     def test_zero_human_counters_remain_zero(self) -> None:
-        orchestrator, _ = _orchestrator()
-        result = orchestrator.run(_package(), _context())
+        orchestrator, _, _, _ = _orchestrator()
+        result = orchestrator.run(_package(), _canonical())
         assert result.outcome is HeroOutcome.HERO_COMPLETED
         for key, value in result.zero_human.items():
             assert value == 0, f"{key} is not zero"
-

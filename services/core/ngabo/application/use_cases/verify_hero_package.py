@@ -4,11 +4,17 @@
 let the A1 policy consider an action:
 
 - A. package/run binding (incident id, version, watermark, run identity);
-- B. every material support reference resolves within this run's context;
+- B. every material support reference resolves within this run's context AND the
+  referenced canonical VALUES match (record field/value, deterministic finding
+  details, approved-evidence source/chunk identity) — a valid ID with altered
+  proof material FAILS;
 - C. reference-family compatibility for each produced claim family;
-- D. authority boundary (no forbidden clinical/public-health semantics, no model
-  self-assessment of verified/approved/authorized/done);
-- E. all-or-nothing eligibility (any material failure -> no verified package).
+- D. claim-to-claim references (supporting + contradicting) resolve to actual
+  claims, never self-reference, form an acyclic dependency graph, and satisfy the
+  allowed dependency type rules;
+- E. authority boundary (no forbidden clinical/public-health authority semantics,
+  no model self-assessment of verified/approved/authorized/done);
+- F. all-or-nothing eligibility (any material failure -> no verified package).
 
 This is intentionally narrower than production #57/#58/#59. The verified result
 is a DISTINCT type from the raw candidate; only it may reach policy.
@@ -55,6 +61,17 @@ _FORBIDDEN_AUTHORITY_RE = re.compile(
     re.I,
 )
 
+# Families an ACTION_JUSTIFICATION may build on. Justifications never support
+# further justifications, and hypotheses are provisional (not proof) so they
+# cannot ground an action justification.
+_ACTION_JUSTIFICATION_SUPPORTS = frozenset(
+    {
+        ClaimType.OBSERVED_FACT,
+        ClaimType.DERIVED_FINDING,
+        ClaimType.EVIDENCE_STATEMENT,
+    }
+)
+
 
 class VerifyHeroPackage:
     """Framework-free deterministic hero package verifier."""
@@ -65,26 +82,28 @@ class VerifyHeroPackage:
         context: HeroSupportContext,
     ) -> HeroVerificationResult:
         errors: list[HeroVerificationError] = self._binding_errors(package, context)
-        claim_ids: list[str] = []
+        claim_by_id: dict[str, ReasoningClaim] = {
+            claim.claim_id.value: claim for claim in package.claims
+        }
         verified_claim_ids: list[str] = []
         for claim in package.claims:
-            claim_ids.append(claim.claim_id.value)
             claim_errors = self._claim_errors(claim, context)
             if claim_errors:
                 errors.extend(claim_errors)
             else:
                 verified_claim_ids.append(claim.claim_id.value)
+        errors.extend(self._claim_graph_errors(package, claim_by_id))
         if errors:
             return HeroVerificationResult(
                 verified=False,
                 package=None,
                 errors=tuple(errors),
-                claim_count=len(claim_ids),
+                claim_count=len(package.claims),
             )
         return HeroVerificationResult(
             verified=True,
             package=package,
-            claim_count=len(claim_ids),
+            claim_count=len(package.claims),
             verified_claim_ids=tuple(verified_claim_ids),
         )
 
@@ -132,9 +151,6 @@ class VerifyHeroPackage:
     ) -> list[HeroVerificationError]:
         errors: list[HeroVerificationError] = []
         claim_id = claim.claim_id.value
-        # Authority boundary: reject forbidden semantics in narrative text ahead
-        # of verifying references. The claim type allow-list already excludes
-        # diagnosis/prescription/outbreak-confirmation families.
         if _FORBIDDEN_AUTHORITY_RE.search(claim.statement):
             errors.append(
                 HeroVerificationError(
@@ -143,60 +159,8 @@ class VerifyHeroPackage:
                     claim_id,
                 )
             )
-
-        # Reference-family compatibility.
+        # Reference-family compatibility + canonical VALUE comparison.
         family = claim.claim_type
-        record_ok = all(
-            r.record_id in context.record_ids for r in claim.supporting_record_refs
-        )
-        finding_ok = all(
-            f.finding_id in context.finding_ids for f in claim.supporting_finding_refs
-        )
-        evidence_ok = all(
-            e.source_id in context.evidence_source_ids
-            and (e.chunk_id is None or e.chunk_id in context.evidence_reference_ids)
-            for e in claim.supporting_evidence_refs
-        )
-        if not record_ok:
-            errors.append(
-                HeroVerificationError(
-                    HeroErrorCode.VERIFICATION_FAILED,
-                    "a canonical record reference does not resolve in this run",
-                    claim_id,
-                )
-            )
-        if not finding_ok:
-            errors.append(
-                HeroVerificationError(
-                    HeroErrorCode.VERIFICATION_FAILED,
-                    "a deterministic finding reference does not resolve in this run",
-                    claim_id,
-                )
-            )
-        if not evidence_ok:
-            errors.append(
-                HeroVerificationError(
-                    HeroErrorCode.VERIFICATION_FAILED,
-                    "an approved-evidence reference does not resolve in this run",
-                    claim_id,
-                )
-            )
-        for ref in (
-            *claim.supporting_record_refs,
-            *claim.supporting_finding_refs,
-            *claim.supporting_evidence_refs,
-        ):
-            text = _ref_text(ref)
-            if URL_RE.search(text):
-                errors.append(
-                    HeroVerificationError(
-                        HeroErrorCode.VERIFICATION_FAILED,
-                        "a support reference uses a URL/domain instead of an opaque ID",
-                        claim_id,
-                    )
-                )
-
-        # Family-typed support requirement.
         if family is ClaimType.OBSERVED_FACT and not claim.supporting_record_refs:
             errors.append(
                 HeroVerificationError(
@@ -250,22 +214,238 @@ class VerifyHeroPackage:
                     claim_id,
                 )
             )
+
+        errors.extend(self._record_value_errors(claim, context))
+        errors.extend(self._finding_value_errors(claim, context))
+        errors.extend(self._evidence_value_errors(claim, context))
         return errors
 
+    def _record_value_errors(
+        self,
+        claim: ReasoningClaim,
+        context: HeroSupportContext,
+    ) -> list[HeroVerificationError]:
+        errors: list[HeroVerificationError] = []
+        for ref in claim.supporting_record_refs:
+            if URL_RE.search(ref.record_id) or URL_RE.search(ref.field_path):
+                errors.append(
+                    HeroVerificationError(
+                        HeroErrorCode.VERIFICATION_FAILED,
+                        "a record reference uses a URL/domain instead of an opaque ID",
+                        claim.claim_id.value,
+                    )
+                )
+                continue
+            canonical_fields = context.canonical_records.get(ref.record_id)
+            if canonical_fields is None:
+                errors.append(
+                    HeroVerificationError(
+                        HeroErrorCode.VERIFICATION_FAILED,
+                        "a canonical record reference does not resolve in this run",
+                        claim.claim_id.value,
+                    )
+                )
+                continue
+            if ref.field_path not in canonical_fields:
+                errors.append(
+                    HeroVerificationError(
+                        HeroErrorCode.VERIFICATION_FAILED,
+                        f"record {ref.record_id!r} has no canonical field {ref.field_path!r}",
+                        claim.claim_id.value,
+                    )
+                )
+                continue
+            if canonical_fields[ref.field_path] != ref.expected_value:
+                errors.append(
+                    HeroVerificationError(
+                        HeroErrorCode.VERIFICATION_FAILED,
+                        (
+                            f"record {ref.record_id!r}.{ref.field_path!r} expected value "
+                            f"{canonical_fields[ref.field_path]!r} does not match claimed "
+                            f"{ref.expected_value!r}"
+                        ),
+                        claim.claim_id.value,
+                    )
+                )
+        return errors
 
-def _ref_text(ref: object) -> str:
-    """Serialize a support reference to text for the URL guard."""
-    parts = [str(getattr(ref, "record_id", "")), str(getattr(ref, "finding_id", ""))]
-    if hasattr(ref, "field_path"):
-        parts.append(str(ref.field_path))
-    if hasattr(ref, "policy_version"):
-        parts.append(str(ref.policy_version))
-    if hasattr(ref, "source_id"):
-        parts.append(str(ref.source_id))
-    if hasattr(ref, "chunk_id") and ref.chunk_id is not None:
-        parts.append(str(ref.chunk_id))
-    if hasattr(ref, "expected_value"):
-        parts.append(str(ref.expected_value))
-    if hasattr(ref, "output_value"):
-        parts.append(str(ref.output_value))
-    return " ".join(parts)
+    def _finding_value_errors(
+        self,
+        claim: ReasoningClaim,
+        context: HeroSupportContext,
+    ) -> list[HeroVerificationError]:
+        errors: list[HeroVerificationError] = []
+        for ref in claim.supporting_finding_refs:
+            if URL_RE.search(ref.finding_id):
+                errors.append(
+                    HeroVerificationError(
+                        HeroErrorCode.VERIFICATION_FAILED,
+                        "a finding reference uses a URL/domain instead of an opaque ID",
+                        claim.claim_id.value,
+                    )
+                )
+                continue
+            canonical = context.canonical_findings.get(ref.finding_id)
+            if canonical is None:
+                errors.append(
+                    HeroVerificationError(
+                        HeroErrorCode.VERIFICATION_FAILED,
+                        "a deterministic finding reference does not resolve in this run",
+                        claim.claim_id.value,
+                    )
+                )
+                continue
+            if ref.policy_version != canonical.policy_version:
+                errors.append(
+                    HeroVerificationError(
+                        HeroErrorCode.VERIFICATION_FAILED,
+                        (
+                            f"finding {ref.finding_id!r} policy version "
+                            f"{ref.policy_version!r} does not match canonical "
+                            f"{canonical.policy_version!r}"
+                        ),
+                        claim.claim_id.value,
+                    )
+                )
+            if set(ref.input_refs) != set(canonical.input_refs):
+                errors.append(
+                    HeroVerificationError(
+                        HeroErrorCode.VERIFICATION_FAILED,
+                        f"finding {ref.finding_id!r} input refs do not match canonical",
+                        claim.claim_id.value,
+                    )
+                )
+            if ref.output_value != canonical.output_value:
+                errors.append(
+                    HeroVerificationError(
+                        HeroErrorCode.VERIFICATION_FAILED,
+                        f"finding {ref.finding_id!r} output value does not match canonical",
+                        claim.claim_id.value,
+                    )
+                )
+        return errors
+
+    def _evidence_value_errors(
+        self,
+        claim: ReasoningClaim,
+        context: HeroSupportContext,
+    ) -> list[HeroVerificationError]:
+        errors: list[HeroVerificationError] = []
+        for ref in claim.supporting_evidence_refs:
+            if URL_RE.search(ref.source_id) or URL_RE.search(ref.chunk_id or ""):
+                errors.append(
+                    HeroVerificationError(
+                        HeroErrorCode.VERIFICATION_FAILED,
+                        "an evidence reference uses a URL/domain instead of an opaque ID",
+                        claim.claim_id.value,
+                    )
+                )
+                continue
+            canonical = context.canonical_evidence.get(ref.source_id)
+            if canonical is None:
+                errors.append(
+                    HeroVerificationError(
+                        HeroErrorCode.VERIFICATION_FAILED,
+                        "an approved-evidence reference does not resolve in this run",
+                        claim.claim_id.value,
+                    )
+                )
+                continue
+            if ref.chunk_id is not None and ref.chunk_id not in canonical.chunk_ids:
+                errors.append(
+                    HeroVerificationError(
+                        HeroErrorCode.VERIFICATION_FAILED,
+                        f"evidence chunk {ref.chunk_id!r} is not a canonical chunk for "
+                        f"source {ref.source_id!r}",
+                        claim.claim_id.value,
+                    )
+                )
+        return errors
+
+    def _claim_graph_errors(
+        self,
+        package: IncidentPackageCandidate,
+        claim_by_id: dict[str, ReasoningClaim],
+    ) -> list[HeroVerificationError]:
+        """Validate supporting/contradicting claim references and the dependency graph."""
+        errors: list[HeroVerificationError] = []
+        for claim in package.claims:
+            claim_id = claim.claim_id.value
+            for ref_id in (
+                *claim.supporting_claim_ids,
+                *claim.contradicting_claim_ids,
+            ):
+                if ref_id.value == claim_id:
+                    errors.append(
+                        HeroVerificationError(
+                            HeroErrorCode.VERIFICATION_FAILED,
+                            "a claim may not reference itself",
+                            claim_id,
+                        )
+                    )
+                    continue
+                if ref_id.value not in claim_by_id:
+                    errors.append(
+                        HeroVerificationError(
+                            HeroErrorCode.VERIFICATION_FAILED,
+                            f"claim references non-existent claim {ref_id.value!r}",
+                            claim_id,
+                        )
+                    )
+            if (
+                claim.claim_type is ClaimType.ACTION_JUSTIFICATION
+                and claim.supporting_claim_ids
+            ):
+                for ref_id in claim.supporting_claim_ids:
+                    target = claim_by_id.get(ref_id.value)
+                    if target is None:
+                        continue
+                    if target.claim_type not in _ACTION_JUSTIFICATION_SUPPORTS:
+                        errors.append(
+                            HeroVerificationError(
+                                HeroErrorCode.VERIFICATION_FAILED,
+                                (
+                                    f"ACTION_JUSTIFICATION may not depend on a "
+                                    f"{target.claim_type.value} claim ({ref_id.value!r})"
+                                ),
+                                claim_id,
+                            )
+                        )
+        errors.extend(self._cycle_errors(package.claims))
+        return errors
+
+    def _cycle_errors(
+        self,
+        claims: tuple[ReasoningClaim, ...],
+    ) -> list[HeroVerificationError]:
+        """Detect cycles in the supporting-claim dependency graph."""
+        by_id = {claim.claim_id.value: claim for claim in claims}
+        state: dict[str, int] = {}
+
+        def visit(claim_id: str) -> bool:
+            if state.get(claim_id) == 1:
+                return True  # cycle
+            if state.get(claim_id) == 2:
+                return False
+            state[claim_id] = 1
+            claim = by_id[claim_id]
+            if claim is None:
+                state[claim_id] = 2
+                return False
+            for ref in claim.supporting_claim_ids:
+                if ref.value in by_id and visit(ref.value):
+                    return True
+            state[claim_id] = 2
+            return False
+
+        errors: list[HeroVerificationError] = []
+        for claim in claims:
+            if visit(claim.claim_id.value):
+                errors.append(
+                    HeroVerificationError(
+                        HeroErrorCode.VERIFICATION_FAILED,
+                        "claim dependency graph contains a cycle",
+                        claim.claim_id.value,
+                    )
+                )
+        return errors

@@ -5,7 +5,8 @@ authorized. The deterministic policy requires:
 
 - a VERIFIED hero package (never the raw candidate);
 - no material verification blockers;
-- a current freshness/version binding;
+- a FRESH current-state binding (reloaded through an authoritative port, so a
+  state change after verification cannot authorize stale proof);
 - an explicitly synthetic/demo coordination payload;
 - one configured, authorized test/sandbox target;
 - safe wording (no forbidden authority semantics).
@@ -20,8 +21,8 @@ from __future__ import annotations
 
 from ngabo.application.enums.hero_error_code import HeroErrorCode
 from ngabo.application.use_cases.check_hero_freshness import CheckHeroFreshness
+from ngabo.application.value_objects.canonical_binding import HeroStateBinding
 from ngabo.application.value_objects.hero_action_decision import HeroActionDecision
-from ngabo.application.value_objects.hero_support_context import HeroSupportContext
 from ngabo.application.value_objects.hero_verification import HeroVerificationResult
 from ngabo.domain.enums.action_class import ActionClass
 
@@ -38,7 +39,8 @@ class HeroActionPolicy:
     def decide(
         self,
         verification: HeroVerificationResult,
-        context: HeroSupportContext,
+        binding: HeroStateBinding,
+        authorized_target_ids: frozenset[str],
     ) -> HeroActionDecision:
         if not verification.verified or verification.package is None:
             return HeroActionDecision(
@@ -48,7 +50,7 @@ class HeroActionPolicy:
                 reason="unverified package cannot reach A1 policy",
                 error_code=HeroErrorCode.UNVERIFIED_PACKAGE,
             )
-        if not context.authorized_target_ids:
+        if not authorized_target_ids:
             return HeroActionDecision(
                 auto_execute_a1=False,
                 action_class=ActionClass.SAFE_EXTERNAL_COORDINATION,
@@ -57,7 +59,7 @@ class HeroActionPolicy:
                 error_code=HeroErrorCode.UNAUTHORIZED_TARGET,
             )
         fresh, code, detail = self._freshness.check(
-            verification.package, context
+            verification.package, binding
         )
         if not fresh:
             return HeroActionDecision(
@@ -69,7 +71,7 @@ class HeroActionPolicy:
             )
         # The test/sandbox target is configured (never model-visible). Choose the
         # single deterministic authorized target for this slice.
-        target_id = sorted(context.authorized_target_ids)[0]
+        target_id = sorted(authorized_target_ids)[0]
         return HeroActionDecision(
             auto_execute_a1=True,
             action_class=ActionClass.SAFE_EXTERNAL_COORDINATION,
