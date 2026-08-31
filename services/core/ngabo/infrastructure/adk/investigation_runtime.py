@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 import time
 import uuid
 from collections.abc import Callable, Mapping
@@ -321,11 +322,12 @@ class EventInvestigationRuntime:
             requested_version = IncidentVersion(
                 _as_int(envelope["incident_version"], "incident_version")
             )
+            requested_watermark = SourceWatermark(str(envelope["source_watermark"]))
             query = GetInvestigationContextQuery(
                 incident_id=incident_id,
                 requested_version=requested_version,
             )
-            capability_result = await asyncio.to_thread(self._get_context, query)
+            capability_result = await self._invoke_context_handler(query)
         except Exception as exc:  # noqa: BLE001 - fail closed on a wrapper exception
             return self._payload(
                 outcome=InvestigationExecutionOutcome.FAILED,
@@ -339,7 +341,7 @@ class EventInvestigationRuntime:
 
         if execution_id is not None:
             self._capability_results[execution_id] = capability_result
-        mapping = self._map_capability(capability_result)
+        mapping = self._map_capability(capability_result, requested_watermark)
         return self._payload(
             outcome=mapping.outcome,
             failure_code=mapping.failure_code,
@@ -349,6 +351,52 @@ class EventInvestigationRuntime:
             adk_session_id=adk_session_id,
             adk_invocation_id=adk_invocation_id,
         )
+
+    async def _invoke_context_handler(
+        self, query: GetInvestigationContextQuery
+    ) -> InvestigationContextResult:
+        """Await the synchronous inward handler without pinning it to the default executor.
+
+        The deterministic handler is a synchronous callable that may block longer
+        than the runtime deadline in adversarial conditions. If it were awaited via
+        ``asyncio.to_thread`` (the default executor), ``asyncio.run`` would wait for
+        that executor worker to finish during its shutdown, so the public synchronous
+        entry point would block FAR beyond the configured deadline (or never return).
+
+        Instead the handler runs on a dedicated daemon thread and the result is
+        resolved on a loop future. When the outer ``asyncio.wait_for`` deadline fires
+        and the awaiting task is cancelled, the loop returns promptly because the
+        abandoned daemon thread is never joined by ``asyncio.run``'s default-executor
+        shutdown. This makes the synchronous caller wall-clock bounded.
+
+        Lifecycle truth: a timed-out handler is *abandoned*, not cancelled. The
+        daemon thread keeps running until it returns or the process exits. It is
+        never joined at interpreter shutdown and must have no external effects or
+        canonical-state authority (this deterministic capability is read-only).
+        """
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[InvestigationContextResult] = loop.create_future()
+
+        def worker() -> None:
+            try:
+                result = self._get_context(query)
+            except BaseException as exc:  # noqa: BLE001 - captured and re-raised on await
+                # The loop may already be closed once the caller has timed out and
+                # ``asyncio.run`` has returned; never crash a background daemon thread.
+                try:
+                    if not future.done() and not future.cancelled() and not loop.is_closed():
+                        future.set_exception(exc)
+                except RuntimeError:
+                    pass
+            else:
+                try:
+                    if not future.done() and not future.cancelled() and not loop.is_closed():
+                        future.set_result(result)
+                except RuntimeError:
+                    pass
+
+        threading.Thread(target=worker, daemon=True).start()
+        return await future
 
     async def _run_workflow(
         self,
@@ -428,6 +476,10 @@ class EventInvestigationRuntime:
         failure_code = (
             InvestigationExecutionErrorCode(str(raw_failure)) if raw_failure is not None else None
         )
+        # Pop the capability result BEFORE building metadata so the metadata can
+        # carry the resolved canonical source watermark (never the event-asserted
+        # watermark on the success/mismatch paths).
+        capability_result = self._pop_capability_result(execution_id.value)
         metadata = self._build_metadata(
             execution_id=execution_id,
             session_id=session_id,
@@ -435,8 +487,8 @@ class EventInvestigationRuntime:
             envelope=envelope,
             telemetry=telemetry,
             duration_ms=duration_ms,
+            capability_result=capability_result,
         )
-        capability_result = self._pop_capability_result(execution_id.value)
         result = EventInvocationResult(
             outcome=outcome,
             execution_id=execution_id,
@@ -459,6 +511,7 @@ class EventInvestigationRuntime:
         duration_ms: int = 0,
     ) -> EventInvocationResult:
         if envelope is not None and session_id is not None and invocation_id is not None:
+            capability_result = self._pop_capability_result(execution_id.value)
             metadata = self._build_metadata(
                 execution_id=execution_id,
                 session_id=session_id,
@@ -466,10 +519,11 @@ class EventInvestigationRuntime:
                 envelope=envelope,
                 telemetry=telemetry or _RunTelemetry(),
                 duration_ms=duration_ms,
+                capability_result=capability_result,
             )
         else:
             metadata = None
-        capability_result = self._pop_capability_result(execution_id.value)
+            capability_result = self._pop_capability_result(execution_id.value)
         result = EventInvocationResult(
             outcome=InvestigationExecutionOutcome.FAILED,
             execution_id=execution_id,
@@ -502,7 +556,21 @@ class EventInvestigationRuntime:
         envelope: Mapping[str, object],
         telemetry: _RunTelemetry,
         duration_ms: int,
+        capability_result: InvestigationContextResult | None = None,
     ) -> ADKExecutionMetadata:
+        # The metadata source watermark is the RESOLVED canonical watermark from
+        # the inward capability when available (capability_result). This means a
+        # success metadata watermark is provably the canonical capability
+        # watermark, and a mismatch result never echoes the event-asserted
+        # watermark as if it were canonical truth. When no capability resolved
+        # (e.g. timeout before the capability returned), the requested envelope
+        # watermark is recorded for traceability but is never presented as a
+        # proven canonical watermark.
+        canonical_watermark: SourceWatermark
+        if capability_result is not None and capability_result.source_watermark is not None:
+            canonical_watermark = capability_result.source_watermark
+        else:
+            canonical_watermark = SourceWatermark(str(envelope["source_watermark"]))
         return ADKExecutionMetadata(
             execution_id=execution_id,
             session_id=session_id,
@@ -517,7 +585,7 @@ class EventInvestigationRuntime:
             incident_version=IncidentVersion(
                 _as_int(envelope["incident_version"], "incident_version")
             ),
-            source_watermark=SourceWatermark(str(envelope["source_watermark"])),
+            source_watermark=canonical_watermark,
             wrapper_calls=telemetry.wrapper_calls,
             model_calls=telemetry.model_calls,
             tool_calls=telemetry.tool_calls,
@@ -526,8 +594,21 @@ class EventInvestigationRuntime:
             adk_version=self._adk_version,
         )
 
-    def _map_capability(self, result: InvestigationContextResult) -> _CapabilityMapping:
+    def _map_capability(
+        self,
+        result: InvestigationContextResult,
+        requested_watermark: SourceWatermark,
+    ) -> _CapabilityMapping:
         if result.outcome is CapabilityOutcome.SUCCESS:
+            # Canonical-state binding: a SUCCESS is only current-stage completion
+            # if the canonical source watermark returned by the inward capability
+            # equals the event/envelope watermark. A current incident version with
+            # a stale/fabricated watermark must block, never report success.
+            if result.source_watermark != requested_watermark:
+                return _CapabilityMapping(
+                    InvestigationExecutionOutcome.BLOCKED,
+                    InvestigationExecutionErrorCode.SOURCE_WATERMARK_MISMATCH,
+                )
             return _CapabilityMapping(InvestigationExecutionOutcome.COMPLETED_CURRENT_STAGE, None)
         if result.outcome is CapabilityOutcome.INCIDENT_NOT_FOUND:
             return _CapabilityMapping(

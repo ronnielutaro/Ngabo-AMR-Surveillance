@@ -122,6 +122,12 @@ class EventInvestigationCommand:
         """
         if not isinstance(data, Mapping):
             raise ValueError("event command primitive must be a mapping")
+        contract_version = data.get("contract_version")
+        if contract_version != EVENT_INVESTIGATION_CONTRACT_VERSION:
+            raise ValueError(
+                f"unsupported event investigation contract_version {contract_version!r}; "
+                f"expected {EVENT_INVESTIGATION_CONTRACT_VERSION!r}"
+            )
         incident_id = data.get("incident_id")
         if not isinstance(incident_id, str):
             raise ValueError("incident_id must be a string")

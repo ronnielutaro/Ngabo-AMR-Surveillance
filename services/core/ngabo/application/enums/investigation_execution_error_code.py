@@ -24,6 +24,9 @@ class InvestigationExecutionErrorCode(StrEnum):
     STALE_INCIDENT_VERSION = "STALE_INCIDENT_VERSION"
     """The command's requested incident version is not current."""
 
+    SOURCE_WATERMARK_MISMATCH = "SOURCE_WATERMARK_MISMATCH"
+    """The event's source watermark does not match the canonical source watermark."""
+
     MISSING_INPUT = "MISSING_INPUT"
     """The inward capability reported a required input was unavailable."""
 

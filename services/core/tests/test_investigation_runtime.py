@@ -505,6 +505,294 @@ class TestArchitectureBoundary:
             assert "pydantic" not in source.lower()
 
 
+class TestSourceWatermarkBinding:
+    """P1 regression: success must be bound to the canonical source watermark."""
+
+    def test_matching_event_and_canonical_watermark_completes(self) -> None:
+        runtime = _runtime()
+        result = runtime.execute(_command(incident_id=INCIDENT_1, version=VERSION_1))
+        assert result.outcome is InvestigationExecutionOutcome.COMPLETED_CURRENT_STAGE
+        assert result.is_success() is True
+        assert result.failure_code is None
+
+    def test_stale_fabricated_watermark_blocks_with_stable_code(self) -> None:
+        runtime = _runtime()
+        forged = SourceWatermark("ngabo-source-v9:sha256:forged9")
+        result = runtime.execute(
+            EventInvestigationCommand(
+                incident_id=INCIDENT_1,
+                incident_version=VERSION_1,
+                source_watermark=forged,
+                event_id="evt-synth-0001",
+                correlation_id="corr-synth-0001",
+            )
+        )
+        assert result.outcome is InvestigationExecutionOutcome.BLOCKED
+        assert result.failure_code is InvestigationExecutionErrorCode.SOURCE_WATERMARK_MISMATCH
+        assert result.is_success() is False
+        assert result.metadata is not None
+        # The event carried the current incident version, so only the watermark
+        # binding can explain the block.
+        assert result.capability_result is not None
+        assert result.capability_result.incident_version == VERSION_1
+
+    def test_watermark_mismatch_never_reports_is_success(self) -> None:
+        forged = SourceWatermark("ngabo-source-v9:sha256:forged9")
+        result = _runtime().execute(
+            EventInvestigationCommand(
+                incident_id=INCIDENT_1,
+                incident_version=VERSION_1,
+                source_watermark=forged,
+                event_id="evt-synth-0001",
+                correlation_id="corr-synth-0001",
+            )
+        )
+        assert result.is_success() is False
+
+    def test_watermark_mismatch_never_completed_current_stage(self) -> None:
+        forged = SourceWatermark("ngabo-source-v9:sha256:forged9")
+        result = _runtime().execute(
+            EventInvestigationCommand(
+                incident_id=INCIDENT_1,
+                incident_version=VERSION_1,
+                source_watermark=forged,
+                event_id="evt-synth-0001",
+                correlation_id="corr-synth-0001",
+            )
+        )
+        assert result.outcome != InvestigationExecutionOutcome.COMPLETED_CURRENT_STAGE
+
+    def test_success_metadata_watermark_equals_canonical_capability_watermark(self) -> None:
+        runtime = _runtime()
+        result = runtime.execute(_command(incident_id=INCIDENT_1, version=VERSION_1))
+        assert result.outcome is InvestigationExecutionOutcome.COMPLETED_CURRENT_STAGE
+        assert result.metadata is not None
+        assert result.capability_result is not None
+        assert result.metadata.source_watermark == result.capability_result.source_watermark
+        # The canonical capability watermark is the authoritative owner.
+        assert result.metadata.source_watermark == WATERMARK
+
+    def test_watermark_mismatch_keeps_run_identifiers_observable(self) -> None:
+        forged = SourceWatermark("ngabo-source-v9:sha256:forged9")
+        runtime = _runtime()
+        command = EventInvestigationCommand(
+            incident_id=INCIDENT_1,
+            incident_version=VERSION_1,
+            source_watermark=forged,
+            event_id="evt-synth-0001",
+            correlation_id="corr-synth-0001",
+        )
+        result = runtime.execute(command)
+        assert result.outcome is InvestigationExecutionOutcome.BLOCKED
+        metadata = result.metadata
+        assert metadata is not None
+        assert result.execution_id == metadata.execution_id
+        assert metadata.session_id.startswith("ngabo-session-")
+        assert metadata.invocation_id.startswith("ngabo-invocation-")
+        assert metadata.event_id == command.event_id
+        assert metadata.correlation_id == command.correlation_id
+        assert metadata.incident_id == INCIDENT_1
+        assert metadata.incident_version == VERSION_1
+
+
+class TestSyncDeadline:
+    """P1 regression: the public synchronous entry points are wall-clock bounded."""
+
+    @staticmethod
+    def _success_result(query: GetInvestigationContextQuery) -> InvestigationContextResult:
+        return InvestigationContextResult(
+            outcome=CapabilityOutcome.SUCCESS,
+            incident_id=INCIDENT_1,
+            incident_version=VERSION_1,
+            source_watermark=WATERMARK,
+            isolates=(),
+            signal_config=None,
+            window_end=None,
+            requested_version=query.requested_version,
+        )
+
+    def test_sync_execute_returns_within_deadline(self) -> None:
+        import time
+
+        def blocking_handler(query: GetInvestigationContextQuery) -> InvestigationContextResult:
+            time.sleep(3.0)  # materially longer than the 0.25s budget
+            return self._success_result(query)
+
+        runtime = _runtime(
+            get_context=blocking_handler,
+            budget=_budget(max_runtime_seconds=0.25),
+        )
+        result = runtime.execute(_command(incident_id=INCIDENT_1, version=VERSION_1))
+        assert result.outcome is InvestigationExecutionOutcome.FAILED
+        assert result.failure_code is InvestigationExecutionErrorCode.EXECUTION_TIMEOUT
+        assert result.is_success() is False
+
+    def test_sync_execute_is_wall_clock_bounded(self) -> None:
+        import time
+
+        def blocking_handler(query: GetInvestigationContextQuery) -> InvestigationContextResult:
+            time.sleep(3.0)
+            return self._success_result(query)
+
+        runtime = _runtime(
+            get_context=blocking_handler,
+            budget=_budget(max_runtime_seconds=0.25),
+        )
+        start = time.monotonic()
+        runtime.execute(_command(incident_id=INCIDENT_1, version=VERSION_1))
+        elapsed = time.monotonic() - start
+        # The sync caller must return near the deadline, NOT after the 3s handler
+        # sleep. Current (unfixed) implementation sleeps the full 3s due to the
+        # default executor shutdown blocking under asyncio.run.
+        assert elapsed < 1.5, f"sync execute() blocked {elapsed:.2f}s; deadline not respected"
+
+    def test_sync_execute_primitive_is_wall_clock_bounded(self) -> None:
+        import time
+
+        def blocking_handler(query: GetInvestigationContextQuery) -> InvestigationContextResult:
+            time.sleep(3.0)
+            return self._success_result(query)
+
+        runtime = _runtime(
+            get_context=blocking_handler,
+            budget=_budget(max_runtime_seconds=0.25),
+        )
+        payload = {
+            "contract_version": "ngabo-event-investigation-v1",
+            "incident_id": INCIDENT_1.value,
+            "incident_version": VERSION_1.value,
+            "source_watermark": WATERMARK.value,
+            "event_id": "evt-synth-0001",
+            "correlation_id": "corr-synth-0001",
+        }
+        start = time.monotonic()
+        result = runtime.execute_primitive(payload)
+        elapsed = time.monotonic() - start
+        assert result.outcome is InvestigationExecutionOutcome.FAILED
+        assert result.failure_code is InvestigationExecutionErrorCode.EXECUTION_TIMEOUT
+        assert result.is_success() is False
+        assert elapsed < 1.5, f"sync execute_primitive() blocked {elapsed:.2f}s"
+
+
+class TestCommandContractVersion:
+    """P2 regression: from_primitive must validate contract_version exactly."""
+
+    def test_correct_contract_version_parses(self) -> None:
+        command = _command(incident_id=INCIDENT_1, version=VERSION_1)
+        primitive = command.to_primitive()
+        assert primitive["contract_version"] == "ngabo-event-investigation-v1"
+        rebuilt = EventInvestigationCommand.from_primitive(primitive)
+        assert rebuilt == command
+
+    def test_roundtrip_preserves_matching_contract_version(self) -> None:
+        command = _command(incident_id=INCIDENT_1, version=VERSION_1)
+        rebuilt = EventInvestigationCommand.from_primitive(command.to_primitive())
+        rebuilt_version = rebuilt.to_primitive()["contract_version"]
+        command_version = command.to_primitive()["contract_version"]
+        assert rebuilt_version == command_version
+
+    def test_missing_contract_version_is_malformed(self) -> None:
+        with pytest.raises(ValueError):
+            EventInvestigationCommand.from_primitive(
+                {
+                    "incident_id": INCIDENT_1.value,
+                    "incident_version": VERSION_1.value,
+                    "source_watermark": WATERMARK.value,
+                    "event_id": "evt-x",
+                }
+            )
+
+    def test_missing_contract_version_maps_to_malformed_result(self) -> None:
+        result = _runtime().execute_primitive(
+            {
+                "incident_id": INCIDENT_1.value,
+                "incident_version": VERSION_1.value,
+                "source_watermark": WATERMARK.value,
+                "event_id": "evt-x",
+            }
+        )
+        assert result.outcome is InvestigationExecutionOutcome.FAILED
+        assert result.failure_code is InvestigationExecutionErrorCode.MALFORMED_COMMAND
+        assert result.metadata is None
+        assert result.is_success() is False
+
+    def test_foreign_future_contract_version_is_malformed(self) -> None:
+        with pytest.raises(ValueError):
+            EventInvestigationCommand.from_primitive(
+                {
+                    "contract_version": "ngabo-event-investigation-v2",
+                    "incident_id": INCIDENT_1.value,
+                    "incident_version": VERSION_1.value,
+                    "source_watermark": WATERMARK.value,
+                    "event_id": "evt-x",
+                }
+            )
+
+    def test_foreign_future_contract_version_maps_to_malformed_result(self) -> None:
+        result = _runtime().execute_primitive(
+            {
+                "contract_version": "ngabo-event-investigation-v2",
+                "incident_id": INCIDENT_1.value,
+                "incident_version": VERSION_1.value,
+                "source_watermark": WATERMARK.value,
+                "event_id": "evt-x",
+            }
+        )
+        assert result.outcome is InvestigationExecutionOutcome.FAILED
+        assert result.failure_code is InvestigationExecutionErrorCode.MALFORMED_COMMAND
+        assert result.metadata is None
+        assert result.is_success() is False
+
+    def test_blank_contract_version_is_malformed(self) -> None:
+        with pytest.raises(ValueError):
+            EventInvestigationCommand.from_primitive(
+                {
+                    "contract_version": "   ",
+                    "incident_id": INCIDENT_1.value,
+                    "incident_version": VERSION_1.value,
+                    "source_watermark": WATERMARK.value,
+                    "event_id": "evt-x",
+                }
+            )
+
+    def test_blank_contract_version_maps_to_malformed_result(self) -> None:
+        result = _runtime().execute_primitive(
+            {
+                "contract_version": "   ",
+                "incident_id": INCIDENT_1.value,
+                "incident_version": VERSION_1.value,
+                "source_watermark": WATERMARK.value,
+                "event_id": "evt-x",
+            }
+        )
+        assert result.outcome is InvestigationExecutionOutcome.FAILED
+        assert result.failure_code is InvestigationExecutionErrorCode.MALFORMED_COMMAND
+        assert result.metadata is None
+        assert result.is_success() is False
+
+    def test_malformed_version_does_not_start_adk_runtime(self) -> None:
+        calls: list[GetInvestigationContextQuery] = []
+
+        def spy(query: GetInvestigationContextQuery) -> InvestigationContextResult:
+            calls.append(query)
+            raise AssertionError("ADK runtime should never invoke the capability for a bad version")
+
+        runtime = _runtime(get_context=spy)
+        result = runtime.execute_primitive(
+            {
+                "contract_version": "arbitrary/foreign",
+                "incident_id": INCIDENT_1.value,
+                "incident_version": VERSION_1.value,
+                "source_watermark": WATERMARK.value,
+                "event_id": "evt-x",
+            }
+        )
+        assert result.outcome is InvestigationExecutionOutcome.FAILED
+        assert result.failure_code is InvestigationExecutionErrorCode.MALFORMED_COMMAND
+        assert result.metadata is None
+        assert calls == []
+
+
 def _sample_metadata() -> ADKExecutionMetadata:
     return ADKExecutionMetadata(
         execution_id=InvestigationExecutionId("RUN-" + "a" * 32),
