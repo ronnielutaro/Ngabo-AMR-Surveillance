@@ -1,0 +1,80 @@
+{
+  "outcome": "BLOCKED",
+  "is_success": false,
+  "execution_id": "RUN-abcdefabcdefabcdefabcdefabcdefab",
+  "metadata": {
+    "execution_id": "RUN-abcdefabcdefabcdefabcdefabcdefab",
+    "session_id": "ngabo-session-abcdefabcdefabcdefabcdefabcdefab",
+    "invocation_id": "ngabo-invocation-abcdefabcdefabcdefabcdefabcdefab",
+    "event_id": "evt-synth-0001",
+    "correlation_id": "corr-synth-0001",
+    "incident_id": "INC-001",
+    "incident_version": 1,
+    "source_watermark": "ngabo-source-v1:sha256:abc123",
+    "wrapper_calls": 1,
+    "model_calls": 0,
+    "tool_calls": 4,
+    "duration_ms": 61,
+    "budget": {
+      "max_runtime_seconds": 30.0,
+      "max_model_calls": 0,
+      "max_tool_calls": 8,
+      "max_loop_iterations": 1,
+      "max_repair_attempts": 0
+    },
+    "adk_version": "2.8.0"
+  },
+  "joined_investigation": {
+    "incident_id": "INC-001",
+    "incident_version": 1,
+    "source_watermark": "ngabo-source-v1:sha256:abc123",
+    "graph_attempt": 1,
+    "ready_for_downstream": false,
+    "failure_code": "REQUIRED_BRANCH_FAILED",
+    "profile_outcome": "REQUIRED_CAPABILITY_FAILED",
+    "baseline_outcome": "SUCCESS",
+    "missingness_outcome": "SUCCESS",
+    "has_material_missingness": false,
+    "model_calls": 0
+  },
+  "branch_records": [
+    {
+      "branch": "PROFILE",
+      "required": true,
+      "started": true,
+      "completed": true,
+      "blocked": true,
+      "failed": false,
+      "timed_out": false,
+      "invocation_count": 1,
+      "capability_outcome": "REQUIRED_CAPABILITY_FAILED",
+      "duration_ms": 61
+    },
+    {
+      "branch": "BASELINE",
+      "required": true,
+      "started": true,
+      "completed": true,
+      "blocked": false,
+      "failed": false,
+      "timed_out": false,
+      "invocation_count": 1,
+      "capability_outcome": "SUCCESS",
+      "duration_ms": 61
+    },
+    {
+      "branch": "MISSINGNESS",
+      "required": true,
+      "started": true,
+      "completed": true,
+      "blocked": false,
+      "failed": false,
+      "timed_out": false,
+      "invocation_count": 1,
+      "capability_outcome": "SUCCESS",
+      "duration_ms": 61
+    }
+  ],
+  "capability_outcome": "SUCCESS",
+  "failure_code": "REQUIRED_BRANCH_FAILED"
+}

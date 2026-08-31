@@ -1,6 +1,6 @@
 {
   "$schema": "ngabo/event-investigation-trace/v1",
-  "outcome": "COMPLETED_CURRENT_STAGE",
+  "outcome": "READY_FOR_DOWNSTREAM",
   "is_success": true,
   "execution_id": "RUN-0123456789abcdef0123456789abcdef",
   "metadata": {
@@ -14,7 +14,7 @@
     "source_watermark": "ngabo-source-v1:sha256:abc123",
     "wrapper_calls": 1,
     "model_calls": 0,
-    "tool_calls": 1,
+    "tool_calls": 4,
     "duration_ms": 12,
     "budget": {
       "max_runtime_seconds": 30.0,
