@@ -259,7 +259,7 @@ def ingest_connect_batch(request: Request) -> JSONResponse:
             source_watermark=f"connect/{lab_id}/{source_id}/v1",
             window_end=_parsed_window_end(),
             isolates=isolates,
-            profile_pair=_isolate_pair(),
+            profile_pair=_isolate_pair(isolates),
         )
 
     try:
@@ -304,12 +304,13 @@ def _parsed_window_end() -> date:
     return date.fromisoformat(os.environ.get("NGABO_SURVEILLANCE_WINDOW_END", "2026-08-31"))
 
 
-def _isolate_pair() -> tuple[str, str] | None:
+def _isolate_pair(isolates: list[CanonicalIsolate]) -> tuple[str, str] | None:
     value = os.environ.get("NGABO_PROFILE_PAIR")
-    if not value:
-        return None
-    parts = value.split(",")
-    return (parts[0], parts[1]) if len(parts) == 2 else None
+    if value:
+        parts = tuple(part.strip() for part in value.split(",") if part.strip())
+        return (parts[0], parts[1]) if len(parts) == 2 else None
+    isolate_ids = sorted(isolate.isolate_id for isolate in isolates)
+    return (isolate_ids[0], isolate_ids[1]) if len(isolate_ids) >= 2 else None
 
 
 @app.exception_handler(404)

@@ -1,5 +1,7 @@
 # Ngabo
 
+[![Delivery Develop](https://github.com/ronnielutaro/Ngabo-AMR-Surveillance/actions/workflows/delivery-develop.yml/badge.svg)](https://github.com/ronnielutaro/Ngabo-AMR-Surveillance/actions/workflows/delivery-develop.yml)
+
 **Autonomous AMR Surveillance & Incident Response**
 
 Ngabo is an **open-source, event-driven antimicrobial resistance surveillance and incident-response system** that transforms AMR surveillance signals into structured, evidence-backed investigations and coordinated response workflows.

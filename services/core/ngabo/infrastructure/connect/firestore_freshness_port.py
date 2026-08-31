@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from ngabo.application.value_objects.canonical_binding import HeroStateBinding
 from ngabo.domain.value_objects.incident_id import IncidentId
+from ngabo.domain.value_objects.signal_config import SignalConfig
 from ngabo.infrastructure.connect.firestore_incident_repository import (
     FirestoreInvestigationContextRepository,
 )
@@ -23,5 +24,5 @@ class FirestoreFreshnessStatePort:
             incident_id=context.incident_id,
             incident_version=context.incident_version,
             source_watermark=context.source_watermark,
-            policy_config_version="v1",
+            policy_config_version=SignalConfig().policy_version,
         )

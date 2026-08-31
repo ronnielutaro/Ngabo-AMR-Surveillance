@@ -10,10 +10,11 @@ from ngabo.application.connect.contracts import (
     AcceptedRecord,
     QuarantinedRecord,
 )
-from ngabo.application.connect.source_profile import WHONET_DEMO_V1, clean_rows
 from ngabo.application.connect.processor import process_connect_csv
+from ngabo.application.connect.source_profile import WHONET_DEMO_V1, clean_rows
 from ngabo.infrastructure.connect.connect_queue import ConnectQueue
 from ngabo.infrastructure.connect.hmac_auth import compute_signature, verify_upload
+from ngabo.interfaces.http import _isolate_pair
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 AST_CODES = ("AMK", "CAZ", "CIP", "CRO", "MEM", "SXT")
@@ -180,3 +181,11 @@ def test_connect_bridge_cleans_detects_signal_and_hands_off() -> None:
     assert "SIGNAL_DETECTED" in event_names
     assert "INVESTIGATION_STARTED" in event_names
     assert "WORKFLOW_HERO_COMPLETED" in event_names
+
+
+def test_profile_pair_is_derived_deterministically_from_accepted_isolates() -> None:
+    accepted, _, _ = clean_rows(_rows(), WHONET_DEMO_V1)
+    from ngabo.application.connect.processor import _to_isolate
+
+    isolates = [_to_isolate(record) for record in reversed(accepted)]
+    assert _isolate_pair(isolates) == ("ISO-031", "ISO-034")

@@ -19,6 +19,7 @@ import hashlib
 import json
 import time
 import uuid
+from typing import Any
 
 from ngabo.application.enums.intent_state import IntentState
 from ngabo.application.value_objects.effect_delivery import EffectDelivery
@@ -34,17 +35,17 @@ class FirestoreActionIntentStore:
         *,
         project: str,
         collection: str = "ngabo_action_intents",
-        client: object | None = None,
+        client: Any | None = None,
         database: str = "ngabo",
     ) -> None:
         from google.cloud import firestore
 
         self._project = project
         self._collection = collection
-        self._db = (
+        self._db: Any = (
             client if client is not None else firestore.Client(project=project, database=database)
         )
-        self._col = self._db.collection(collection)
+        self._col: Any = self._db.collection(collection)
 
     def _doc_id(self, idempotency_key: str) -> str:
         return hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()

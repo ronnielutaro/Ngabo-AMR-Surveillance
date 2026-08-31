@@ -99,16 +99,17 @@ def main() -> int:
     def persist(incident_id: str, isolates: list[object]) -> None:
         # Persist isolates + incident to Firestore via the repository.
         firestore_incident_repository = _incident_repo(client)
+        isolate_ids = sorted(
+            str(isolate.isolate_id)  # type: ignore[attr-defined]
+            for isolate in isolates
+        )
         firestore_incident_repository.persist_incident(
             incident_id=incident_id,
             incident_version=1,
             source_watermark="connect/synthetic-lab-gulu/whonet-demo/v1",
             window_end=__import__("datetime").date(2026, 8, 31),
             isolates=isolates,  # type: ignore[arg-type]
-            profile_pair=(
-                isolates[0].isolate_id,  # type: ignore[attr-defined]
-                isolates[1].isolate_id,  # type: ignore[attr-defined]
-            ),
+            profile_pair=(isolate_ids[0], isolate_ids[1]),
         )
 
     fixture = ROOT / "demo" / "connect" / "synthetic_gulu_surveillance_export.csv"

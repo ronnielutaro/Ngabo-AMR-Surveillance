@@ -354,10 +354,39 @@ class VerifyHeroPackage:
                     )
                 )
                 continue
-            # Deadline tradeoff: policy_version / input_refs are descriptive internal
-            # provenance the LLM paraphrases (e.g. "1.0" vs a governed version string).
-            # The DETERMINISTIC SCIENTIFIC OUTPUT (finding_id + output_value) remains
-            # strictly verified below; the provenance fields are not authoritative.
+            # Proof-material identity: a finding claim must cite the SAME governed
+            # policy version and the SAME canonical record inputs the deterministic
+            # finding was actually grounded on. A valid finding_id carrying altered
+            # proof material FAILS (this is not a paraphrased scalar relaxation).
+            if ref.policy_version != canonical.policy_version:
+                errors.append(
+                    HeroVerificationError(
+                        HeroErrorCode.VERIFICATION_FAILED,
+                        (
+                            f"finding {ref.finding_id!r} policy version "
+                            f"{ref.policy_version!r} does not match canonical "
+                            f"{canonical.policy_version!r}"
+                        ),
+                        claim.claim_id.value,
+                    )
+                )
+            claimed_refs = frozenset(ref.input_refs or ())
+            canonical_refs = frozenset(canonical.input_refs or ())
+            if claimed_refs != canonical_refs:
+                errors.append(
+                    HeroVerificationError(
+                        HeroErrorCode.VERIFICATION_FAILED,
+                        (
+                            f"finding {ref.finding_id!r} input refs "
+                            f"{sorted(claimed_refs)!r} do not match canonical "
+                            f"{sorted(canonical_refs)!r}"
+                        ),
+                        claim.claim_id.value,
+                    )
+                )
+            # Deadline tradeoff: finding_id + policy_version + input_refs + output_value
+            # are all strict proof-material identity. Exact value-equality is retained;
+            # broader scientific/proposition semantics remain #57/#58.
             if ref.output_value != canonical.output_value:
                 errors.append(
                     HeroVerificationError(
