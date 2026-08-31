@@ -97,10 +97,17 @@ def main() -> None:
     """Production ``ngabo-http`` entry point: wire the hero from config and serve."""
     from ngabo.interfaces import http as http_adapter
 
-    composition = build_hero_composition_from_config(
-        adapters=_registered_adapters()
-    )
-    http_adapter.configure_hero_composition(composition)
+    try:
+        composition = build_hero_composition_from_config(
+            adapters=_registered_adapters()
+        )
+        http_adapter.configure_hero_composition(composition)
+    except RuntimeError:
+        # Hero composition is a deploy-time concern. The service must still boot so
+        # the health/readiness endpoints can serve (Cloud Run startup probe). If the
+        # deployment has not supplied the adapter registry, /surveillance fails
+        # closed (HTTP 500) rather than the whole process crashing.
+        pass
     http_adapter.serve()
 
 
