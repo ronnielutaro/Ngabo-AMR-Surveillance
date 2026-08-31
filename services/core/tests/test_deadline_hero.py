@@ -54,6 +54,7 @@ from ngabo.application.value_objects.package_candidate_result import (
 )
 from ngabo.application.value_objects.triage_result import TriageResult
 from ngabo.bootstrap.hero import HeroComposition
+from ngabo.bootstrap.hero_serve import build_hero_composition
 from ngabo.domain.enums.action_class import ActionClass
 from ngabo.domain.value_objects.incident_id import IncidentId
 from ngabo.domain.value_objects.incident_version import IncidentVersion
@@ -1087,3 +1088,248 @@ class TestHeroIngress:
         response = client.post("/surveillance", json=envelope)
         assert response.status_code == 200
         assert response.json()["outcome"] == "HERO_COMPLETED"
+
+
+class TestHeroAckStatusAndBootstrap:
+    def _runtime(self, port: FakeEffectPort | None = None) -> HeroRuntime:
+        return HeroRuntime(
+            investigation_runtime=_StubInvestigation(
+                InvestigationExecutionOutcome.READY_FOR_DOWNSTREAM
+            ),
+            triage_runtime=_StubTriage(),
+            synthesis_runtime=_StubSynthesis(),
+            hero_orchestrator=HeroOrchestrator(
+                verifier=VerifyHeroPackage(),
+                policy=HeroActionPolicy(freshness=CheckHeroFreshness()),
+                effect_port=port if port is not None else FakeEffectPort(ack_secret=ACK_SECRET),
+                ack_verifier=VerifyHeroAck(ack_secret=ACK_SECRET),
+                intent_store=FakeActionIntentStore(),
+                freshness_port=FakeFreshnessStatePort(_binding()),
+                coordination_message="Synthetic demo surveillance review; draft only.",
+            ),
+            context_builder=_FixedContextBuilder(),
+        )
+
+    def _post(self, event_id: str, envelope: bool = False) -> object:
+        from fastapi.testclient import TestClient
+
+        from ngabo.interfaces import http as http_adapter
+
+        http_adapter.hero_composition = HeroComposition(hero_runtime=self._runtime())
+        command = {
+            "contract_version": "ngabo-event-investigation-v1",
+            "incident_id": INCIDENT.value,
+            "incident_version": VERSION.value,
+            "source_watermark": WATERMARK.value,
+            "event_id": event_id,
+            "correlation_id": f"corr-{event_id}",
+        }
+        if not envelope:
+            payload = command
+        else:
+            import base64 as _b64
+
+            payload = {
+                "message": {
+                    "data": _b64.b64encode(json.dumps(command).encode("utf-8")).decode("utf-8"),
+                    "messageId": f"m-{event_id}",
+                },
+                "subscription": "projects/ngabo-amr-2026/subscriptions/hero",
+            }
+        client = TestClient(http_adapter.app)
+        return client.post("/surveillance", json=payload)
+
+    def test_bootstrap_builds_and_installs_production_composition(self) -> None:
+        from fastapi.testclient import TestClient
+
+        from ngabo.interfaces import http as http_adapter
+
+        composition = build_hero_composition(
+            investigation_runtime=_StubInvestigation(
+                InvestigationExecutionOutcome.READY_FOR_DOWNSTREAM
+            ),
+            triage_runtime=_StubTriage(),
+            synthesis_runtime=_StubSynthesis(),
+            hero_orchestrator=HeroOrchestrator(
+                verifier=VerifyHeroPackage(),
+                policy=HeroActionPolicy(freshness=CheckHeroFreshness()),
+                effect_port=FakeEffectPort(ack_secret=ACK_SECRET),
+                ack_verifier=VerifyHeroAck(ack_secret=ACK_SECRET),
+                intent_store=FakeActionIntentStore(),
+                freshness_port=FakeFreshnessStatePort(_binding()),
+                coordination_message="Synthetic demo surveillance review; draft only.",
+            ),
+            context_builder=_FixedContextBuilder(),
+        )
+        http_adapter.configure_hero_composition(composition)
+        client = TestClient(http_adapter.app)
+        response = client.post(
+            "/surveillance",
+            json={
+                "contract_version": "ngabo-event-investigation-v1",
+                "incident_id": INCIDENT.value,
+                "incident_version": VERSION.value,
+                "source_watermark": WATERMARK.value,
+                "event_id": "evt-boot-001",
+                "correlation_id": "corr-boot-001",
+            },
+        )
+        assert response.status_code == 200
+        assert response.json()["outcome"] == "HERO_COMPLETED"
+
+    def test_retryable_delivery_failure_returns_non_2xx(self) -> None:
+        class _RetryablePort(FakeEffectPort):
+            def __init__(self) -> None:
+                super().__init__(ack_secret=ACK_SECRET)
+
+            def deliver(
+                self,
+                intent: HeroActionIntent,
+                payload: HeroCoordinationPayload,
+            ) -> EffectDelivery:
+                raise RuntimeError("transport down")
+
+        from fastapi.testclient import TestClient
+
+        from ngabo.interfaces import http as http_adapter
+
+        http_adapter.hero_composition = HeroComposition(
+            hero_runtime=self._runtime(port=_RetryablePort())
+        )
+        command = {
+            "contract_version": "ngabo-event-investigation-v1",
+            "incident_id": INCIDENT.value,
+            "incident_version": VERSION.value,
+            "source_watermark": WATERMARK.value,
+            "event_id": "evt-retry-001",
+            "correlation_id": "corr-retry-001",
+        }
+        client = TestClient(http_adapter.app)
+        response = client.post("/surveillance", json=command)
+        assert response.status_code == 503
+
+    def test_terminal_verification_failure_returns_2xx(self) -> None:
+        from fastapi.testclient import TestClient
+
+        from ngabo.interfaces import http as http_adapter
+
+        class _BadSynthesis:
+            def synthesize(self, ready: object, triage: object) -> PackageCandidateResult:
+                del ready, triage
+                mutated = _package_primitive()
+                claims = cast("list[dict[str, object]]", mutated["claims"])
+                claims[1]["supporting_finding_refs"] = [
+                    {
+                        "finding_id": "fake",
+                        "policy_version": "v1",
+                        "input_refs": ["ISO-031", "ISO-034"],
+                        "output_value": "x",
+                    }
+                ]
+                parse = parse_incident_package(mutated)
+                assert parse.ok and parse.package is not None
+                return PackageCandidateResult(
+                    outcome=PackageCandidateOutcome.PACKAGE_CANDIDATE_GENERATED,
+                    package=parse.package,
+                    model_calls=1,
+                    duration_ms=1,
+                    model_version="gemini-3.6-flash",
+                    error_code=None,
+                    execution_id=EXECUTION_ID,
+                )
+
+        runtime = HeroRuntime(
+            investigation_runtime=_StubInvestigation(
+                InvestigationExecutionOutcome.READY_FOR_DOWNSTREAM
+            ),
+            triage_runtime=_StubTriage(),
+            synthesis_runtime=_BadSynthesis(),
+            hero_orchestrator=HeroOrchestrator(
+                verifier=VerifyHeroPackage(),
+                policy=HeroActionPolicy(freshness=CheckHeroFreshness()),
+                effect_port=FakeEffectPort(ack_secret=ACK_SECRET),
+                ack_verifier=VerifyHeroAck(ack_secret=ACK_SECRET),
+                intent_store=FakeActionIntentStore(),
+                freshness_port=FakeFreshnessStatePort(_binding()),
+                coordination_message="Synthetic demo surveillance review; draft only.",
+            ),
+            context_builder=_FixedContextBuilder(),
+        )
+        http_adapter.hero_composition = HeroComposition(hero_runtime=runtime)
+        command = {
+            "contract_version": "ngabo-event-investigation-v1",
+            "incident_id": INCIDENT.value,
+            "incident_version": VERSION.value,
+            "source_watermark": WATERMARK.value,
+            "event_id": "evt-term-001",
+            "correlation_id": "corr-term-001",
+        }
+        client = TestClient(http_adapter.app)
+        response = client.post("/surveillance", json=command)
+        # Terminal verification failure -> 2xx acknowledgement (no redelivery loop).
+        assert response.status_code == 200
+        assert response.json()["outcome"] == "BLOCKED"
+
+    def test_duplicate_pubsub_delivery_reacquires_same_intent(self) -> None:
+        import base64 as _b64
+
+        from fastapi.testclient import TestClient
+
+        from ngabo.interfaces import http as http_adapter
+
+        class _RetryThenSuccessPort(FakeEffectPort):
+            def __init__(self) -> None:
+                super().__init__(ack_secret=ACK_SECRET)
+                self._attempts = 0
+
+            def deliver(
+                self,
+                intent: HeroActionIntent,
+                payload: HeroCoordinationPayload,
+            ) -> EffectDelivery:
+                self._attempts += 1
+                if self._attempts == 1:
+                    raise RuntimeError("transport down")
+                return super().deliver(intent, payload)
+
+        store = FakeActionIntentStore()
+        runtime = HeroRuntime(
+            investigation_runtime=_StubInvestigation(
+                InvestigationExecutionOutcome.READY_FOR_DOWNSTREAM
+            ),
+            triage_runtime=_StubTriage(),
+            synthesis_runtime=_StubSynthesis(),
+            hero_orchestrator=HeroOrchestrator(
+                verifier=VerifyHeroPackage(),
+                policy=HeroActionPolicy(freshness=CheckHeroFreshness()),
+                effect_port=_RetryThenSuccessPort(),
+                ack_verifier=VerifyHeroAck(ack_secret=ACK_SECRET),
+                intent_store=store,
+                freshness_port=FakeFreshnessStatePort(_binding()),
+                coordination_message="Synthetic demo surveillance review; draft only.",
+            ),
+            context_builder=_FixedContextBuilder(),
+        )
+        http_adapter.hero_composition = HeroComposition(hero_runtime=runtime)
+        command = {
+            "contract_version": "ngabo-event-investigation-v1",
+            "incident_id": INCIDENT.value,
+            "incident_version": VERSION.value,
+            "source_watermark": WATERMARK.value,
+            "event_id": "evt-dup-001",
+            "correlation_id": "corr-dup-001",
+        }
+        envelope = {
+            "message": {
+                "data": _b64.b64encode(json.dumps(command).encode("utf-8")).decode("utf-8"),
+                "messageId": "m-dup",
+            },
+            "subscription": "projects/ngabo-amr-2026/subscriptions/hero",
+        }
+        client = TestClient(http_adapter.app)
+        first = client.post("/surveillance", json=envelope)
+        assert first.status_code == 503
+        second = client.post("/surveillance", json=envelope)
+        assert second.status_code == 200
+        assert second.json()["outcome"] == "HERO_COMPLETED"
+        assert store.state_transitions.count(IntentState.RETRYABLE) == 1

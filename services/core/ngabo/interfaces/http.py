@@ -27,6 +27,8 @@ from typing import Final, Protocol, runtime_checkable
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from ngabo.application.enums.hero_error_code import HeroErrorCode
+from ngabo.application.enums.hero_outcome import HeroOutcome
 from ngabo.application.value_objects.investigation_execution import (
     EventInvestigationCommand,
 )
@@ -107,19 +109,60 @@ def get_root() -> dict[str, str]:
     return health()
 
 
-@app.post("/surveillance", response_model=dict[str, object], summary="Run the canonical hero")
-def run_surveillance(payload: dict[str, object]) -> dict[str, object]:
+@app.post("/surveillance", summary="Run the canonical hero")
+def run_surveillance(payload: dict[str, object]) -> JSONResponse:
     """Accept one governed synthetic surveillance event and run the canonical hero.
 
     This is the deployed ingress seam: it builds an ``EventInvestigationCommand``
     from the typed payload and invokes ``HeroComposition.execute``, which runs the
     existing #54 -> #55 -> #56 -> #176 hero chain. It owns no scientific policy or
     model authority and fails closed on any stage.
+
+    Pub/Sub push treats HTTP 2xx as an acknowledgement (no redelivery) and
+    non-2xx as a retryable failure (may redeliver). We therefore return a
+    non-2xx status for a RETRYABLE hero failure (so the same logical intent +
+    idempotency key is reacquired) and a 2xx status for a terminal outcome (so we
+    never create an infinite redelivery loop).
     """
-    command_data = _extract_command_data(payload)
-    command = EventInvestigationCommand.from_primitive(command_data)
+    try:
+        command_data = _extract_command_data(payload)
+        command = EventInvestigationCommand.from_primitive(command_data)
+    except ValueError as exc:
+        # Malformed/non-retryable command: acknowledge (2xx) so Pub/Sub does not
+        # redeliver the same bad message forever.
+        return JSONResponse(
+            status_code=200,
+            content={
+                "outcome": "BLOCKED",
+                "is_success": False,
+                "status": "terminal",
+                "error": str(exc),
+            },
+        )
     result = _hero().execute(command)
-    return _sanitized_hero_result(result)
+    return JSONResponse(
+        status_code=_acknowledgement_status(result),
+        content=_sanitized_hero_result(result),
+    )
+
+
+def _acknowledgement_status(result: object) -> int:
+    """Map a hero outcome to Pub/Sub acknowledgement semantics.
+
+    Retryable (transient) failures return non-2xx so Pub/Sub may redeliver and
+    the SAME logical ActionIntent + idempotency key is reacquired. Everything
+    terminal (including verification/policy/authority blocks and successful
+    completion) returns 2xx so Pub/Sub acknowledges it and stops redelivering.
+    """
+    outcome = getattr(result, "outcome", None)
+    error_code = getattr(result, "error_code", None)
+    if outcome is HeroOutcome.HERO_COMPLETED:
+        return 200
+    if outcome is HeroOutcome.FAILED and error_code is HeroErrorCode.DELIVERY_FAILED:
+        # Transient effect failure: allow Pub/Sub redelivery -> reacquire same key.
+        return 503
+    # Terminal outcome (verification/policy/authority block, invalid ack, etc.).
+    return 200
 
 
 def _extract_command_data(payload: dict[str, object]) -> dict[str, object]:

@@ -29,7 +29,7 @@ class FirestoreActionIntentStore:
     """Shared durable intent/outbox boundary backed by Firestore docs."""
 
     def __init__(self, *, project: str, collection: str = "ngabo_action_intents") -> None:
-        from google.cloud import firestore  # type: ignore[import-untyped]  # lazy: deploy-only
+        from google.cloud import firestore
 
         self._project = project
         self._collection = collection
@@ -49,48 +49,54 @@ class FirestoreActionIntentStore:
     ) -> IntentReservation:
         current = now if now is not None else time.monotonic()
         deadline = current + lease_ttl_seconds
-        from google.api_core.exceptions import (  # type: ignore[import-untyped]
-            AlreadyExists,
-        )
+        from google.cloud import firestore
 
         doc = self._col.document(self._doc_id(intent.idempotency_key))
-        data = _record(intent, IntentState.DISPATCHED, None, deadline, 0)
-        try:
-            # Atomic create-if-absent: only one instance can create the doc.
-            doc.create(data)
-            return IntentReservation(
-                intent=intent, state=IntentState.DISPATCHED, owned=True
-            )
-        except AlreadyExists:
-            snap = doc.get()
+
+        @firestore.transactional
+        def _acquire(transaction: firestore.Transaction) -> IntentReservation:
+            snap = doc.get(transaction=transaction)
+            if not snap.exists:
+                # Atomic create-if-absent inside the transaction: a concurrent
+                # contender observes the write on commit and cannot also create.
+                transaction.set(
+                    doc, _record(intent, IntentState.DISPATCHED, None, deadline, 0)
+                )
+                return IntentReservation(
+                    intent=intent, state=IntentState.DISPATCHED, owned=True
+                )
             record = snap.to_dict() or {}
             state = IntentState(record.get("state", IntentState.DISPATCHED.value))
             lease_expires = float(record.get("lease_expires_at", 0.0))
             retries = int(record.get("retries", 0))
             stateless = state in (IntentState.PENDING, IntentState.RETRYABLE)
-            lease_expired = state is IntentState.DISPATCHED and current > lease_expires
+            lease_expired = (
+                state is IntentState.DISPATCHED and current > lease_expires
+            )
             if (stateless or lease_expired) and retries < max_retries:
-                # Reacquire the SAME logical intent + idempotency key within a
-                # bounded lease/retry budget. This is a best-effort CAS via doc.set;
-                # production hardening under #67/#69 would use a transaction.
-                doc.set(
+                transaction.set(
+                    doc,
                     _record(
                         intent,
                         IntentState.DISPATCHED,
                         None,
                         deadline,
                         retries + 1 if state is IntentState.RETRYABLE else retries,
-                    )
+                    ),
                 )
                 return IntentReservation(
                     intent=intent, state=IntentState.DISPATCHED, owned=True
                 )
             if state is IntentState.RETRYABLE and retries >= max_retries:
-                doc.set(_record(intent, IntentState.FAILED, None, 0.0, retries))
+                transaction.set(
+                    doc, _record(intent, IntentState.FAILED, None, 0.0, retries)
+                )
                 return IntentReservation(
                     intent=intent, state=IntentState.FAILED, owned=False
                 )
             return IntentReservation(intent=intent, state=state, owned=False)
+
+        return _acquire(self._db.transaction())  # type: ignore[no-any-return]
 
     def record_state(
         self,
