@@ -34,7 +34,7 @@ from ngabo.application.value_objects.canonical_binding import (
     HeroStateBinding,
 )
 from ngabo.application.value_objects.effect_delivery import EffectDelivery
-from ngabo.application.value_objects.evidence_search import EvidenceSearchResult
+from ngabo.application.value_objects.evidence_search import EvidenceSearchHit, EvidenceSearchResult
 from ngabo.application.value_objects.hero_action_intent import HeroActionIntent
 from ngabo.application.value_objects.hero_completion_result import HeroCompletionResult
 from ngabo.application.value_objects.hero_payload import (
@@ -714,8 +714,7 @@ class TestHero:
             assert value == 0, f"{key} is not zero"
 
 
-def _evidence_hit() -> object:
-    from ngabo.application.value_objects.evidence_search import EvidenceSearchHit
+def _evidence_hit() -> EvidenceSearchHit:
     from ngabo.domain.value_objects.evidence_reference import (
         EvidenceReferenceId,
         EvidenceSourceId,
