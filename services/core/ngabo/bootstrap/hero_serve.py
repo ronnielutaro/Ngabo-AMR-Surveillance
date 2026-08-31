@@ -95,8 +95,17 @@ def build_hero_composition_from_config(
 
 def main() -> None:
     """Production ``ngabo-http`` entry point: wire the hero from config and serve."""
+    from ngabo.infrastructure.connect.connect_ingestion_service import (
+        ConnectIngestionService,
+    )
     from ngabo.interfaces import http as http_adapter
 
+    http_adapter.configure_connect_ingestion(
+        ConnectIngestionService(
+            project=os.environ.get("NGABO_GCP_PROJECT", ""),
+            secret=os.environ.get("NGABO_HMAC_SECRET", "demo-secret"),
+        )
+    )
     try:
         composition = build_hero_composition_from_config(
             adapters=_registered_adapters()
@@ -135,6 +144,10 @@ def _registered_adapters() -> dict[str, object]:
             f"{registry!r}: {exc}"
         ) from exc
     adapters = getattr(module, "REGISTRY", None)
+    if (not isinstance(adapters, dict) or not adapters) and hasattr(
+        module, "build_registry"
+    ):
+        adapters = module.build_registry()
     if not isinstance(adapters, dict) or not adapters:
         raise RuntimeError(
             f"hero deployment configuration invalid: registry module {registry!r} "

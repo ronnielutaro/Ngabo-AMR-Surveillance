@@ -19,6 +19,7 @@ import hashlib
 import json
 import time
 import uuid
+from typing import Any
 
 from ngabo.application.enums.intent_state import IntentState
 from ngabo.application.value_objects.effect_delivery import EffectDelivery
@@ -29,13 +30,22 @@ from ngabo.application.value_objects.intent_reservation import IntentReservation
 class FirestoreActionIntentStore:
     """Shared durable intent/outbox boundary backed by Firestore docs."""
 
-    def __init__(self, *, project: str, collection: str = "ngabo_action_intents") -> None:
+    def __init__(
+        self,
+        *,
+        project: str,
+        collection: str = "ngabo_action_intents",
+        client: Any | None = None,
+        database: str = "ngabo",
+    ) -> None:
         from google.cloud import firestore
 
         self._project = project
         self._collection = collection
-        self._db = firestore.Client(project=project)
-        self._col = self._db.collection(collection)
+        self._db: Any = (
+            client if client is not None else firestore.Client(project=project, database=database)
+        )
+        self._col: Any = self._db.collection(collection)
 
     def _doc_id(self, idempotency_key: str) -> str:
         return hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()

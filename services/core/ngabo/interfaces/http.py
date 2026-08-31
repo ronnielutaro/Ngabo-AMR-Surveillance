@@ -22,16 +22,19 @@ import base64
 import binascii
 import json
 import os
+from datetime import date
 from typing import Final, Protocol, runtime_checkable
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from ngabo.application.connect.processor import process_connect_csv
 from ngabo.application.enums.hero_error_code import HeroErrorCode
 from ngabo.application.enums.hero_outcome import HeroOutcome
 from ngabo.application.value_objects.investigation_execution import (
     EventInvestigationCommand,
 )
+from ngabo.domain.entities.canonical_isolate import CanonicalIsolate
 from ngabo.interfaces.health import health, readiness, runtime_identity
 
 SERVICE_NAME: Final[str] = "ngabo-core"
@@ -59,15 +62,61 @@ class HeroCompositionProtocol(Protocol):
         ...
 
 
+@runtime_checkable
+class ConnectIngestionProtocol(Protocol):
+    """Connect ingestion adapters, injected by the bootstrap layer.
+
+    Defined here (never imported from infrastructure/bootstrap) so the
+    ``interfaces`` layer keeps its inward dependency direction while still
+    authenticating uploads and persisting cleanup/signal results.
+    """
+
+    def verify_upload(
+        self,
+        *,
+        headers: dict[str, str],
+        body: bytes,
+        configured_lab_ids: set[str],
+        configured_source_ids: set[str],
+    ) -> tuple[bool, str | None]:
+        ...
+
+    def persist_isolates(
+        self,
+        *,
+        incident_id: str,
+        isolates: list[CanonicalIsolate],
+        lab_id: str,
+        source_id: str,
+        window_end: date,
+        profile_pair: tuple[str, str] | None = None,
+    ) -> None:
+        ...
+
+    def persist_batch_events(self, *, batch_id: str, payload: dict[str, object]) -> None:
+        ...
+
+    def load_latest_batch(self) -> dict[str, object] | None:
+        ...
+
+
 # Composition seam: set at deploy (or in tests) to a concrete HeroComposition. If
 # unset, a real composition is built lazily on first /surveillance request.
 hero_composition: HeroCompositionProtocol | None = None
+connect_ingestion: ConnectIngestionProtocol | None = None
+_last_connect_batch: dict[str, object] | None = None
 
 
 def configure_hero_composition(composition: HeroCompositionProtocol | None) -> None:
     """Set the deployed hero composition before serving requests (deploy/bootstrap)."""
     global hero_composition
     hero_composition = composition
+
+
+def configure_connect_ingestion(ingestion: ConnectIngestionProtocol | None) -> None:
+    """Set the deployed connect ingestion adapters before serving requests."""
+    global connect_ingestion
+    connect_ingestion = ingestion
 
 
 def _hero() -> HeroCompositionProtocol:
@@ -77,6 +126,13 @@ def _hero() -> HeroCompositionProtocol:
         # so a misconfigured deployment fails closed rather than fabricating a run.
         raise RuntimeError("hero composition is not configured; deploy must inject it")
     return hero_composition
+
+
+def _connect_ingestion() -> ConnectIngestionProtocol:
+    global connect_ingestion
+    if connect_ingestion is None:
+        raise RuntimeError("connect ingestion is not configured; deploy must inject it")
+    return connect_ingestion
 
 
 @app.get("/health", response_model=dict[str, str], summary="Liveness")
@@ -218,6 +274,88 @@ def _sanitized_hero_result(result: object) -> dict[str, object]:
         out["delivery_id"] = delivery.delivery_id
         out["ack_id"] = delivery.ack_id
     return out
+
+
+@app.post("/connect/batches", summary="Ingest one governed synthetic export batch")
+def ingest_connect_batch(request: Request) -> JSONResponse:
+    """Receive a raw CSV export (HMAC-signed), clean it, and hand off to the hero."""
+    body = _read_body(request)
+    lab_id = request.headers.get("X-Ngabo-Lab-Id", "")
+    source_id = request.headers.get("X-Ngabo-Source-Id", "")
+    headers = dict(request.headers.items())
+    ingestion = _connect_ingestion()
+    ok, err = ingestion.verify_upload(
+        headers=headers,
+        body=body,
+        configured_lab_ids={"synthetic-lab-gulu"},
+        configured_source_ids={"whonet-demo"},
+    )
+    if not ok:
+        return JSONResponse(status_code=400, content={"status": "rejected", "error": err})
+
+    def _persist(incident_id: str, isolates: list[CanonicalIsolate]) -> None:
+        ingestion.persist_isolates(
+            incident_id=incident_id,
+            isolates=isolates,
+            lab_id=lab_id,
+            source_id=source_id,
+            window_end=_parsed_window_end(),
+            profile_pair=_isolate_pair(isolates),
+        )
+
+    try:
+        batch = process_connect_csv(
+            body,
+            lab_id=lab_id,
+            source_id=source_id,
+            window_end_iso=os.environ.get("NGABO_SURVEILLANCE_WINDOW_END", "2026-08-31"),
+            execute_hero=_run_connect_hero,
+            persist_isolates=_persist,
+        )
+        if batch.get("signal_id"):
+            ingestion.persist_batch_events(
+                batch_id=str(batch["signal_id"]), payload=batch
+            )
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse(
+            status_code=500, content={"status": "processing_failed", "error": str(exc)}
+        )
+    global _last_connect_batch
+    _last_connect_batch = batch
+    return JSONResponse(status_code=200, content=batch)
+
+
+@app.get("/connect/status", summary="Latest connect batch status for the web UI")
+def connect_status() -> dict[str, object]:
+    try:
+        persisted = _connect_ingestion().load_latest_batch()
+    except RuntimeError:
+        persisted = None
+    return persisted or _last_connect_batch or {"status": "none"}
+
+
+def _run_connect_hero(command: dict[str, object]) -> dict[str, object]:
+    parsed = EventInvestigationCommand.from_primitive(command)
+    return _sanitized_hero_result(_hero().execute(parsed))
+
+
+def _read_body(request: Request) -> bytes:
+    import asyncio
+
+    return asyncio.run(request.body())
+
+
+def _parsed_window_end() -> date:
+    return date.fromisoformat(os.environ.get("NGABO_SURVEILLANCE_WINDOW_END", "2026-08-31"))
+
+
+def _isolate_pair(isolates: list[CanonicalIsolate]) -> tuple[str, str] | None:
+    value = os.environ.get("NGABO_PROFILE_PAIR")
+    if value:
+        parts = tuple(part.strip() for part in value.split(",") if part.strip())
+        return (parts[0], parts[1]) if len(parts) == 2 else None
+    isolate_ids = sorted(isolate.isolate_id for isolate in isolates)
+    return (isolate_ids[0], isolate_ids[1]) if len(isolate_ids) >= 2 else None
 
 
 @app.exception_handler(404)

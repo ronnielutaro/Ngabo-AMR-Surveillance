@@ -17,6 +17,7 @@
 
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import AutoRefresh from "./auto-refresh";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -62,6 +63,40 @@ interface VersionPayload {
   environment: string;
   image_digest: string;
 }
+
+type ConnectEvent = {
+  event: string;
+  signal_id?: string;
+};
+
+type ConnectStatus =
+  | { kind: "EMPTY" }
+  | { kind: "DEGRADED"; detail: string }
+  | {
+      kind: "BATCH";
+      labId: string;
+      receivedCount: number;
+      acceptedCount: number;
+      quarantinedCount: number;
+      signalId: string;
+      events: ConnectEvent[];
+      outcome: string;
+      deliveryId?: string;
+      ackId?: string;
+    };
+
+const EVENT_LABELS: Record<string, string> = {
+  LAB_BATCH_SYNCED: "Laboratory export received",
+  CLEANING_STARTED: "Deterministic cleaning started",
+  VALIDATION_COMPLETED: "Records validated",
+  NORMALIZATION_COMPLETED: "Accepted records standardized",
+  QUARANTINE_COMPLETED: "Invalid records quarantined safely",
+  SURVEILLANCE_REFRESHED: "Surveillance state refreshed",
+  SIGNAL_DETECTED: "Meaningful resistance signal detected",
+  INVESTIGATION_STARTED: "Autonomous investigation started",
+  WORKFLOW_HERO_COMPLETED: "Evidence verified and coordination acknowledged",
+  WORKFLOW_BLOCKED: "Workflow stopped safely",
+};
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
@@ -212,6 +247,79 @@ async function fetchCoreStatus(): Promise<CoreStatus> {
   }
 }
 
+function asNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function parseConnectStatus(value: unknown): ConnectStatus {
+  if (typeof value !== "object" || value === null) {
+    return { kind: "DEGRADED", detail: "invalid /connect/status payload" };
+  }
+  const record = value as Record<string, unknown>;
+  if (record.status === "none") return { kind: "EMPTY" };
+  const hero = record.hero_result;
+  const heroRecord =
+    typeof hero === "object" && hero !== null
+      ? (hero as Record<string, unknown>)
+      : {};
+  const events = Array.isArray(record.events)
+    ? record.events.flatMap((event): ConnectEvent[] => {
+        if (typeof event !== "object" || event === null) return [];
+        const candidate = event as Record<string, unknown>;
+        if (!isNonEmptyString(candidate.event)) return [];
+        return [
+          {
+            event: candidate.event,
+            ...(isNonEmptyString(candidate.signal_id)
+              ? { signal_id: candidate.signal_id }
+              : {}),
+          },
+        ];
+      })
+    : [];
+  const receivedCount = asNumber(record.received_count);
+  const acceptedCount = asNumber(record.accepted_count);
+  const quarantinedCount = asNumber(record.quarantined_count);
+  if (
+    !isNonEmptyString(record.lab_id) ||
+    receivedCount === null ||
+    acceptedCount === null ||
+    quarantinedCount === null ||
+    events.length === 0
+  ) {
+    return { kind: "DEGRADED", detail: "incomplete /connect/status payload" };
+  }
+  return {
+    kind: "BATCH",
+    labId: record.lab_id,
+    receivedCount,
+    acceptedCount,
+    quarantinedCount,
+    signalId: isNonEmptyString(record.signal_id) ? record.signal_id : "none",
+    events,
+    outcome: isNonEmptyString(heroRecord.outcome)
+      ? heroRecord.outcome
+      : "IN_PROGRESS",
+    ...(isNonEmptyString(heroRecord.delivery_id)
+      ? { deliveryId: heroRecord.delivery_id }
+      : {}),
+    ...(isNonEmptyString(heroRecord.ack_id) ? { ackId: heroRecord.ack_id } : {}),
+  };
+}
+
+async function fetchConnectStatus(): Promise<ConnectStatus> {
+  const coreApiUrl = process.env.CORE_API_URL ?? "";
+  if (!coreApiUrl) return { kind: "EMPTY" };
+  try {
+    return parseConnectStatus(await fetchJson(coreApiUrl, "/connect/status"));
+  } catch (error) {
+    return {
+      kind: "DEGRADED",
+      detail: error instanceof Error ? error.message : "status request failed",
+    };
+  }
+}
+
 function StatusPanel({ status }: { status: CoreStatus }) {
   const badge = "rounded border px-2 py-0.5 font-mono text-xs";
   switch (status.kind) {
@@ -320,10 +428,89 @@ function StatusPanel({ status }: { status: CoreStatus }) {
   }
 }
 
-export default async function Home(): Promise<ReactNode> {
-  const status = await fetchCoreStatus();
+function ConnectTimeline({ status }: { status: ConnectStatus }) {
+  if (status.kind === "EMPTY") {
+    return (
+      <section className="mx-auto max-w-4xl rounded-2xl border border-zinc-200 bg-white p-7 text-left shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+        <p className="text-sm font-semibold uppercase tracking-[0.18em] text-violet-600">
+          Live surveillance workflow
+        </p>
+        <h2 className="mt-2 text-2xl font-semibold">Waiting for a laboratory export</h2>
+        <p className="mt-2 text-sm text-zinc-500">
+          Choose the watched folder in Ngabo Connect, then add the synthetic CSV.
+          Real workflow events will appear here automatically.
+        </p>
+      </section>
+    );
+  }
+  if (status.kind === "DEGRADED") {
+    return (
+      <section className="mx-auto max-w-4xl rounded-2xl border border-orange-300 bg-orange-50 p-7 text-left">
+        <h2 className="text-xl font-semibold text-orange-900">Timeline unavailable</h2>
+        <p className="mt-2 text-sm text-orange-800">{status.detail}</p>
+      </section>
+    );
+  }
+  const completed = status.outcome === "HERO_COMPLETED";
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-6 bg-background px-8 text-center text-foreground">
+    <section className="mx-auto max-w-4xl rounded-2xl border border-zinc-200 bg-white p-7 text-left shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-violet-600">
+            Live surveillance workflow
+          </p>
+          <h2 className="mt-2 text-2xl font-semibold">{status.labId}</h2>
+          <p className="mt-1 font-mono text-xs text-zinc-500">Signal {status.signalId}</p>
+        </div>
+        <span className={`rounded-full px-3 py-1 font-mono text-xs font-semibold ${completed ? "bg-emerald-100 text-emerald-800" : "bg-violet-100 text-violet-800"}`}>
+          {status.outcome.replaceAll("_", " ")}
+        </span>
+      </div>
+      <div className="mt-6 grid grid-cols-3 gap-3 text-center">
+        <Metric label="received" value={status.receivedCount} />
+        <Metric label="accepted" value={status.acceptedCount} />
+        <Metric label="quarantined" value={status.quarantinedCount} />
+      </div>
+      <ol className="mt-7 space-y-3">
+        {status.events.map((event, index) => (
+          <li key={`${event.event}-${index}`} className="flex items-center gap-3 rounded-xl bg-zinc-50 px-4 py-3 dark:bg-zinc-900">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-sm font-bold text-white">✓</span>
+            <div>
+              <p className="font-medium">{EVENT_LABELS[event.event] ?? event.event}</p>
+              <p className="font-mono text-[11px] text-zinc-500">{event.event}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+      {completed && status.deliveryId && status.ackId ? (
+        <div className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+          <p className="font-semibold">Safe external coordination completed</p>
+          <p className="mt-1 font-mono text-xs">delivery {status.deliveryId}</p>
+          <p className="font-mono text-xs">machine acknowledgement {status.ackId}</p>
+          <p className="mt-2 font-semibold">0 prompts · 0 approvals · 0 human interventions</p>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-xl bg-zinc-100 p-3 dark:bg-zinc-900">
+      <p className="text-2xl font-semibold">{value}</p>
+      <p className="text-xs uppercase tracking-wide text-zinc-500">{label}</p>
+    </div>
+  );
+}
+
+export default async function Home(): Promise<ReactNode> {
+  const [status, connectStatus] = await Promise.all([
+    fetchCoreStatus(),
+    fetchConnectStatus(),
+  ]);
+  return (
+    <main className="flex min-h-screen flex-col items-center gap-6 bg-background px-6 py-12 text-center text-foreground">
+      <AutoRefresh />
       <h1 className="text-5xl font-semibold tracking-tight">Ngabo</h1>
       <p className="max-w-xl text-lg leading-8 text-zinc-600 dark:text-zinc-400">
         An open-source, event-driven antimicrobial-resistance surveillance and
@@ -331,6 +518,9 @@ export default async function Home(): Promise<ReactNode> {
       </p>
       <div className="w-full">
         <StatusPanel status={status} />
+      </div>
+      <div className="w-full">
+        <ConnectTimeline status={connectStatus} />
       </div>
       <p className="text-sm text-zinc-500 dark:text-zinc-400">
         Current status:{" "}

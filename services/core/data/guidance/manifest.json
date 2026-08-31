@@ -1,0 +1,144 @@
+{
+  "manifest_version": "1.0",
+  "corpus_id": "ngabo-approved-evidence-v1",
+  "corpus_sha256": "575a8552d35eb1ab6b2bb8ffa60f020bf643f4358fa28c50865fbe79e9085aeb",
+  "sources": [
+    {
+      "source_id": "WHO-AMR-001",
+      "publisher": "World Health Organization (WHO)",
+      "canonical_title": "Guidelines for the prevention and control of carbapenem-resistant Enterobacteriaceae, Acinetobacter baumannii and Pseudomonas aeruginosa in health care facilities",
+      "canonical_url": "https://www.who.int/publications/i/item/9789241550178",
+      "publication_date": "2017-11-01",
+      "source_version": "1",
+      "local_content_present": true,
+      "local_content_type": "indexing_summary",
+      "usage_basis_or_license": "CC BY-NC-SA 3.0 IGO (World Health Organization); Ngabo-authored indexing summary only; no third-party full text redistributed",
+      "attribution_required": true,
+      "approved_for_retrieval": true,
+      "notes": "World Health Organization 2017 global guideline for prevention and control of carbapenem-resistant Enterobacteriaceae, Acinetobacter baumannii and Pseudomonas aeruginosa in health care facilities. Licensed CC BY-NC-SA 3.0 IGO; Ngabo stores only a factual indexing summary and does not copy the guideline text.",
+      "retrieval_tags": [
+        "carbapenem-resistant enterobacteriaceae",
+        "cre",
+        "infection prevention and control",
+        "ipc",
+        "acute health care facilities",
+        "carbapenem-resistant acinetobacter",
+        "carbapenem-resistant pseudomonas"
+      ],
+      "chunks": [
+        {
+          "reference_id": "WHO-AMR-001::ipc-principle-01",
+          "content_path": "WHO-AMR-001--ipc-principle-01.txt",
+          "content_sha256": "739d98158bb69f57fa45742cf4285a0b8d2af9cb9b1b33d89df655567d7923f5",
+          "tags": [
+            "infection prevention and control",
+            "ipc",
+            "contact precautions",
+            "hand hygiene",
+            "personal protective equipment",
+            "carbapenem-resistant enterobacteriaceae",
+            "cre",
+            "acute health care facilities"
+          ]
+        },
+        {
+          "reference_id": "WHO-AMR-001::surveillance-principle-01",
+          "content_path": "WHO-AMR-001--surveillance-principle-01.txt",
+          "content_sha256": "f12a46b04d632a2f66be8f15fc1580f7c90695b239ee6576e6ca8e8f269c8ac1",
+          "tags": [
+            "surveillance",
+            "early recognition",
+            "laboratory detection",
+            "carbapenem-resistant enterobacteriaceae",
+            "cre"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "CDC-CRE-001",
+      "publisher": "US Centers for Disease Control and Prevention (CDC)",
+      "canonical_title": "Facility Guidance for Control of Carbapenem-resistant Enterobacteriaceae (CRE) - November 2015 Update (update of the 2012 CRE Toolkit)",
+      "canonical_url": "https://stacks.cdc.gov/view/cdc/79104",
+      "publication_date": "2015-11-01",
+      "source_version": "1",
+      "local_content_present": true,
+      "local_content_type": "indexing_summary",
+      "usage_basis_or_license": "US Government work — public domain (17 U.S.C. §105); Ngabo-authored indexing summary only; no third-party full text redistributed",
+      "attribution_required": true,
+      "approved_for_retrieval": true,
+      "notes": "CDC Facility Guidance for Control of Carbapenem-resistant Enterobacteriaceae (CRE), November 2015 Update, archived on CDC Stacks (cdc:79104). It is the November 2015 update of the earlier CDC 2012 CRE Toolkit (cdc:13205), which is a separate, earlier record. US Government work (public domain). CDC attribution is required, and use of the source does not imply endorsement by the CDC, HHS, or the U.S. Government. Ngabo stores only a factual indexing summary and does not copy the guidance text. Some CDC contact-screening recommendations have since been superseded by the CDC Containment Strategy; this record documents the 2015 Facility Guidance version.",
+      "retrieval_tags": [
+        "carbapenem-resistant enterobacterales",
+        "cre",
+        "facility guidance",
+        "infection prevention and control",
+        "contact precautions",
+        "acute care facilities"
+      ],
+      "chunks": [
+        {
+          "reference_id": "CDC-CRE-001::cre-definition-01",
+          "content_path": "CDC-CRE-001--cre-definition-01.txt",
+          "content_sha256": "4c79999d0ba5a0de580df01ef07d541af2af3581c57d0e5a687f777042d19df5",
+          "tags": [
+            "carbapenem-resistant enterobacterales",
+            "cre definition",
+            "carbapenem",
+            "nonsusceptible",
+            "carbapenemase",
+            "cre"
+          ]
+        },
+        {
+          "reference_id": "CDC-CRE-001::facility-response-01",
+          "content_path": "CDC-CRE-001--facility-response-01.txt",
+          "content_sha256": "8fd8a2104f81174eb32eb505ffcbd339a7d7ec036094ba4d1f4dd68210c40e06",
+          "tags": [
+            "cre",
+            "facility guidance",
+            "infection prevention and control",
+            "contact precautions",
+            "colonization screening",
+            "active surveillance testing",
+            "containment",
+            "acute care facilities"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "UNKNOWN-PUBLISHER-001",
+      "publisher": "Unknown publisher (provenance placeholder)",
+      "canonical_title": "Unverified third-party CRE control claim",
+      "canonical_url": "https://example.invalid/unverified",
+      "publication_date": "unknown",
+      "source_version": "0",
+      "local_content_present": true,
+      "local_content_type": "indexing_summary",
+      "usage_basis_or_license": "TBD",
+      "attribution_required": false,
+      "approved_for_retrieval": false,
+      "notes": "Provenance placeholder. Publisher, license and authorization could not be established. NOT APPROVED — cannot be returned as reasoning/action-relevant authority.",
+      "retrieval_tags": [
+        "carbapenem-resistant enterobacterales",
+        "cre",
+        "infection prevention and control",
+        "contact precautions"
+      ],
+      "chunks": [
+        {
+          "reference_id": "UNKNOWN-PUBLISHER-001::generic-claim-01",
+          "content_path": "UNKNOWN-PUBLISHER-001--generic-claim-01.txt",
+          "content_sha256": "b57ca11f850e8c6c18a74a2a3d471f8228ab07e6c67a998e331c73dd1cf4bd36",
+          "tags": [
+            "carbapenem-resistant enterobacterales",
+            "cre",
+            "infection prevention and control",
+            "contact precautions"
+          ]
+        }
+      ]
+    }
+  ]
+}

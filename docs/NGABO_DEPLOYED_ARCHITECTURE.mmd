@@ -1,0 +1,83 @@
+---
+title: Ngabo v0.1 — Deployed Hackathon Architecture
+config:
+  theme: base
+  themeVariables:
+    fontFamily: Inter, Segoe UI, Arial, sans-serif
+    fontSize: 19px
+    primaryTextColor: '#172033'
+    lineColor: '#64748b'
+    clusterBkg: '#f8fafc'
+    clusterBorder: '#b9c4d6'
+  flowchart:
+    curve: basis
+    nodeSpacing: 42
+    rankSpacing: 60
+---
+flowchart LR
+    subgraph EDGE["Laboratory edge · synthetic demonstration"]
+        direction TB
+        CSV["Synthetic WHONET-style<br/>laboratory export"]
+        CONNECT["Ngabo Connect desktop<br/>folder watcher · SHA-256<br/>durable local queue"]
+        CSV -->|file appears| CONNECT
+    end
+
+    USER(["Judge /<br/>surveillance user"])
+
+    subgraph GCP["Google Cloud · ngabo-amr-2026 · us-central1"]
+        direction LR
+
+        WEB["ngabo-web<br/>Public Cloud Run dashboard<br/>live persisted workflow"]
+
+        CORE["ngabo-core · Private Cloud Run<br/><b>Deterministic intake & surveillance</b><br/>authenticate · validate · normalize · quarantine<br/>refresh state · detect AMR signal"]
+
+        AGENT["<b>Google ADK + Gemini 3.6 Flash</b><br/>fan-out / join · bounded triage<br/>approved evidence · typed claim synthesis"]
+
+        VERIFY["<b>Proof-Carrying Autonomy</b><br/>deterministic verifier checks<br/>records · findings · sources · run binding<br/><i>invalid → bounded repair or abstention</i>"]
+
+        GATES["<b>Deterministic action gates</b><br/>A1 policy · freshness · allow-list<br/>durable ActionIntent · idempotency"]
+
+        RECEIVER["ngabo-demo-receiver<br/>Cloud Run signed A1 endpoint<br/>returns machine acknowledgement"]
+
+        FS[("Firestore<br/>canonical isolates · incidents · workflow events<br/>verification state · ActionIntents")]
+        SECRET["Secret Manager<br/>Gemini API credential"]
+        OPS["Artifact Registry + Cloud Logging<br/>immutable images · runtime telemetry"]
+
+        CORE -->|signal| AGENT -->|proof-carrying package| VERIFY
+        VERIFY -->|verified package| GATES
+        VERIFY -.->|repair ≤ 2| AGENT
+        GATES -->|signed safe-coordination webhook| RECEIVER
+
+        WEB -->|service identity<br/>GET /connect/status| CORE
+        CORE <--> FS
+        AGENT <--> FS
+        GATES -->|persist intent| FS
+        RECEIVER -->|persist acknowledgement| FS
+        SECRET --> AGENT
+        OPS -.-> CORE
+    end
+
+    CONNECT -->|Cloud Run ID token + HMAC<br/>POST /connect/batches| CORE
+    USER -->|HTTPS| WEB
+
+    GATES -->|A2/A3 blocked| BLOCK["Safety boundary<br/>no diagnosis · no prescribing<br/>no autonomous outbreak declaration"]
+
+    RECEIVER --> DONE["HERO COMPLETED<br/>0 prompts · 0 approvals · 0 interventions<br/>1 delivery · 1 machine acknowledgement"]
+
+    classDef edge fill:#fff7ed,stroke:#f97316,stroke-width:2px,color:#7c2d12;
+    classDef cloud fill:#eff6ff,stroke:#2563eb,stroke-width:2px,color:#172554;
+    classDef agent fill:#f5f3ff,stroke:#7c3aed,stroke-width:2px,color:#3b0764;
+    classDef verify fill:#ecfdf5,stroke:#059669,stroke-width:2.5px,color:#064e3b;
+    classDef safety fill:#fff1f2,stroke:#e11d48,stroke-width:2px,color:#881337;
+    classDef success fill:#ecfdf5,stroke:#16a34a,stroke-width:3px,color:#14532d;
+    classDef store fill:#f0f9ff,stroke:#0284c7,stroke-width:2px,color:#0c4a6e;
+    classDef platform fill:#f8fafc,stroke:#64748b,stroke-width:1.5px,color:#334155;
+
+    class CSV,CONNECT edge;
+    class WEB,CORE cloud;
+    class AGENT agent;
+    class VERIFY,GATES verify;
+    class FS store;
+    class SECRET,RECEIVER,OPS platform;
+    class BLOCK safety;
+    class DONE success;
