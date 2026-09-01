@@ -8,10 +8,21 @@ Ngabo is an **open-source, event-driven antimicrobial resistance surveillance an
 
 Its product direction is an **always-on AMR surveillance and coordination layer**: **Connect → Watch → Investigate → Coordinate**. It is designed to meet governed laboratory data where it already exists, keep surveillance state current, investigate meaningful signals automatically, and complete only permitted coordination with machine-verifiable proof.
 
-> **Current release status:** `v0.1.0` hackathon MVP in development.  
-> **Data:** Synthetic demonstration data only in the public v0.1 release.  
+> **Current release status:** deployed synthetic `v0.1.0` hackathon demo; release tag/freeze pending.<br>
+> **Data:** Synthetic demonstration data only in the public v0.1 release.<br>
 > **Integration:** No production ALIS, WHONET, LIS/LIMS, instrument, or hospital connector is currently claimed.<br>
 > **Safety:** Ngabo is not a clinical diagnostic or prescribing system and does not autonomously confirm outbreaks.
+
+## Live Hackathon Demo
+
+- **Public dashboard:** [ngabo-web on Cloud Run](https://ngabo-web-2zhvmdaotq-uc.a.run.app/)
+- **Synthetic input:** [`demo/connect/synthetic_gulu_surveillance_export.csv`](./demo/connect/synthetic_gulu_surveillance_export.csv)
+- **Deployed architecture:** [`docs/ARCHITECTURE_DIAGRAM.md`](./docs/ARCHITECTURE_DIAGRAM.md)
+- **High-resolution diagram:** [`docs/NGABO_DEPLOYED_ARCHITECTURE.png`](./docs/NGABO_DEPLOYED_ARCHITECTURE.png)
+
+The dashboard is public, but `ngabo-core` is intentionally private. The web service reads the core through its Cloud Run service identity; the browser never receives credentials or calls Firestore, Gemini or the private core directly.
+
+The deployed Connect slice starts when the synthetic CSV is uploaded through Ngabo Connect. It then performs deterministic cleaning and signal detection, launches the governed ADK/Gemini investigation, verifies the proof-carrying package, applies the A1 safety gates, sends one signed coordination request and records the machine acknowledgement. Pub/Sub and Cloud Storage remain part of the broader event-driven roadmap but are not presented as exercised components in this direct Connect demo path.
 
 ## Hackathon Target
 
@@ -26,7 +37,7 @@ deterministic validation + normalization
         ↓
 deterministic surveillance signal
         ↓
-Pub/Sub event
+authenticated Connect batch / surveillance event
         ↓
 Google ADK workflow starts automatically
         ↓
@@ -246,20 +257,22 @@ Before an A1 external action, Ngabo revalidates freshness against current canoni
 
 See [`docs/LONG_RUNNING_AGENT.md`](./docs/LONG_RUNNING_AGENT.md).
 
-## Planned Stack
+## Technology Stack
 
-- **Frontend:** Next.js, TypeScript, Tailwind CSS, shadcn/ui
-- **Backend:** Python, FastAPI, Pydantic v2
-- **Agent runtime:** Google ADK Python
-- **Primary model:** Gemini 3.6 Flash via Gemini API
-- **Planned retrieval model:** EmbeddingGemma after core is green
-- **Gated stretch model:** MedGemma only if evaluation proves value
-- **State:** Firestore
-- **Files/artifacts:** Cloud Storage
-- **Events:** Pub/Sub
-- **Compute:** Cloud Run
-- **Observability:** Cloud Logging + supported Trace/OpenTelemetry integration
-- **Testing:** pytest, ADK evaluations, Playwright
+| Capability | Technology | Current v0.1 status |
+| --- | --- | --- |
+| Web dashboard | Next.js, TypeScript, Tailwind CSS | Implemented and deployed on Cloud Run |
+| Core service | Python, FastAPI, Pydantic v2 | Implemented and deployed as a private Cloud Run service |
+| Agent runtime | Google ADK Python `2.8.0` | Implemented in the hero investigation path |
+| Primary model | Gemini 3.6 Flash via Gemini API | Implemented for bounded triage and proof-carrying synthesis |
+| Canonical state | Firestore | Implemented for incidents, isolates, workflow state and ActionIntents |
+| Secrets | Secret Manager | Implemented for the Gemini credential |
+| External action | Signed Cloud Run demo receiver | Implemented for the synthetic A1 delivery/acknowledgement proof |
+| Containers | Artifact Registry + digest-bound Cloud Run deployment | Implemented |
+| Observability | Cloud Logging plus application events | Implemented at the deployed runtime level |
+| Event/file expansion | Pub/Sub and Cloud Storage | Broader roadmap; omitted from the direct Connect runtime diagram |
+| Optional models | EmbeddingGemma / MedGemma | Not implemented in the submitted core path |
+| Testing | pytest, Vitest, architecture and container gates | Implemented in CI |
 
 ## ADK API Discipline
 
@@ -293,9 +306,7 @@ The canonical deployed hero must pass at least three consecutive times before de
 
 ## Judge-Facing Diagram
 
-The current target judge-facing visual is in [`docs/ARCHITECTURE_DIAGRAM.md`](./docs/ARCHITECTURE_DIAGRAM.md).
-
-It must be reconciled to the actual deployed `v0.1.0` release before submission.
+The reconciled deployed visual is in [`docs/ARCHITECTURE_DIAGRAM.md`](./docs/ARCHITECTURE_DIAGRAM.md), with an upload-ready [PNG](./docs/NGABO_DEPLOYED_ARCHITECTURE.png) and editable [Mermaid source](./docs/NGABO_DEPLOYED_ARCHITECTURE.mmd).
 
 ## Hackathon Risk / Evidence Controls
 
@@ -332,47 +343,125 @@ Ngabo uses:
 
 Hackathon submission uses an immutable judged release policy described in [`docs/SUBMISSION_FREEZE.md`](./docs/SUBMISSION_FREEZE.md).
 
-## Development
+## Reproduce the Current v0.1 Slice
 
-**Prerequisites:** Node.js 20+ with pnpm (version pinned in `package.json`) and Python 3.11 with [uv](https://docs.astral.sh/uv/).
+The reproduction boundary is explicit:
 
-Install:
+- **Any contributor** can install the locked dependencies, run the deterministic/agent safety suites, build the web app, and exercise the desktop queue/signing flow against the local intake emulator.
+- **A maintainer with access to `ngabo-amr-2026`** can run the real Firestore + Gemini + signed receiver E2E and the deployed desktop-to-dashboard demonstration.
+- **A fork owner** needs a separate billed GCP project, Gemini credential, Firestore database, service accounts and Workload Identity Federation configuration. The checked-in GCP automation is intentionally bound to this repository/project and is not a portable one-command installer.
+
+See the complete [reproduction runbook](./docs/REPRODUCING_NGABO.md) for the cloud topology, required environment contract, success criteria and fork boundary.
+
+### 1. Clean checkout and locked installation
+
+Prerequisites:
+
+- Git;
+- Node.js 20 or newer;
+- Corepack with `pnpm@11.22.0`;
+- Python 3.11 or newer;
+- [uv](https://docs.astral.sh/uv/);
+- Docker only when reproducing the container artifacts;
+- Google Cloud CLI only for the real deployed E2E.
 
 ```bash
-pnpm install                    # frontend workspace (apps/web)
-cd services/core && uv sync     # Python core
+git clone https://github.com/ronnielutaro/Ngabo-AMR-Surveillance.git
+cd Ngabo-AMR-Surveillance
+corepack enable
+corepack prepare pnpm@11.22.0 --activate
+pnpm install --frozen-lockfile
+uv sync --project services/core --frozen
 ```
 
-Frontend (`ngabo-web`):
+### 2. Verify the repository
 
 ```bash
-pnpm dev            # Next.js dev server
-pnpm web:build      # production build
-pnpm web:lint       # ESLint
-pnpm web:typecheck  # tsc --noEmit
-pnpm web:test       # Vitest
+pnpm web:lint
+pnpm web:typecheck
+pnpm web:test
+pnpm web:build
+pnpm core:lint
+pnpm core:typecheck
+pnpm core:test
+pnpm core:architecture
 ```
 
-Core (`ngabo-core`):
+These commands verify the web build, deterministic AMR/connect behavior, proof-verification and safety policies, zero-human hero composition, and the Clean Architecture dependency rule. Passing tests are software evidence; they are not clinical validation.
+
+### 3. Reproduce the desktop ingestion edge locally
+
+Start the HMAC-validating local intake in terminal one:
 
 ```bash
-pnpm core:lint       # ruff
-pnpm core:typecheck  # mypy (strict)
+uv run --project services/core python scripts/local_connect_intake.py
+```
+
+In terminal two, point the desktop client at that local intake.
+
+PowerShell:
+
+```powershell
+$env:NGABO_INTAKE_URL = "http://127.0.0.1:8099/connect/batches"
+uv run --project services/core python scripts/ngabo_connect_desktop.py
+```
+
+macOS/Linux:
+
+```bash
+NGABO_INTAKE_URL=http://127.0.0.1:8099/connect/batches \
+  uv run --project services/core python scripts/ngabo_connect_desktop.py
+```
+
+Choose an empty watched folder, click **Start Watching**, and copy [`demo/connect/synthetic_gulu_surveillance_export.csv`](./demo/connect/synthetic_gulu_surveillance_export.csv) into it. The desktop window should report `DETECTED` followed by `ACKNOWLEDGED`.
+
+This local intake proves file stability checks, SHA-256 identity, the durable SQLite queue, HMAC signing, retry handling and acknowledgement. It deliberately does **not** pretend to run Firestore, Gemini or the external A1 action locally.
+
+### 4. Run the real cloud E2E (authorized maintainer)
+
+After authenticating `gcloud`, selecting the `ngabo-amr-2026` project, and supplying `GEMINI_API_KEY` without committing or printing it:
+
+```bash
+uv run --project services/core python scripts/deadline_demo_e2e_smoke.py
+```
+
+Success ends with:
+
+```text
+E2E_RESULT: HERO_COMPLETED
+```
+
+The result must also contain a non-empty `delivery_id`, `ack_id`, `ack_verified=true`, and zero values for every human-intervention counter. A blocked/abstained run is a safe outcome, not successful hero completion.
+
+### 5. Launch the deployed desktop-to-dashboard demo (authorized maintainer)
+
+```bash
+uv run --project services/core python scripts/ngabo_connect_desktop.py
+```
+
+Use the default private core endpoint, choose a clean folder, start watching, and then drop the synthetic fixture. The signed-in `gcloud` identity must be authorized to impersonate the narrow `ngabo-connect-demo` invoker service account. Watch the public dashboard for persisted batch counts, signal state, completion, delivery ID, acknowledgement ID and zero-human counters.
+
+## Development Commands
+
+```bash
+pnpm dev             # Next.js development server
+pnpm web:build       # production web build
+pnpm web:test        # Vitest
+pnpm core:health     # core bootstrap health check
 pnpm core:test       # pytest
-pnpm core:health     # bootstrap health check (ngabo-health)
+pnpm lint            # web + core lint
+pnpm typecheck       # web + core typing
+pnpm test            # web + core tests
+pnpm build           # production web build
 ```
 
-Everything:
-
-```bash
-pnpm lint && pnpm typecheck && pnpm test && pnpm build
-```
-
-The M1A scaffold establishes the monorepo and Clean Architecture boundaries only. No Ngabo product behavior is implemented yet; the commands above verify the tooling and layer-boundary discipline (including an architecture smoke test that forbids framework/vendor imports in the inner layers).
+Container build, scan, immutable publication and deployment commands are documented in [`docs/CONTAINERS.md`](./docs/CONTAINERS.md). Trusted cloud delivery uses the checked-in GitHub Actions workflows and immutable Artifact Registry digests rather than `latest` tags.
 
 ## Current Repository State
 
-The repository is design-first with an M1A executable scaffold: the monorepo layout, Python Clean Architecture layer boundaries, and frontend tooling are in place and verified. Application/product code, deployment proof, evaluation results and hosted URLs must still be produced during implementation; design documents are not treated as execution proof.
+The repository now contains an executable synthetic Connect-to-hero slice: desktop folder intake, deterministic validation/normalization/quarantine, deterministic AMR signal detection, Firestore-backed incident and workflow state, Google ADK orchestration, Gemini 3.6 Flash bounded reasoning, approved evidence retrieval, proof-carrying verification, A1 policy/freshness/idempotency, a signed external receiver, machine acknowledgement and a public Cloud Run dashboard.
+
+Remaining release work includes reconciling all submission evidence, completing the release tag/freeze, hardening portable deployment automation, and validating the product with real practitioners and institutions. No real patient data, production hospital integration, clinical validation, product-market fit or national adoption is claimed.
 
 ## License
 
